@@ -1,7 +1,7 @@
 // ir.js — 语法树 → IR（中间表示）；属性 schema、默认值、主题解析、语义校验、元素工厂。
 // 属性 schema 是解析/序列化/检查器三端共用的单一事实来源。
 
-import { parseXML, escapeHtml } from './parser.js';
+import { parseXML, escapeHtml, decodeEntities } from './parser.js';
 
 // ────────────────────────────── 属性 schema ──────────────────────────────
 // [name, kind, default]  kind: num|bool|str|color ；default===undefined 表示必填（几何除外，另有检查）
@@ -343,7 +343,8 @@ export function irKeyToAttr(key) {
 
 // ────────────────────────────── 校验 ──────────────────────────────
 
-export function validateDeck(deck, errors = [], warnings = []) {
+// opts.katexOnline === false：调用方/环境声明当前为离线渲染（见 W_KATEX_OFFLINE）。
+export function validateDeck(deck, errors = [], warnings = [], opts = {}) {
   // palette 无循环（build 时已挡）；引用存在性
   const refCheck = (val, ctx, node) => {
     if (typeof val === 'string' && val.startsWith('$')) {
@@ -356,13 +357,14 @@ export function validateDeck(deck, errors = [], warnings = []) {
     refCheck(st.color, `文本样式 ${sname}.color`);
   }
 
+  const katexOffline = katexOfflineDeclared(opts);
   for (const master of deck.masters) {
     const ids = new Set();
-    for (const el of master.elements) validateElement(el, deck, errors, warnings, refCheck, ids);
+    for (const el of master.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
   }
   for (const slide of deck.slides) {
     const ids = new Set(); // id 唯一性按页内校验
-    for (const el of slide.elements) validateElement(el, deck, errors, warnings, refCheck, ids);
+    for (const el of slide.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
     if (slide.master && !deck.masters.some(m => m.id === slide.master)) {
       errors.push({ code: 'E_MASTER_REF', message: `<slide> 引用了不存在的母版 master="${slide.master}"`, line: slide.line });
     }
@@ -379,7 +381,7 @@ export function validateDeck(deck, errors = [], warnings = []) {
   return deck;
 }
 
-function validateElement(el, deck, errors, warnings, refCheck, ids) {
+function validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline = false) {
   const at = `<${el.type} id=${el.id || '?'}>`;
   if (el.id) {
     if (ids.has(el.id)) errors.push({ code: 'E_DUP_ID', message: `页面内 id 重复：${el.id}`, line: el.line, col: el.col });
@@ -418,6 +420,10 @@ function validateElement(el, deck, errors, warnings, refCheck, ids) {
     }
   }
   if (el.type === 'chart') validateChart(el, deck, errors, refCheck);
+  if (el.type === 'text') checkTextOverflow(el, deck, warnings, at);
+  if (katexOffline && elementUsesMath(el)) {
+    warnings.push({ code: 'W_KATEX_OFFLINE', message: `${at} 离线环境：KaTeX（CDN）不可用，公式将回退为等宽原文本`, line: el.line, col: el.col });
+  }
 }
 
 function validateChart(el, deck, errors, refCheck) {
@@ -469,6 +475,170 @@ function tableRowWidthErrors(rowsData, ncols) {
     if (width !== ncols) errs.push({ row: r, width });
   }
   return errs;
+}
+
+// ────────────────────────────── W_OVERFLOW：文本溢出静态估算 ──────────────────────────────
+// spec §17：W_OVERFLOW＝「文本估计高度超出 bounds（编辑器标出）」。规范未定义算法，
+// 这里采用与渲染路径（render.js resolveTextStyle + 浏览器默认折行）对齐的保守估算：
+//   · 字符宽度：CJK/全角 ≈ 1.0em；窄标点/符号（<>/.:/-· 等）≈ 0.34em；其余拉丁/数字/空格 ≈ 0.55em；
+//     letter-spacing 按字符累加（px）。
+//   · 软折行按空白分词贪心放置，超长单词不拆行（与 CSS 默认 overflow-wrap:normal 一致）；
+//     `<br/>` / 纯文本 \n 计为强制换行；无块级标签的纯文本每个 \n 行各算一段（与 richtext.js 一致）。
+//   · 段落高 = 行数 × 段内最大字号 × line-height（line-height-px / 段级 line-height 优先）+ 显式 margin-top；
+//     列表项可用宽度减去 1.5em 缩进（ul/ol padding-left）。
+//   · 行内 \(..\) 公式不参与宽度估算 —— KaTeX 渲染宽度与 TeX 源长度无比例关系
+//     （离线时的降级由 W_KATEX_OFFLINE 单独提示）。
+//   · 估算总高 > h × OVERFLOW_MARGIN 才告警（15% 容差，避免边界情况误报）。
+//     约束：examples/quickstart/deck.slx 必须保持 0 错误 0 警告（水位线 </>、span 缩放副标题等均按此校准）。
+const OVERFLOW_MARGIN = 1.15;
+const OVERFLOW_NARROW = new Set(['<', '>', '/', '\\', '|', '(', ')', '[', ']', '{', '}', '"', "'", '`', '.', ',', ';', ':', '!', '?', '-', '–', '—', '·', '…', '_', '*', '&']);
+function overflowCharEm(ch) {
+  const code = ch.codePointAt(0);
+  if (code >= 0x2e80) return 1.0; // CJK 部首/汉字/假名/谚文/全角符号（≥ U+2E80 一律按全宽）
+  return OVERFLOW_NARROW.has(ch) ? 0.34 : 0.55;
+}
+
+// 与 render.js resolveTextStyle 对齐的最小字号/行高解析（ir 层不能反向依赖 render 层，故此处复制规则）
+function textOverflowBase(el, deck) {
+  let fontSize = 18, lineHeight = 1.4, lineHeightPx = 0, letterSpacing = 0;
+  const refName = typeof el.style === 'string' && el.style.startsWith('$') ? el.style.slice(1) : null;
+  const ref = refName ? deck.theme.textStyles?.[refName] : null;
+  if (ref) {
+    if (ref['font-size']) fontSize = Number(ref['font-size']) || fontSize;
+    if (ref['line-height']) lineHeight = Number(ref['line-height']) || lineHeight;
+    if (ref['line-height-px']) lineHeightPx = Number(ref['line-height-px']) || 0;
+    if (ref['letter-spacing']) letterSpacing = Number(ref['letter-spacing']) || 0;
+  }
+  if (el.fontSize) fontSize = el.fontSize;
+  if (el.lineHeight) lineHeight = el.lineHeight;
+  if (el.lineHeightPx) lineHeightPx = el.lineHeightPx;
+  if (el.letterSpacing) letterSpacing = el.letterSpacing;
+  return { fontSize, lineHeight, lineHeightPx, letterSpacing };
+}
+
+// text.content（parser 原文形，实体未解码）→ 段落列表 [{style, body, li}]
+function overflowParagraphs(content) {
+  let src = String(content || '');
+  if (!src.trim()) return [];
+  src = src.replace(/\\\([\s\S]+?\\\)/g, ' ');       // 行内公式不参与估算（留一个空白断行点）
+  src = src.replace(/<\s*br\s*\/?>/gi, '\n');        // <br/> = 强制换行
+  const paras = [];
+  const blockRe = /<\s*(p|li)\b([^>]*)>([\s\S]*?)<\s*\/\s*\1\s*>/gi;
+  let m, matched = false;
+  while ((m = blockRe.exec(src))) {
+    matched = true;
+    paras.push({ style: m[2] || '', body: m[3] || '', li: m[1].toLowerCase() === 'li' });
+  }
+  if (!matched) {
+    // 无块级标签：richtext.js 把每个 \n 行各包成一个 <p>
+    for (const line of src.split('\n')) {
+      if (line.trim()) paras.push({ style: '', body: line, li: false });
+    }
+  }
+  return paras;
+}
+
+// 估算单个段落：{ lines, height }（px）
+function measureOverflowParagraph(para, base, availW) {
+  // 扫描标签流，跟踪 <span style="font-size:Npx"> 与 <sup>/<sub> 的字号覆盖
+  let curFs = base.fontSize, maxFs = base.fontSize;
+  const fsStack = [];
+  const segs = [];
+  const pushText = (t, fs) => { if (t) segs.push({ text: decodeEntities(t), fs }); };
+  const tagRe = /<\s*(\/?)\s*([a-zA-Z0-9]+)((?:"[^"]*"|'[^']*'|[^>"])*)>/g;
+  let last = 0, m;
+  while ((m = tagRe.exec(para.body))) {
+    pushText(para.body.slice(last, m.index), curFs);
+    const name = m[2].toLowerCase();
+    if (name === 'span') {
+      if (!m[1]) {
+        fsStack.push(curFs);
+        const fsm = /font-size\s*:\s*([\d.]+)\s*px/i.exec(m[3] || '');
+        if (fsm) curFs = Math.max(1, Number(fsm[1]));
+      } else curFs = fsStack.pop() ?? base.fontSize;
+    } else if (name === 'sup' || name === 'sub') {
+      if (!m[1]) { fsStack.push(curFs); curFs = curFs * 0.75; } // 浏览器 sup/sub 默认缩小
+      else curFs = fsStack.pop() ?? base.fontSize;
+    }
+    maxFs = Math.max(maxFs, curFs);
+    last = m.index + m[0].length;
+  }
+  pushText(para.body.slice(last), curFs);
+
+  // 强制换行（来自 <br/>）切分后，每行再做软折行（按空白分词，超长词不拆）
+  const hardLines = [[]];
+  for (const seg of segs) {
+    seg.text.split('\n').forEach((part, i) => {
+      if (i > 0) hardLines.push([]);
+      for (const ch of part) {
+        hardLines[hardLines.length - 1].push({ w: overflowCharEm(ch) * seg.fs + base.letterSpacing, space: /\s/.test(ch) });
+      }
+    });
+  }
+  let lines = 0;
+  for (const tokens of hardLines) {
+    let ln = 1, lineW = 0;
+    for (const tok of tokens) {
+      if (tok.space) { lineW += tok.w; continue; }   // 空格不强制折行
+      if (lineW > 0 && lineW + tok.w > availW) { ln++; lineW = tok.w; }
+      else lineW += tok.w;
+    }
+    lines += ln;
+  }
+
+  // 行高：段级 line-height 优先，其次 line-height-px / 基础倍数 × 段内最大字号
+  const st = para.style || '';
+  const lhDecl = /line-height\s*:\s*([\d.]+)\s*(px)?/i.exec(st);
+  const mtDecl = /margin-top\s*:\s*(-?[\d.]+)\s*px/i.exec(st);
+  const lineH = (lhDecl && lhDecl[2] ? Number(lhDecl[1]) : 0)
+    || base.lineHeightPx
+    || ((lhDecl ? Number(lhDecl[1]) : 0) || base.lineHeight) * maxFs;
+  return { lines, height: lines * lineH + (mtDecl ? Number(mtDecl[1]) : 0) };
+}
+
+function checkTextOverflow(el, deck, warnings, at) {
+  if (el.wrap === false) return; // white-space:nowrap：不软折行，高度不随文本增长
+  const base = textOverflowBase(el, deck);
+  if (!(num(el.w, 0) > 0) || !(num(el.h, 0) > 0) || !(base.fontSize > 0)) return;
+  const paras = overflowParagraphs(el.content || '');
+  if (!paras.length) return;
+  let total = 0, totalLines = 0;
+  for (const para of paras) {
+    const availW = Math.max(1, para.li ? num(el.w, 0) - 1.5 * base.fontSize : num(el.w, 0));
+    const r = measureOverflowParagraph(para, base, availW);
+    total += r.height; totalLines += r.lines;
+  }
+  if (total > num(el.h, 0) * OVERFLOW_MARGIN) {
+    warnings.push({
+      code: 'W_OVERFLOW',
+      message: `${at} 文本估算高度 ${Math.ceil(total)}px 超出 bounds 高度 ${num(el.h, 0)}px（约 ${totalLines} 行 × ${base.fontSize}px），建议加高元素或缩小字号`,
+      line: el.line, col: el.col,
+    });
+  }
+}
+
+// ────────────────────────────── W_KATEX_OFFLINE：离线公式回退提示 ──────────────────────────────
+// spec §8.4：渲染时 KaTeX 走 CDN，离线回退为等宽原文本并提示 W_KATEX_OFFLINE。
+// 网络可用性是运行时状态，静态校验无法探测，因此仅在「环境声明离线」时检查：
+//   · validateDeck(deck, [], [], { katexOnline: false })，或
+//   · 环境变量 SLIDEX_OFFLINE=1（CLI/导出进程声明离线）。
+// 未声明时（默认）保持安静，避免对每个含公式的 deck 误报（在线时渲染完全正常）。
+function katexOfflineDeclared(opts) {
+  if (opts && opts.katexOnline === false) return true;
+  try {
+    if (typeof process !== 'undefined' && process?.env?.SLIDEX_OFFLINE === '1') return true;
+  } catch { /* 浏览器环境无 process */ }
+  return false;
+}
+
+// 元素是否使用公式：formula 元素（tex 或内容）、text 行内 \(..\)、表格单元格行内 \(..\)
+function elementUsesMath(el) {
+  if (el.type === 'formula') return !!(el.tex || String(el.content || '').trim());
+  if (el.type === 'text') return /\\\([\s\S]+?\\\)/.test(String(el.content || ''));
+  if (el.type === 'table') {
+    return (el.rowsData || []).some(row => (row || []).some(cell => /\\\([\s\S]+?\\\)/.test(String(cell.text || ''))));
+  }
+  return false;
 }
 
 // ────────────────────────────── 工具 ──────────────────────────────

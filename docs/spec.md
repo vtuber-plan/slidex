@@ -265,7 +265,7 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 
 - 文本中 `\(...\)` 定界（段内或独立成段均可）；公式内**不得**出现富文本标签。
 - 公式仅继承所在上下文的 `color` 与 `font-size`。
-- 渲染使用 KaTeX（编辑器/放映/导出注入 CDN，离线回退为等宽原文本，警告 `W_KATEX_OFFLINE`）。
+- 渲染使用 KaTeX（编辑器/放映/导出注入 CDN，离线回退为等宽原文本，警告 `W_KATEX_OFFLINE`；静态校验无法探测运行时网络，仅在声明离线环境时提示，见 §17）。
 
 ## 9. 元素：`<shape>` 形状
 
@@ -480,7 +480,7 @@ def eval_(t, env):
 | `E_COLS_SUM` / `E_ROW_LEN` / `E_SPAN` | 表格列比例、行长、合并越界 |
 | `E_ENCODE_COL` / `E_NON_NUMERIC` / `E_CHART_MIX` | 图表 encode 列缺失、数值列含非数、非法类型混合（pie 混叠） |
 
-**Warnings**：`W_UNKNOWN_TAG`（未知标签被忽略）、`W_UNKNOWN_ATTR`（未知属性被忽略）、`W_PATH_ESCAPE`（`..` 路径）、`W_MEDIA_MISSING`（本地媒体不存在）、`W_STYLE_PROP`（富文本样式白名单外属性被忽略）、`W_OVERFLOW`（文本估计高度超出 bounds，编辑器标出）、`W_KATEX_OFFLINE`。
+**Warnings**：`W_UNKNOWN_TAG`（未知标签被忽略）、`W_UNKNOWN_ATTR`（未知属性被忽略）、`W_PATH_ESCAPE`（`..` 路径）、`W_MEDIA_MISSING`（本地媒体不存在）、`W_STYLE_PROP`（富文本样式白名单外属性被忽略）、`W_OVERFLOW`（文本估计高度超出 bounds，编辑器标出；静态估算：CJK≈1.0em、拉丁/数字/空格≈0.55em、窄标点≈0.34em 按词贪心折行，估算总高 > h×1.15 才提示；`wrap="false"` 不折行不提示）、`W_KATEX_OFFLINE`（仅当环境声明离线时——`validateDeck(…, { katexOnline: false })` 或 `SLIDEX_OFFLINE=1`——对使用 `<formula>` 或行内 `\(...\)` 的元素提示离线回退为等宽原文本）。
 
 ## 18. 规范序列化（保存格式）
 

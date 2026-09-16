@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { zip, themeXml, slideMasterXml, slideLayoutXml, notesMasterXml, notesSlideXml } from './pptx.js';
-import { resolveColor, parsePoints } from '../ir.js';
+import { resolveColor, parsePoints, parseShadow } from '../ir.js';
 import { resolveTextStyle } from '../render/render.js';
 import { richToRuns } from '../render/richtext-runs.js';
 
@@ -23,6 +23,13 @@ const alphaOf = (c) => {
   return null;
 };
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// content 里的属性值（如 href="a=1&amp;b=2"）保持源码转义形态；写 rels 目标前先解码，esc 会重新转义
+const decodeEnt = (s) => String(s).replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all, g) => {
+  const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+  if (named[g]) return named[g];
+  const code = (g[1] === 'x' || g[1] === 'X') ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
+  return Number.isFinite(code) ? String.fromCodePoint(code) : all;
+});
 const NATIVE_SHAPES = new Set(['rect', 'roundRect', 'ellipse', 'triangle', 'diamond', 'rightArrow', 'chevron', 'donut', 'star5']);
 const OOXML_SHAPE = { rect: 'rect', roundRect: 'roundRect', ellipse: 'ellipse', triangle: 'triangle', diamond: 'diamond', rightArrow: 'rightArrow', chevron: 'chevron', donut: 'donut', star5: 'star5' };
 
@@ -97,6 +104,19 @@ function effectXml(el, deck) {
   const dir = Math.round(((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360 * 60000);
   return `<a:effectLst><a:outerShdw blurRad="${blur}" dist="${dist}" dir="${dir}" rotWithShape="0"><a:srgbClr val="${hex6(m[4])}"><a:alpha val="${alphaOf(m[4]) ?? 60000}"/></a:srgbClr></a:outerShdw></a:effectLst>`;
 }
+// 文本阴影：rPr 级 effectLst。DSL "blur dx dy color"（parseShadow）→ blurRad/dist/dir；
+// 无法解析（格式不符）则省略，不产出非法 XML。
+function textShadowXml(el, deck) {
+  const sh = parseShadow(el.shadow);
+  if (!sh) return '';
+  const blur = emu(sh.blur);
+  const dist = Math.round(Math.hypot(sh.dx, sh.dy) * EMU);
+  const dir = Math.round(((Math.atan2(sh.dy, sh.dx) * 180 / Math.PI) + 360) % 360 * 60000);
+  const color = resolveColor(sh.color, deck);
+  const a = alphaOf(color);
+  const alpha = a !== null ? `<a:alpha val="${a}"/>` : '';
+  return `<a:effectLst><a:outerShdw blurRad="${blur}" dist="${dist}" dir="${dir}" rotWithShape="0"><a:srgbClr val="${hex6(color)}">${alpha}</a:srgbClr></a:outerShdw></a:effectLst>`;
+}
 function xfrmXml(el) {
   const rot = el.rotation ? ` rot="${Math.round(el.rotation * 60000)}"` : '';
   const flip = `${el['flip-h'] || el.flipH ? ' flipH="1"' : ''}${el['flip-v'] || el.flipV ? ' flipV="1"' : ''}`;
@@ -122,12 +142,13 @@ function adjXml(el) {
   return `<a:avLst>${gds.map(([n, v]) => `<a:gd name="${n}" fmla="val ${v}"/>`).join('')}</a:avLst>`;
 }
 
-function textBodyXml(el, deck) {
+function textBodyXml(el, deck, linkIds) {
   const st = resolveTextStyle(el, deck);
   const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic });
   const [, va = 'top'] = String(st.align || 'left top').split(/\s+/);
   const anchor = va === 'middle' || va === 'center' ? 'ctr' : va === 'bottom' ? 'b' : 't';
   const wrap = el.wrap === false ? ' wrap="none"' : ' wrap="square"';
+  const shadowXml = textShadowXml(el, deck); // 元素级 text shadow → 每个 run 的 rPr
   const parasXml = model.paragraphs.map(p => {
     const algn = (p.align || String(st.align || 'left').split(/\s+/)[0] || 'left').replace('justify', 'just');
     const algnAttr = ` algn="${algn === 'center' ? 'ctr' : algn === 'right' ? 'r' : algn === 'just' ? 'just' : 'l'}"`;
@@ -140,6 +161,7 @@ function textBodyXml(el, deck) {
     const runsXml = p.runs.map(r => {
       const sz = Math.round((r.fontSize || st.fontSize || 18) * 100);
       const props = [`sz="${sz}"`];
+      if (st.letterSpacing) props.push(`spc="${Math.round(st.letterSpacing * 75)}"`); // px → 1/100 pt（1px=0.75pt）
       if (r.bold) props.push('b="1"');
       if (r.italic) props.push('i="1"');
       if (r.u) props.push('u="sng"');
@@ -150,7 +172,9 @@ function textBodyXml(el, deck) {
       const face = r.fontFamily || st.fontFamily || '';
       const faceXml = face ? `<a:latin typeface="${esc(face)}"/><a:ea typeface="${esc(face)}"/>` : '';
       const hlXml = r.bgColor ? `<a:highlight><a:srgbClr val="${hex6(resolveColor(r.bgColor, deck))}"/></a:highlight>` : '';
-      const rPr = `<a:rPr lang="zh-CN" ${props.join(' ')} dirty="0"><a:solidFill><a:srgbClr val="${hex6(resolveColor(color, deck))}"/></a:solidFill>${hlXml}${faceXml}</a:rPr>`;
+      const linkRelId = r.href && linkIds ? linkIds.get(r.href) : null;
+      const linkXml = linkRelId ? `<a:hlinkClick r:id="${linkRelId}"/>` : '';
+      const rPr = `<a:rPr lang="zh-CN" ${props.join(' ')} dirty="0"><a:solidFill><a:srgbClr val="${hex6(resolveColor(color, deck))}"/></a:solidFill>${shadowXml}${hlXml}${faceXml}${linkXml}</a:rPr>`;
       return `<a:r>${rPr}<a:t>${esc(r.text)}</a:t></a:r>`;
     }).join('');
     return `<a:p>${pPr}${runsXml}</a:p>`;
@@ -173,13 +197,13 @@ function shapeSpXml(el, deck, idNum) {
 </p:sp>`;
 }
 
-function textSpXml(el, deck, idNum) {
+function textSpXml(el, deck, idNum, linkIds) {
   const st = resolveTextStyle(el, deck);
   const color = st.backgroundColor ? fillXml(st.backgroundColor, deck) : '<a:noFill/>';
   return `<p:sp>
 <p:nvSpPr><p:cNvPr id="${idNum}" name="text ${esc(el.id || '')}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
 <p:spPr>${xfrmXml(el)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${color}<a:ln><a:noFill/></a:ln></p:spPr>
-${textBodyXml(el, deck)}
+${textBodyXml(el, deck, linkIds)}
 </p:sp>`;
 }
 
@@ -236,8 +260,9 @@ function cropPicXml(crop, relId, idNum) {
 
 // ─────────── 页面与包组装 ───────────
 
-export function slideNativeXml(deck, slide, plan, relIds) {
+export function slideNativeXml(deck, slide, plan, relIds, linkIds) {
   // relIds: Map(key -> rId)；图片元素 key = el.id
+  // linkIds: Map(href -> rId)；文本 run 超链接（可省略，向后兼容）
   let idNum = 10;
   const parts = [];
   if (plan.bg) {
@@ -246,7 +271,7 @@ export function slideNativeXml(deck, slide, plan, relIds) {
   for (const item of plan.items) {
     idNum++;
     switch (item.kind) {
-      case 'text': parts.push(textSpXml(item.el, deck, idNum)); break;
+      case 'text': parts.push(textSpXml(item.el, deck, idNum, linkIds)); break;
       case 'shape': parts.push(shapeSpXml(item.el, deck, idNum)); break;
       case 'line': parts.push(lineSpXml(item.el, deck, idNum)); break;
       case 'pic': parts.push(picXml(item.el, deck, idNum, relIds.get(item.el.id))); break;
@@ -267,12 +292,35 @@ ${parts.join('\n')}
 export function relsXml(rels) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-${rels.map(r => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('\n')}
+${rels.map(r => `<Relationship Id="${r.id}" Type="${r.type}" Target="${esc(r.target)}"${r.targetMode ? ` TargetMode="${r.targetMode}"` : ''}/>`).join('\n')}
 </Relationships>`;
 }
 
 const R_IMAGE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
 const R_NOTES = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide';
+const R_HLINK = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
+
+// 收集一页文本 run 中的外部超链接（http/https/mailto），按出现顺序去重。
+// 与 textBodyXml 用同一 run 模型（richToRuns），保证 href 集合与 run.href 完全一致。
+function slideHyperlinks(plan, deck) {
+  const out = [];
+  const seen = new Set();
+  for (const item of plan.items) {
+    if (item.kind !== 'text') continue;
+    const el = item.el;
+    const st = resolveTextStyle(el, deck);
+    const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic });
+    for (const p of model.paragraphs) {
+      for (const r of p.runs) {
+        const href = String(r.href || '');
+        if (!href || seen.has(href) || !/^(https?:|mailto:)/i.test(href)) continue;
+        seen.add(href);
+        out.push(href);
+      }
+    }
+  }
+  return out;
+}
 
 // 组装完整 pptx（editable）
 export async function buildPptxEditable({ deck, deckDir, plans, cropBuffers, width, height, title = '' }) {
@@ -365,9 +413,16 @@ ${sldRels}
       rels.push({ id: relId, type: R_IMAGE, target: `../media/image${mediaIdx}.png` });
       relIds.set(item.key, relId);
     }
+    // 文本超链接（外部目标，接在图片 rId 之后，保证不冲突）；href 按源码转义形态匹配，写 rels 前解码
+    const linkIds = new Map();
+    for (const href of slideHyperlinks(plan, deck)) {
+      const relId = `rId${rels.length + 1}`;
+      rels.push({ id: relId, type: R_HLINK, target: decodeEnt(href), targetMode: 'External' });
+      linkIds.set(href, relId);
+    }
     const hasNotes = deck.slides[i].notes && deck.slides[i].notes.trim();
     if (hasNotes) rels.push({ id: `rId${rels.length + 1}`, type: R_NOTES, target: `../notesSlides/notesSlide${i + 1}.xml` });
-    add(`ppt/slides/slide${i + 1}.xml`, slideNativeXml(deck, deck.slides[i], plan, relIds));
+    add(`ppt/slides/slide${i + 1}.xml`, slideNativeXml(deck, deck.slides[i], plan, relIds, linkIds));
     add(`ppt/slides/_rels/slide${i + 1}.xml.rels`, relsXml(rels));
     if (hasNotes) add(`ppt/notesSlides/notesSlide${i + 1}.xml`, notesSlideXml(i + 1, deck.slides[i].notes));
     if (hasNotes) add(`ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`, relsXml([

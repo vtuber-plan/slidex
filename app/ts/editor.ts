@@ -383,6 +383,8 @@ function geomFields(el: SlideElement): string {
 }
 const num = (k: string, v: number | undefined, step = 1): string => `<div class="field"><label>${k}</label><input type="number" step="${step}" data-k="${k}" value="${v ?? 0}"></div>`;
 const str = (k: string, v: string | undefined, ph = ''): string => `<div class="field"><label>${k}</label><input type="text" data-k="${k}" value="${escAttr(v ?? '')}" placeholder="${ph}"></div>`;
+// 比例列表输入（列宽比 / 行高比）：label 可本地化，data-k 仍用模型字段名
+const ratioField = (k: string, label: string, v: string, ph = ''): string => `<div class="field"><label>${label}</label><input type="text" data-k="${k}" value="${escAttr(v)}" placeholder="${ph}"></div>`;
 const sel1 = (k: string, v: string | boolean | undefined, opts: Array<[string, string]>): string =>
   `<div class="field"><label>${k}</label><select data-k="${k}">${opts.map(o => `<option value="${o[0]}"${String(v) === String(o[0]) ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></div>`;
 const color = (k: string, v: string | undefined): string =>
@@ -433,7 +435,8 @@ function inspectorForType(el: SlideElement): string {
       return `${str('name', el.name ?? '', 'fas:lightbulb (Font Awesome)')}${color('fill', el.fill)}`;
     case 'table':
       return `${sel1('style', el.style ?? '', tblOpts)}
-      ${str('cols', (el.cols ?? []).join(' '), 'col ratios sum to 1')}
+      ${ratioField('cols', t('insp.colWidths'), (el.cols ?? []).join(' '), 'col ratios sum to 1')}
+      ${ratioField('rowsRatio', t('insp.rowsRatio'), (el.rowsRatio ?? []).join(' '), 'row ratios, one per row')}
       ${ta('_rows', tableToTsv(el), 7, 'one <tr> per line, cells separated by |')}
       <div class="muted small">${t('insp.tableMerge')}</div>`;
     case 'chart': {
@@ -468,6 +471,18 @@ function tsvToTable(input: string, el: SlideElement): void {
   }
 }
 
+/** 解析逗号/空格分隔的正数比例列表；数量与期望不符时用末值补齐 / 截断；空或全非法输入返回 []（序列化时省略该标签） */
+function parseRatioList(v: string, expected: number): number[] {
+  const nums = v.split(/[\s,]+/).filter(s => s !== '').map(Number).filter(n => Number.isFinite(n) && n > 0);
+  if (!nums.length || expected <= 0) return [];
+  while (nums.length < expected) nums.push(nums[nums.length - 1]);
+  return nums.slice(0, expected);
+}
+/** 表格实际列数（按 col-span 展开），与 renderTable 的网格推导保持一致 */
+function tableGridColCount(el: SlideElement): number {
+  return Math.max(1, ...(el.rowsData ?? []).map(r => r.reduce((a, c) => a + Number(c['col-span'] || 1), 0)));
+}
+
 const NUM_KEYS = new Set(['x', 'y', 'w', 'h', 'rotation', 'opacity', 'font-size', 'line-height', 'stroke-width', 'radius']);
 
 function bindFields(box: HTMLElement, el: SlideElement): void {
@@ -493,7 +508,8 @@ function bindFields(box: HTMLElement, el: SlideElement): void {
             return se;
           });
         }
-        else if (k === 'cols') el.cols = String(v).split(/[\s,]+/).map(Number).filter(Number.isFinite);
+        else if (k === 'cols') el.cols = parseRatioList(String(v), tableGridColCount(el));
+        else if (k === 'rowsRatio') el.rowsRatio = parseRatioList(String(v), (el.rowsData ?? []).length);
         else if (NUM_KEYS.has(k)) {
           const n = Number(v);
           if (Number.isFinite(n)) el[k] = n;

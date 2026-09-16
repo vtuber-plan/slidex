@@ -41,6 +41,7 @@ const zhCN: Record<string, string> = {
   'insp.animAdd': '＋添加动画', 'insp.animDel': '删除此动画', 'insp.target': 'target', 'insp.effect': 'effect', 'insp.trigger': 'trigger', 'insp.duration': 'duration ms',
   'insp.hint': '双击画布中的文本可直接编辑。母版内容请在源码模式中修改。渐变/图片背景暂用源码模式。',
   'insp.tableMerge': '合并单元格请用「源码」编辑（row-span / col-span）',
+  'insp.colWidths': '列宽比', 'insp.rowsRatio': '行高比',
   'insp.custom': 'custom path（高级）',
   'insp.sel': '（无）', 'insp.tableDefault': '（默认）', 'insp.autoWrap': '自动换行', 'insp.noWrap': '不换行',
   // 通用属性名
@@ -100,6 +101,7 @@ const en: Record<string, string> = {
   'insp.animAdd': '＋ Add animation', 'insp.animDel': 'Remove', 'insp.target': 'target', 'insp.effect': 'effect', 'insp.trigger': 'trigger', 'insp.duration': 'duration ms',
   'insp.hint': 'Double-click canvas text to edit in place. Edit masters via Source. Gradient/image backgrounds via Source for now.',
   'insp.tableMerge': 'Edit merged cells in Source (row-span / col-span)',
+  'insp.colWidths': 'Column widths', 'insp.rowsRatio': 'Row height ratios',
   'insp.custom': 'custom path (advanced)',
   'insp.sel': '(none)', 'insp.tableDefault': '(default)', 'insp.autoWrap': 'Wrap', 'insp.noWrap': 'No wrap',
   'p.fill': 'fill', 'p.stroke': 'stroke', 'p.shadow': 'shadow',

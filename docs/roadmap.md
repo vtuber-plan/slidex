@@ -13,10 +13,16 @@
 - **Electron 桌面应用**：原生菜单（新建/打开/保存/导出/放映）、文件对话框、`slidex app`
 - 放映：演讲者视图（当前页+下一页+备注+计时器，BroadcastChannel 双窗同步）
 
+## v1.5.1（当前，已完成）—— 校验警告 + 可编辑 PPTX 保真度 + 表格检查器
+- 校验：`W_OVERFLOW`（文本估计高度超 bounds 的静态启发式，CJK 1.0em / latin 0.55em、1.15 倍阈值，`wrap="false"` 豁免）与 `W_KATEX_OFFLINE`（声明离线环境时对每个含公式元素提示，`{katexOnline:false}` 或 `SLIDEX_OFFLINE=1`）
+- 可编辑 PPTX：文本超链接 → `a:hlinkClick` + 外部 rel（`TargetMode="External"`）、`letter-spacing` → `spc`（px→1/100pt）、`shadow` → 文字 `a:outerShdw`（dx/dy→dist+dir，含 alpha）
+- 编辑器：表格检查器新增「列宽比 `<cols>`」「行高比 `<rows>`」输入（容错解析、补齐/截断、撤销可回退）
+- 测试：`test/gap-warnings.mjs`（10）、`test/gap-pptx-links.mjs`（42）、`test/gap-table-inspector.mjs`（14），已并入 `node test/run.mjs`
+
 ## v1.x（近期）
 - 动画导出到 PPTX（原生对象的进入效果 timing XML）
 - 形状库扩充到 OOXML 常用 30+（star 系列、flowchart、callout）
-- 图表：radar、bubble、双轴、百分比堆叠
+- 图表：radar、bubble、双轴
 - 表格原生 OOXML 导出 + 网格化编辑（点击选格、直接输入）
 - 编辑器：成组、对齐分布工具栏增强、多页缩略图拖拽排序
 - `slidex import`：PPTD (YAML) → slidex 转换器

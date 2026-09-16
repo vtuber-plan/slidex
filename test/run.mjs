@@ -1,5 +1,5 @@
 // run.mjs — slidex 测试套件：npm test
-// 覆盖：XML 解析（含错误定位）/ IR 校验 / 序列化幂等 / 渲染 / 示例 deck / PPTX zip 结构
+// 覆盖：XML 解析（含错误定位）/ IR 校验 / 序列化幂等 / 渲染 / 示例 deck / PPTX zip 结构 / 差距补齐套件
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -169,6 +169,25 @@ sec('6. PPTX 结构');
     t('媒体图片存在', names.filter(n => n.startsWith('ppt/media/image')).length >= 1);
   } else {
     t('PPTX 已生成（跳过：先运行 node src/cli.js export examples/quickstart/deck.slx -f pptx）', false);
+  }
+}
+
+// ── 7. 差距补齐套件（子进程跑独立脚本；两个需要 Chrome 的在无 Chrome 机器上跳过）──
+sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 · 表格 Inspector）');
+{
+  const { spawnSync } = await import('node:child_process');
+  const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+  const hasChrome = fs.existsSync(CHROME);
+  const suites = [
+    ['test/gap-warnings.mjs', true],
+    ['test/gap-pptx-links.mjs', hasChrome],
+    ['test/gap-table-inspector.mjs', hasChrome],
+  ];
+  for (const [file, can] of suites) {
+    if (!can) { t(`${file}（跳过：本机无 Chrome）`, true); continue; }
+    const r = spawnSync(process.execPath, [path.join(ROOT, file)], { encoding: 'utf8', timeout: 240000 });
+    const fails = (r.stdout || '').split('\n').filter(l => /FAIL|✗/.test(l)).join(' | ');
+    t(file, r.status === 0, fails || String(r.stderr).slice(0, 300) || `exit=${r.status}`);
   }
 }
 
