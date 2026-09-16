@@ -78,6 +78,7 @@
 - 编辑器前端为 **TypeScript strict**（`app/ts/*.ts` → `tsc` 编译到 `app/dist/`，页面只引用 dist）；IR 数据模型（Deck / SlideContainer / SlideElement / Animation）在 `app/types/slidex.d.ts` 中强类型化——编辑器大量动态属性读写正是历史 bug 高发区，strict 模式在编译期拦截。
 - `src/` 保持**零构建 JavaScript**（CLI / 导出 / Node 端共用），通过 d.ts shim + tsconfig `paths` 给前端提供类型，运行时零依赖关系不变。
 - **i18n**：`app/ts/i18n.ts` 集中管理全部界面文案（zh-CN / en）。静态 HTML 用 `data-i18n` / `data-i18n-title` 标记，动态文案一律 `t(key, params)`；语言选择器持久化到 localStorage，默认跟随浏览器语言。
+- **主题**：`app/theme.css` 定义亮/暗两套 CSS 变量，`app/ts/theme.ts` 维护 auto/light/dark 偏好（localStorage + `prefers-color-scheme` 监听），`<head>` 预解析脚本保证刷新无闪色。
 
 ### 3.4 服务端 API（`server.js`）
 

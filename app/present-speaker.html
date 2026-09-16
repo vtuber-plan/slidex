@@ -3,20 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <title>SlideX 演讲者视图</title>
+<script>
+(function () {
+  var t = 'auto';
+  try { t = localStorage.getItem('slidex-theme') || 'auto'; } catch (e) {}
+  var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    var t2 = 'auto';
+    try { t2 = localStorage.getItem('slidex-theme') || 'auto'; } catch (e) {}
+    if (t2 === 'auto') document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+})();
+</script>
+<link rel="stylesheet" href="/app/theme.css">
 <link rel="stylesheet" href="/runtime.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <style>
-html, body { margin: 0; height: 100%; background: #1B2027; color: #DDE4EC; font-family: 'Segoe UI', 'MiSans', sans-serif; display: flex; flex-direction: column; overflow: hidden; }
-header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #222933; border-bottom: 1px solid #2A323C; }
-header b { color: #EAF2F6; }
-#timer { font-size: 20px; font-variant-numeric: tabular-nums; color: #3FB6C9; }
-header button { background: #2C3540; color: #C7D1DC; border: 1px solid #3A4450; border-radius: 5px; padding: 3px 12px; cursor: pointer; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'MiSans', sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border); }
+header b { color: var(--text-strong); }
+#timer { font-size: 20px; font-variant-numeric: tabular-nums; color: var(--accent); }
+header button { background: var(--input); color: var(--btn-text); border: 1px solid var(--input-border); border-radius: 5px; padding: 3px 12px; cursor: pointer; }
 main { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; }
-.box { background: #141920; border: 1px solid #2A323C; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-.box .tag { position: absolute; left: 8px; top: 6px; font-size: 11px; color: #8794A2; z-index: 2; }
+.box { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.box .tag { position: absolute; left: 8px; top: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
 #curBox { flex: 3; } #nextBox { flex: 2; }
 .holder { transform-origin: 0 0; position: absolute; }
-#notesBox { height: 32%; margin: 0 12px 12px; background: #E7EDF2; color: #22303A; border-radius: 8px; padding: 12px 18px; font-size: 16px; line-height: 1.7; overflow: auto; }
+#notesBox { height: 32%; margin: 0 12px 12px; background: #E7EDF2; color: #22303A; border-radius: 8px; padding: 12px 18px; font-size: 16px; line-height: 1.7; overflow: auto; border-top: none; }
 #nav { display: flex; gap: 8px; }
 </style>
 </head>

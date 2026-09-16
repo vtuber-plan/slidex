@@ -4,6 +4,7 @@ import { serializeDeck } from '/src/serializer.js';
 import { renderSlide } from '/src/render/render.js';
 import { startInlineEdit, finishInlineEdit, isEditing, initEditBar, showEditBar, hideEditBar } from './inline-edit.js';
 import { t, applyI18n, getLang, setLang, type Lang } from './i18n.js';
+import { initTheme, initThemeSelector } from './theme.js';
 import type { ChartSeries, Deck, Diag, SlideContainer, SlideElement } from '../types/slidex';
 
 declare global {
@@ -46,6 +47,8 @@ async function init(): Promise<void> {
   bindCtxMenus();
   applyI18n();
   initLangSel();
+  initTheme();
+  initThemeSelector($('themeSel') as HTMLSelectElement);
   renderAll();
   fitZoom();
 }

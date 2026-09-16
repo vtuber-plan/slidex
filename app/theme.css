@@ -1,0 +1,75 @@
+/* theme.css — 编辑器外壳调色板（亮 / 暗两套 CSS 变量）
+   data-theme 由 theme.ts / <head> 预解析脚本写在 <html> 上；
+   "auto" 偏好会在 JS 侧解析成 light/dark 并随系统实时切换。 */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1B2027;
+  --bg-deep: #141920;
+  --stage: #101419;            /* 画布区背景（衬托幻灯片） */
+  --thumb-pane: #171C22;
+  --panel: #222933;
+  --border: #2A323C;
+  --border-strong: #3A4450;
+  --text: #DDE4EC;
+  --text-strong: #EAF2F6;
+  --muted: #8794A2;
+  --faint: #5A6673;
+  --input: #2C3540;
+  --input-border: #3A4450;
+  --btn-text: #C7D1DC;
+  --btn-hover-bg: #38434F;
+  --btn-hover-border: #4A5866;
+  --accent: #3FB6C9;
+  --accent-strong: #2C8DA0;
+  --accent-contrast: #06222A;
+  --danger: #F08A8A;
+  --warn: #D9B96A;
+  --ok-border: #3D7A4F;
+  --err-border: #8A3D3D;
+  --err-bg: #5C2A2A;
+  --err-text: #FFD9D9;
+  --menu-bg: #262E38;
+  --menu-hover: #35404C;
+  --overlay: rgba(0, 0, 0, .63);
+  --shadow: rgba(0, 0, 0, .6);
+  --scrollbar: #333E4A;
+  --code-src-bg: #141920;
+  --code-src-text: #D7E3EE;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #EEF1F4;
+  --bg-deep: #E4E8ED;
+  --stage: #DCE1E7;
+  --thumb-pane: #E7EBEF;
+  --panel: #F7F9FB;
+  --border: #D9DEE4;
+  --border-strong: #C5CCD5;
+  --text: #232C36;
+  --text-strong: #141C26;
+  --muted: #5F6B78;
+  --faint: #8B96A2;
+  --input: #FFFFFF;
+  --input-border: #C8D0D9;
+  --btn-text: #2B3540;
+  --btn-hover-bg: #E9EDF2;
+  --btn-hover-border: #AEB8C2;
+  --accent: #0E8FA3;
+  --accent-strong: #0B7A8C;
+  --accent-contrast: #FFFFFF;
+  --danger: #C03434;
+  --warn: #7C6212;
+  --ok-border: #2F6B3F;
+  --err-border: #B04A4A;
+  --err-bg: #F7E3E3;
+  --err-text: #7A2222;
+  --menu-bg: #FFFFFF;
+  --menu-hover: #EDF2F7;
+  --overlay: rgba(20, 30, 42, .45);
+  --shadow: rgba(25, 35, 48, .2);
+  --scrollbar: #C3CBD4;
+  --code-src-bg: #F3F5F8;
+  --code-src-text: #232C36;
+}

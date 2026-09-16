@@ -14,6 +14,7 @@ const zhCN: Record<string, string> = {
   'app.front': '置于顶层', 'app.back': '置于底层',
   'app.painter': '🖌', 'app.painterTitle': '格式刷：选中源元素后点击，再点击目标元素（Shift 连续刷）',
   'app.source': '源码', 'app.present': '放映', 'app.save': '保存',
+  'app.themeTitle': '主题', 'app.themeAuto': '跟随系统', 'app.themeLight': '亮色', 'app.themeDark': '暗色',
   'app.export': '导出…', 'app.export.png': 'PNG（每页 2x）', 'app.export.pdf': 'PDF（矢量文本）',
   'app.export.pptx': 'PPTX（一比一）', 'app.export.pptxEditable': 'PPTX（可编辑混合）', 'app.export.html': 'HTML（自包含）',
   // 编辑工具条
@@ -76,6 +77,7 @@ const en: Record<string, string> = {
   'app.front': 'Bring to front', 'app.back': 'Send to back',
   'app.painter': '🖌', 'app.painterTitle': 'Format painter: select source, click it, then click target (Shift to keep)',
   'app.source': 'Source', 'app.present': 'Present', 'app.save': 'Save',
+  'app.themeTitle': 'Theme', 'app.themeAuto': 'Auto (system)', 'app.themeLight': 'Light', 'app.themeDark': 'Dark',
   'app.export': 'Export…', 'app.export.png': 'PNG (2x per slide)', 'app.export.pdf': 'PDF (vector text)',
   'app.export.pptx': 'PPTX (pixel-true)', 'app.export.pptxEditable': 'PPTX (editable hybrid)', 'app.export.html': 'HTML (self-contained)',
   'eb.bold': 'Bold', 'eb.italic': 'Italic', 'eb.underline': 'Underline', 'eb.strike': 'Strikethrough',
