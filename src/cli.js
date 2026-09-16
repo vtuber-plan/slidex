@@ -3,8 +3,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { templateDeck } from './template.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json');
@@ -82,15 +85,25 @@ async function main() {
     }
     case 'export': {
       const file = args[1];
-      if (!file) die('用法: slidex export <deck.slx> [-f png|pdf|pptx|html] [--scale 2] [-o 目录]');
+      if (!file) die('用法: slidex export <deck.slx> [-f png|pdf|pptx|html] [--editable] [--scale 2]');
       const format = flag('-f', flag('--format', 'png'));
       const scale = Number(flag('--scale', 2));
+      const editable = hasFlag('--editable') || hasFlag('-e');
       const { exportDeck } = await import('./export/export.js');
-      console.log(`导出 ${format.toUpperCase()}（scale ${scale}）…`);
+      console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
       const t0 = Date.now();
-      const r = await exportDeck(path.resolve(file), { format, scale });
+      const r = await exportDeck(path.resolve(file), { format, scale, editable });
       for (const f of r.files) console.log('  → ' + f);
       console.log(`完成，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      break;
+    }
+    case 'app': {
+      const file = args[1] ? path.resolve(args[1]) : null;
+      let electronPath;
+      try { electronPath = require('electron'); } catch { die('未安装 electron，请先运行 npm install'); }
+      const mainJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../electron/main.js');
+      const child = spawn(electronPath, [mainJs, ...(file ? [file] : [])], { stdio: 'inherit' });
+      child.on('exit', (code) => process.exit(code ?? 0));
       break;
     }
     case 'version': case '-v': case '--version':
@@ -104,8 +117,9 @@ async function main() {
   slidex serve  <deck.slx> [--port N]  打开编辑器（默认 4870）
   slidex present <deck.slx>            打开放映模式
   slidex validate <deck.slx>           校验（错误/警告，带行号）
-  slidex export <deck.slx> -f png|pdf|pptx|html [--scale 2]
+  slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
                                         导出（输出到 deck 同目录 out/）
+  slidex app [deck.slx]                以 Electron 桌面应用打开编辑器
 环境变量:
   CHROME_PATH   导出用浏览器路径（默认自动探测 Chrome/Edge）`);
       if (cmd !== 'help' && cmd !== '--help') process.exit(1);
@@ -114,31 +128,5 @@ async function main() {
 
 function die(msg) { console.error(msg); process.exit(1); }
 
-function templateDeck(name) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<deck version="1" title="${name}" width="960" height="540">
-  <theme>
-    <palette>
-      <color name="paper" value="#FAF8F4"/>
-      <color name="ink" value="#232A31"/>
-      <color name="primary" value="#14606C"/>
-      <color name="accent" value="#B4632C"/>
-    </palette>
-    <text-styles>
-      <style name="title" font-size="36" bold="true" color="$ink"/>
-      <style name="body" font-size="16" color="$ink" line-height="1.55"/>
-    </text-styles>
-  </theme>
-  <slide type="cover" background="$primary">
-    <text id="title" x="80" y="220" w="800" h="80" style="$title" color="#FAF8F4" align="center middle">
-      <p>${name}</p>
-    </text>
-    <text id="sub" x="80" y="310" w="800" h="40" style="$body" color="#FAF8F4C8" align="center top">
-      <p>用 slidex edit 编辑我 · slidex export -f pptx 导出</p>
-    </text>
-  </slide>
-</deck>
-`;
-}
 
 main().catch(e => { console.error(e && e.stack || e); process.exit(1); });

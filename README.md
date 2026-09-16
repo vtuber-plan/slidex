@@ -26,31 +26,47 @@
 
 ## 特性
 
-- **单一文件**：一个 `.slx` 文件包含全部页面与主题，媒体放同目录 `media/`，项目自包含、可整体拷贝。
+- **单一文件**：一个 `.slx` 文件包含全部页面、母版与主题，媒体放同目录 `media/`，项目自包含、可整体拷贝。
 - **AI 友好**：受控 XML 子集 + 明确的校验错误（带行列号），LLM 一次生成即可用；编辑器任何操作都可切换到「源码」视图对照。
-- **类 PowerPoint 编辑器**：缩略图页栏、画布拖拽/缩放/对齐、属性检查器、撤销重做、放映模式（全屏 + 演讲者备注）。
+- **类 PowerPoint 编辑器**：缩略图页栏、画布拖拽/缩放/对齐、**画布内直接编辑文本**（双击 + 内联格式工具条）、右键菜单、跨页复制粘贴、格式刷、属性检查器、撤销重做、放映模式。
+- **动画与切换**：`<animation>` 编排入场/强调/退出（onClick / withPrevious / afterPrevious），页面 `transition` 切换；放映模式完整播放；导出 PNG/PDF/PPTX 为最终态。
+- **母版**：`<master>` 定义页骨架（logo/页脚等），页面一行引用。
 - **布局一比一导出**：
   - `PNG` — 每页一张高清位图（2x）；
   - `PDF` — 矢量文本、可选中复制；
-  - `PPTX` — 每页嵌入整页高清图，保证与编辑器像素级一致（备注为真文本备注）。
+  - `PPTX` — 每页嵌入整页高清图，与编辑器**像素级一致**（备注为真文本备注）；
+  - `PPTX --editable` — **可编辑混合导出**：文本、内置形状、图片、直线箭头映射为原生 PPT 对象可直接改，图表/公式/代码等复杂元素按边界裁图保持视觉；
+  - `HTML` — 自包含单文件放映包。
 - **富文本 + LaTeX 公式**：`<p>/<strong>/<span style>` 富文本子集，行内 `\( ... \)` KaTeX 公式，独立 `<formula>` 块级公式。
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
+- **桌面应用**：Electron 封装，原生菜单 + 文件对话框。
 
 ## 快速开始
 
 ```bash
-npm install          # 仅一个可选运行时依赖 puppeteer-core（导出用）
-npm start            # 打开示例编辑器 http://127.0.0.1:4870
+npm install          # puppeteer-core（导出用）+ electron（桌面应用）
+npm start            # 浏览器打开示例编辑器 http://127.0.0.1:4870
+npm run app          # 以 Electron 桌面应用打开
 ```
 
 常用命令（`node src/cli.js <cmd>`，或 `npm link` 后直接 `slidex`）：
 
 ```bash
-slidex init mydeck                     # 新建项目脚手架
-slidex serve mydeck/deck.slx           # 打开编辑器
-slidex present mydeck/deck.slx         # 打开放映模式
-slidex validate mydeck/deck.slx        # 校验并输出错误/警告
-slidex export mydeck/deck.slx -f png   # 导出 PNG（另支持 pdf / pptx / html）
+slidex init mydeck                        # 新建项目脚手架
+slidex app mydeck/deck.slx                # Electron 桌面应用打开
+slidex serve mydeck/deck.slx              # 浏览器编辑器
+slidex present mydeck/deck.slx            # 打开放映模式
+slidex validate mydeck/deck.slx           # 校验并输出错误/警告
+slidex export mydeck/deck.slx -f png      # 导出 PNG（另支持 pdf / pptx / html）
+slidex export mydeck/deck.slx -f pptx --editable   # 可编辑混合 PPTX
+```
+
+测试：
+
+```bash
+npm test                    # 单元测试（解析/序列化幂等/渲染/规划）
+node test/gui.editor2.mjs   # 真实浏览器 GUI 冒烟（编辑器交互）
+node test/gui.present.mjs   # 放映动画时间线
 ```
 
 ## 文档

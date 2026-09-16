@@ -59,6 +59,7 @@
   <div class="tb-group">
     <button id="btnFront" title="置于顶层">⬆</button>
     <button id="btnBack" title="置于底层">⬇</button>
+    <button id="btnPainter" title="格式刷：选中源元素后点击，再点击目标元素（Shift 连续刷）">🖌</button>
   </div>
   <div class="tb-spacer"></div>
   <div class="tb-group">
@@ -70,6 +71,7 @@
       <option value="png">PNG（每页 2x）</option>
       <option value="pdf">PDF（矢量文本）</option>
       <option value="pptx">PPTX（一比一）</option>
+      <option value="pptx-editable">PPTX（可编辑混合）</option>
       <option value="html">HTML（自包含）</option>
     </select>
   </div>
@@ -84,6 +86,22 @@
       <div id="canvasWrap">
         <div id="canvasHost"></div>
         <div id="overlay"></div>
+        <div id="editBar" class="hidden">
+          <button data-cmd="bold" title="加粗"><b>B</b></button>
+          <button data-cmd="italic" title="斜体"><i>I</i></button>
+          <button data-cmd="underline" title="下划线"><u>U</u></button>
+          <button data-cmd="strikeThrough" title="删除线"><s>S</s></button>
+          <span class="eb-sep"></span>
+          <input type="number" id="editFontSize" min="8" max="300" placeholder="px" title="选中文字字号">
+          <input type="color" id="editColor" value="#232A31" title="选中文字颜色">
+          <span class="eb-sep"></span>
+          <button data-cmd="justifyLeft" title="左对齐">⇤</button>
+          <button data-cmd="justifyCenter" title="居中">↔</button>
+          <button data-cmd="justifyRight" title="右对齐">⇥</button>
+          <span class="eb-sep"></span>
+          <button data-cmd="removeFormat" title="清除格式">⌫</button>
+          <button id="editDone" class="primary" title="完成编辑 (Esc)">✓</button>
+        </div>
       </div>
     </div>
   </div>

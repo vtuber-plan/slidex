@@ -21,7 +21,8 @@ export function serializeDeck(deck) {
   if (Object.keys(th.colors || {}).length || Object.keys(th.textStyles || {}).length || Object.keys(th.tableStyles || {}).length) {
     out.push(serializeTheme(th, IND));
   }
-  deck.slides.forEach((s, idx) => out.push(serializeSlide(s, idx, IND)));
+  for (const m of deck.masters || []) out.push(serializeContainer(m, IND, true));
+  deck.slides.forEach((s, idx) => out.push(serializeContainer(s, IND, false)));
   out.push('</deck>');
   return out.join('\n') + '\n';
 }
@@ -73,22 +74,34 @@ function styleAttrs(style, order) {
   return a.length ? ' ' + a.join(' ') : '';
 }
 
-function serializeSlide(slide, idx, pad) {
+function serializeContainer(c, pad, isMaster) {
   const attrs = [];
-  if (slide.id) attrs.push(`id="${esc(slide.id)}"`);
-  if (slide.type && slide.type !== 'content') attrs.push(`type="${esc(slide.type)}"`);
+  if (c.id) attrs.push(`id="${esc(c.id)}"`);
+  if (isMaster) {
+    // master 只有 id + background
+  } else if (c.type && c.type !== 'content' && c.type !== 'master') attrs.push(`type="${esc(c.type)}"`);
+  if (!isMaster && c.master) attrs.push(`master="${esc(c.master)}"`);
+  if (!isMaster && c.transition && c.transition !== 'none') attrs.push(`transition="${esc(c.transition)}"`);
   let bgChild = '';
-  if (slide.background) {
-    if (slide.background.type === 'solid') attrs.push(`background="${esc(slide.background.color)}"`);
-    else bgChild = fillChild(slide.background, pad + IND);
+  if (c.background) {
+    if (c.background.type === 'solid') attrs.push(`background="${esc(c.background.color)}"`);
+    else bgChild = fillChild(c.background, pad + IND);
   }
-  if (slide.notes) attrs.push(`notes="${esc(slide.notes)}"`);
-  const head = attrs.length ? `<slide ${attrs.join(' ')}` : '<slide';
-  if (!slide.elements.length && !bgChild) return `${pad}${head}/>`;
+  if (!isMaster && c.notes) attrs.push(`notes="${esc(c.notes)}"`);
+  const head = attrs.length ? `<${isMaster ? 'master' : 'slide'} ${attrs.join(' ')}` : `<${isMaster ? 'master' : 'slide'}`;
+  if (!c.elements.length && !bgChild && !(c.animations || []).length) return `${pad}${head}/>`;
   const lines = [`${pad}${head}>`];
   if (bgChild) lines.push(bgChild);
-  for (const el of slide.elements) lines.push(serializeElement(el, pad + IND));
-  lines.push(`${pad}</slide>`);
+  for (const el of c.elements) lines.push(serializeElement(el, pad + IND));
+  for (const a of c.animations || []) {
+    const parts = [`target="${esc(a.target)}"`, `effect="${esc(a.effect)}"`];
+    if (a.trigger && a.trigger !== 'onClick') parts.push(`trigger="${esc(a.trigger)}"`);
+    if (a.direction && a.direction !== 'up') parts.push(`direction="${esc(a.direction)}"`);
+    if (a.duration) parts.push(`duration="${fmt(a.duration)}"`);
+    if (a.delay) parts.push(`delay="${fmt(a.delay)}"`);
+    lines.push(`${pad}${IND}<animation ${parts.join(' ')}/>`);
+  }
+  lines.push(`${pad}</${isMaster ? 'master' : 'slide'}>`);
   return lines.join('\n');
 }
 

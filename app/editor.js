@@ -1,8 +1,9 @@
 // editor.js — SlideX 编辑器主逻辑（原生 ESM，复用 src/ 的解析/渲染模块）
 
-import { parseSlideX, newElement, newSlide, ELEMENT_SCHEMA } from '/src/ir.js';
+import { parseSlideX, newElement, newSlide, ELEMENT_SCHEMA, TRANSITIONS, ANIM_EFFECTS, ANIM_TRIGGERS } from '/src/ir.js';
 import { serializeDeck } from '/src/serializer.js';
 import { renderSlide } from '/src/render/render.js';
+import { startInlineEdit, finishInlineEdit, isEditing, initEditBar, showEditBar, hideEditBar } from './inline-edit.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,9 @@ let zoom = 1;
 let dirty = false;
 let history = [], future = [];
 let burstOpen = false, burstTimer = 0;
+let clipboard = [];        // 跨页元素剪贴板（内部）
+let painter = null;        // 格式刷源元素
+let ctxMenuEl = null;      // 当前打开的右键菜单
 
 const slide = () => deck.slides[cur] || deck.slides[0];
 
@@ -28,6 +32,8 @@ async function init() {
   const parsed = parseSlideX(r.xml);
   deck = parsed.deck; errors = parsed.errors; warnings = parsed.warnings;
   bindUI();
+  initEditBar({ onFinish: () => {}, onSave: () => save() });
+  bindCtxMenus();
   renderAll();
   fitZoom();
 }
@@ -89,7 +95,7 @@ function renderThumbs() {
   const box = $('thumbs');
   const W = 128, k = W / deck.width;
   const html = deck.slides.map((s, i) => `<div class="thumb${i === cur ? ' active' : ''}" data-i="${i}">
-    <span class="no">${i + 1}</span><button class="thumb-del" data-i="${i}" title="删除此页">✕</button>
+    <span class="no">${i + 1}</span>${s.animations && s.animations.length ? `<span class="anim-badge" title="${s.animations.length} 个动画">⚡${s.animations.length}</span>` : ''}<button class="thumb-del" data-i="${i}" title="删除此页">✕</button>
     <div class="scalebox" style="width:${W}px;height:${deck.height * k}px"></div>
   </div>`).join('');
   box.innerHTML = html;
@@ -142,6 +148,15 @@ function buildHitboxes(slideEl) {
     elDiv.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0) return;
       const id = elDiv.dataset.id;
+      // 格式刷模式：点到的元素应用源样式
+      if (painter && id && id !== painter.id) {
+        const dst = byId(id);
+        if (dst) { applyPainter(painter, dst, ev.shiftKey); }
+        if (!ev.shiftKey) setPainter(null);
+        ev.preventDefault(); ev.stopPropagation();
+        return;
+      }
+      if (isEditing()) finishInlineEdit(true);
       if (ev.shiftKey) {
         if (sel.has(id)) sel.delete(id); else sel.add(id);
       } else if (!sel.has(id)) {
@@ -154,14 +169,31 @@ function buildHitboxes(slideEl) {
     });
     elDiv.addEventListener('dblclick', () => {
       const id = elDiv.dataset.id;
+      const el = byId(id);
+      if (!el) return;
       sel = new Set([id]);
-      renderInspector();
-      const ta = $('inspectorBody').querySelector('textarea');
-      if (ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+      renderInspector(); renderOverlay();
+      if (el.type === 'text') {
+        const host = elDiv.querySelector('.slx-text') || elDiv;
+        startInlineEdit(el, host, deck, {
+          onSnapshot: snapshot,
+          showBar: (tel) => showEditBar(tel, zoom),
+          hideBar: hideEditBar,
+          onDone: () => renderCanvas(),
+          onSave: () => save(),
+        });
+      } else {
+        const ta = $('inspectorBody').querySelector('textarea');
+        if (ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+      }
     });
   });
   slideEl.addEventListener('pointerdown', (ev) => {
-    if (ev.target === slideEl) { sel.clear(); renderInspector(); renderOverlay(); }
+    if (ev.target === slideEl) {
+      if (isEditing()) finishInlineEdit(true);
+      if (painter) setPainter(null);
+      sel.clear(); renderInspector(); renderOverlay();
+    }
   });
 }
 
@@ -277,7 +309,8 @@ function renderInspector() {
   const box = $('inspectorBody');
   const els = [...sel].map(byId).filter(Boolean);
   if (!els.length) {
-    box.innerHTML = `<div class="insp-empty">未选中元素<br><small>点击画布中的元素查看属性<br>双击文本元素可直接编辑内容</small></div>`;
+    box.innerHTML = slidePanelHtml();
+    bindSlidePanel(box);
     return;
   }
   if (els.length > 1) {
@@ -545,6 +578,206 @@ function insertElement(spec) {
   renderAll();
 }
 
+// ───────────────────────── 页面属性面板（含动画编排） ─────────────────────────
+function slidePanelHtml() {
+  const s = slide();
+  const typeOpts = ['content', 'cover', 'toc', 'section', 'final'].map(t => `<option value="${t}"${s.type === t ? ' selected' : ''}>${t}</option>`).join('');
+  const masterOpts = ['<option value="">（无母版）</option>'].concat((deck.masters || []).map(m => `<option value="${m.id}"${s.master === m.id ? ' selected' : ''}>${m.id}</option>`)).join('');
+  const transOpts = [...TRANSITIONS].map(t => `<option value="${t}"${(s.transition || 'none') === t ? ' selected' : ''}>${t}</option>`).join('');
+  const bg = s.background;
+  const bgColor = bg && bg.type === 'solid' ? bg.color : '';
+  const animRows = (s.animations || []).map((a, i) => animationRowHtml(a, i)).join('');
+  return `
+    <div class="insp-head"><b>页面属性</b><span class="muted small">第 ${cur + 1} / ${deck.slides.length} 页</span></div>
+    <div class="grid2">
+      <div class="field"><label>type</label><select data-slide="type">${typeOpts}</select></div>
+      <div class="field"><label>master 母版</label><select data-slide="master">${masterOpts}</select></div>
+    </div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="field"><label>transition 切换</label><select data-slide="transition">${transOpts}</select></div>
+      <div class="field"><label>背景色</label><div class="color-row"><input type="color" data-slidebgcolor value="${toHex6(bgColor || '#FFFFFF')}"><input type="text" data-slide="bgcolor" value="${escAttr(bgColor || '')}" placeholder="#RRGGBB / $ref"></div></div>
+    </div>
+    <div class="field" style="margin-top:6px"><label>notes 演讲备注</label><textarea data-slide="notes" rows="3">${escText(s.notes || '')}</textarea></div>
+    <div class="insp-sec">动画编排（按顺序播放）</div>
+    <div id="animList">${animRows || '<div class="muted small" style="margin:4px 0">暂无动画。点击添加，放映时按 trigger 编排。</div>'}</div>
+    <div class="btnrow"><button id="animAdd">＋添加动画</button></div>
+    <div class="insp-sec">提示</div>
+    <div class="muted small">双击画布中的文本可直接编辑。母版内容请在源码模式中修改。渐变/图片背景暂用源码模式。</div>`;
+}
+function animationRowHtml(a, i) {
+  const targets = slide().elements.map(e => `<option value="${e.id}"${a.target === e.id ? ' selected' : ''}>${e.id}</option>`).join('');
+  const effects = [...ANIM_EFFECTS].map(x => `<option value="${x}"${a.effect === x ? ' selected' : ''}>${x}</option>`).join('');
+  const triggers = [...ANIM_TRIGGERS].map(x => `<option value="${x}"${(a.trigger || 'onClick') === x ? ' selected' : ''}>${x}</option>`).join('');
+  return `<div class="anim-row" data-anim="${i}">
+    <div class="grid2">
+      <div class="field"><label>target</label><select data-ak="target">${targets}</select></div>
+      <div class="field"><label>effect</label><select data-ak="effect">${effects}</select></div>
+    </div>
+    <div class="grid2" style="margin-top:4px">
+      <div class="field"><label>trigger</label><select data-ak="trigger">${triggers}</select></div>
+      <div class="field"><label>duration ms</label><input type="number" data-ak="duration" value="${a.duration || ''}" placeholder="500"></div>
+    </div>
+    <div class="btnrow"><button data-adel="${i}">删除此动画</button></div>
+  </div>`;
+}
+function bindSlidePanel(box) {
+  const s = slide();
+  box.querySelectorAll('[data-slide]').forEach(inp => {
+    const ev = inp.tagName === 'SELECT' || inp.tagName === 'TEXTAREA' ? (inp.tagName === 'TEXTAREA' ? 'input' : 'change') : 'change';
+    inp.addEventListener(ev, () => {
+      const k = inp.dataset.slide;
+      openBurst();
+      if (k === 'type') s.type = inp.value;
+      else if (k === 'master') s.master = inp.value;
+      else if (k === 'transition') s.transition = inp.value;
+      else if (k === 'notes') s.notes = inp.value;
+      else if (k === 'bgcolor') s.background = inp.value ? solidFillOf(inp.value) : null;
+      renderCanvas(); renderDiag();
+    });
+    inp.addEventListener('keydown', e => e.stopPropagation());
+  });
+  const colorInp = box.querySelector('[data-slidebgcolor]');
+  if (colorInp) colorInp.addEventListener('input', () => {
+    s.background = solidFillOf(colorInp.value);
+    openBurst();
+    renderCanvas();
+  });
+  // 动画行
+  box.querySelectorAll('.anim-row [data-ak]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const row = inp.closest('.anim-row');
+      const a = s.animations[Number(row.dataset.anim)];
+      if (!a) return;
+      const k = inp.dataset.ak;
+      a[k] = k === 'duration' ? Number(inp.value) || 0 : inp.value;
+      openBurst();
+      renderThumbs();
+    });
+  });
+  box.querySelectorAll('[data-adel]').forEach(b => b.addEventListener('click', () => {
+    s.animations.splice(Number(b.dataset.adel), 1);
+    snapshot(); renderInspector();
+  }));
+  const add = box.querySelector('#animAdd');
+  if (add) add.addEventListener('click', () => {
+    s.animations = s.animations || [];
+    s.animations.push({ target: (slide().elements[0] || {}).id || '', effect: 'fade-in', trigger: 'onClick', direction: 'up', duration: 500, delay: 0 });
+    snapshot(); renderInspector();
+  });
+}
+function solidFillOf(v) { return { type: 'solid', color: v }; }
+
+// ───────────────────────── 剪贴板 / 格式刷 / 右键菜单 ─────────────────────────
+function copySel() {
+  const items = [...sel].map(byId).filter(Boolean);
+  if (!items.length) return;
+  clipboard = items.map(e => JSON.parse(JSON.stringify(e)));
+  toast(`已复制 ${clipboard.length} 个元素`);
+}
+function cutSel() { copySel(); deleteSelected(); }
+function pasteClip() {
+  if (!clipboard.length) return;
+  snapshot();
+  const ids = new Set(slide().elements.map(e => e.id));
+  const newIds = [];
+  for (const item of clipboard) {
+    const c = JSON.parse(JSON.stringify(item));
+    c.id = ids.has(item.id) ? uniqueId(c.type) : item.id; // 优先保留原 id（便于跨页同构）
+    ids.add(c.id);
+    c.x = (c.x || 0) + 16;
+    c.y = (c.y || 0) + 16;
+    slide().elements.push(c);
+    newIds.push(c.id);
+  }
+  sel = new Set(newIds);
+  renderAll();
+}
+function setPainter(el) {
+  painter = el;
+  const btn = $('btnPainter');
+  if (btn) btn.classList.toggle('active', !!painter);
+  if (painter) toast('格式刷：点击目标元素应用样式（Shift 连续刷，Esc 取消）');
+}
+function applyPainter(src, dst) {
+  const srcKeys = new Set(ELEMENT_SCHEMA[src.type].attrs.map(a => a[0].replace(/-([a-z])/g, (_, c) => c.toUpperCase())));
+  const dstKeys = new Set(ELEMENT_SCHEMA[dst.type].attrs.map(a => a[0].replace(/-([a-z])/g, (_, c) => c.toUpperCase())));
+  const skip = new Set(['x', 'y', 'w', 'h', 'rotation', 'flipH', 'flipV', 'opacity', 'src', 'viewBox', 'path', 'points', 'content']);
+  let n = 0;
+  for (const k of srcKeys) {
+    if (!dstKeys.has(k) || skip.has(k)) continue;
+    if (src[k] !== undefined && src[k] !== '') { dst[k] = src[k]; n++; }
+  }
+  snapshot();
+  renderAll();
+  toast(`已应用 ${n} 项样式`);
+}
+
+function closeCtxMenu() { if (ctxMenuEl) { ctxMenuEl.remove(); ctxMenuEl = null; } }
+function openCtxMenu(x, y, items) {
+  closeCtxMenu();
+  ctxMenuEl = document.createElement('div');
+  ctxMenuEl.className = 'ctxmenu';
+  for (const it of items) {
+    if (it === '-') { const hr = document.createElement('div'); hr.className = 'ctx-sep'; ctxMenuEl.appendChild(hr); continue; }
+    const b = document.createElement('button');
+    b.textContent = it.label;
+    if (it.danger) b.classList.add('danger');
+    if (it.disabled) { b.disabled = true; }
+    else b.addEventListener('click', () => { closeCtxMenu(); it.action(); });
+    ctxMenuEl.appendChild(b);
+  }
+  document.body.appendChild(ctxMenuEl);
+  const r = ctxMenuEl.getBoundingClientRect();
+  ctxMenuEl.style.left = Math.min(x, innerWidth - r.width - 8) + 'px';
+  ctxMenuEl.style.top = Math.min(y, innerHeight - r.height - 8) + 'px';
+}
+function bindCtxMenus() {
+  $('canvasArea').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const elDiv = e.target.closest && e.target.closest('#canvasHost .slx-el');
+    if (elDiv && elDiv.dataset.id) {
+      const id = elDiv.dataset.id;
+      if (!sel.has(id)) { sel = new Set([id]); renderInspector(); renderOverlay(); }
+      const el = byId(id);
+      openCtxMenu(e.clientX, e.clientY, [
+        el.type === 'text' ? { label: '编辑文本', action: () => elDiv.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) } : null,
+        { label: '复制', action: copySel, disabled: !sel.size },
+        { label: '剪切', action: cutSel, disabled: !sel.size },
+        { label: '粘贴到此', action: pasteClip, disabled: !clipboard.length },
+        '-',
+        { label: '置于顶层', action: () => reorder('front') },
+        { label: '置于底层', action: () => reorder('back') },
+        '-',
+        { label: '设为格式刷源', action: () => setPainter(el) },
+        { label: '删除', danger: true, action: deleteSelected, disabled: !sel.size },
+      ].filter(Boolean));
+    } else {
+      openCtxMenu(e.clientX, e.clientY, [
+        { label: '粘贴', action: pasteClip, disabled: !clipboard.length },
+        { label: '全选', action: () => { sel = new Set(slide().elements.map(x => x.id)); renderOverlay(); renderInspector(); } },
+        '-',
+        { label: '新建页', action: newSlideOp },
+        { label: '页面属性（取消选择）', action: () => { sel.clear(); renderInspector(); renderOverlay(); } },
+      ]);
+    }
+  });
+  $('thumbs').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const t = e.target.closest('.thumb');
+    if (!t) return;
+    const i = Number(t.dataset.i);
+    openCtxMenu(e.clientX, e.clientY, [
+      { label: '新建页', action: newSlideOp },
+      { label: '复制此页', action: () => { cur = i; dupSlideOp(); } },
+      { label: '粘贴元素到此页', action: () => { cur = i; sel.clear(); renderAll(); pasteClip(); }, disabled: !clipboard.length },
+      '-',
+      { label: '删除此页', danger: true, action: () => delSlideOp(i), disabled: deck.slides.length <= 1 },
+    ]);
+  });
+  document.addEventListener('pointerdown', (e) => { if (ctxMenuEl && !ctxMenuEl.contains(e.target)) closeCtxMenu(); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeCtxMenu(); if (painter) setPainter(null); } });
+}
+
 // ───────────────────────── 页操作 ─────────────────────────
 function newSlideOp() {
   snapshot();
@@ -616,9 +849,9 @@ async function save() {
   }
 }
 
-async function doExport(format) {
-  toast(`正在导出 ${format.toUpperCase()}…（首次需启动无头浏览器）`);
-  const r = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format }) }).then(x => x.json());
+async function doExport(format, editable = false) {
+  toast(`正在导出 ${editable ? '可编辑 ' : ''}${format.toUpperCase()}…（首次需启动无头浏览器）`);
+  const r = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format, editable }) }).then(x => x.json());
   if (!r.ok) { toast('导出失败：' + r.error, 'err'); return; }
   const links = (r.files || []).map(f => `<a href="/out/${encodeURIComponent(f.split(/[\\/]/).pop())}" target="_blank">${f.split(/[\\/]/).pop()}</a>`).join('　');
   toast(`导出完成 → ${links}`, 'ok', 8000);
@@ -652,13 +885,24 @@ function bindUI() {
   document.querySelectorAll('.align-btn').forEach(b => b.addEventListener('click', () => alignSelection(b.dataset.align)));
   $('btnFront').addEventListener('click', () => reorder('front'));
   $('btnBack').addEventListener('click', () => reorder('back'));
+  $('btnPainter').addEventListener('click', () => {
+    if (painter) { setPainter(null); return; }
+    const first = [...sel].map(byId).filter(Boolean)[0];
+    if (first) setPainter(first); else toast('先选中一个作为样式源的元素', 'err');
+  });
   $('btnSource').addEventListener('click', openSource);
   $('srcApply').addEventListener('click', applySource);
   $('srcClose').addEventListener('click', () => $('sourceModal').classList.add('hidden'));
   $('srcFormat').addEventListener('click', () => { $('sourceText').value = serializeDeck(deck); });
   $('btnPresent').addEventListener('click', () => window.open('/present', '_blank'));
   $('btnSave').addEventListener('click', save);
-  $('exportFormat').addEventListener('change', (e) => { if (e.target.value) { doExport(e.target.value); e.target.value = ''; } });
+  $('exportFormat').addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (!v) return;
+    if (v === 'pptx-editable') doExport('pptx', true);
+    else doExport(v);
+    e.target.value = '';
+  });
   $('zoomIn').addEventListener('click', () => { zoom = Math.min(3, zoom * 1.15); applyZoom(); });
   $('zoomOut').addEventListener('click', () => { zoom = Math.max(0.1, zoom / 1.15); applyZoom(); });
   $('zoomFit').addEventListener('click', fitZoom);
@@ -676,6 +920,7 @@ function bindUI() {
 
 function onKey(e) {
   const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (isEditing()) return; // 画布内编辑中：交给浏览器处理（Esc/Ctrl+S 由编辑层接管）
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z' && !e.shiftKey) { undo(); e.preventDefault(); }
@@ -683,12 +928,19 @@ function onKey(e) {
     else if (e.key === 's') { save(); e.preventDefault(); }
     else if (e.key === 'd') { duplicateSelected(); e.preventDefault(); }
     else if (e.key === 'a') { sel = new Set(slide().elements.map(x => x.id)); renderOverlay(); renderInspector(); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'c') { copySel(); }
+    else if (e.key.toLowerCase() === 'x') { cutSel(); }
+    else if (e.key.toLowerCase() === 'v') { pasteClip(); }
     return;
   }
   const step = e.shiftKey ? 10 : 1;
   const els = [...sel].map(byId).filter(Boolean);
   if ((e.key === 'Delete' || e.key === 'Backspace') && els.length) { deleteSelected(); e.preventDefault(); return; }
-  if (e.key === 'Escape') { sel.clear(); renderOverlay(); renderInspector(); return; }
+  if (e.key === 'Escape') {
+    sel.clear(); renderOverlay(); renderInspector();
+    if (painter) setPainter(null);
+    return;
+  }
   if (e.key.startsWith('Arrow') && els.length) {
     openBurst();
     for (const el of els) {
@@ -718,5 +970,9 @@ function toast(html, cls = '', ms = 3200) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
 }
+
+// 桌面端（Electron 菜单）集成接口
+window.__slxGetXml = () => serializeDeck(deck);
+window.__slxSave = () => save();
 
 init();

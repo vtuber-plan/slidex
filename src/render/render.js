@@ -92,20 +92,22 @@ window.slxRenderMath = function (root) {
 
 export function renderSlide(deck, slide, opts = {}) {
   const media = opts.mediaBase ?? '';
+  const master = slide.master ? (deck.masters || []).find(m => m.id === slide.master) : null;
   let bgCss = '#FFFFFF';
   let bgInner = '';
-  if (slide.background) {
-    const bg = slide.background;
+  const bg = slide.background || (master && master.background) || null;
+  if (bg) {
     if (bg.type === 'solid') bgCss = resolveColor(bg.color, deck);
     else if (bg.type === 'gradient') { bgInner = gradientCss(bg, deck); }
     else if (bg.type === 'image') { bgInner = `<img src="${mediaSrc(bg.src, media)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${bg.fit === 'fill' ? 'fill' : bg.fit === 'contain' ? 'contain' : 'cover'};${bg.opacity !== undefined && bg.opacity !== 1 ? `opacity:${bg.opacity};` : ''}" draggable="false"/>`; }
   }
+  const masterEls = master ? master.elements.map(el => renderElement(el, deck, media, '1')).join('\n') : '';
   const els = slide.elements.map(el => renderElement(el, deck, media)).join('\n');
-  return `<div class="slx-slide" style="width:${f(deck.width)}px;height:${f(deck.height)}px;background:${bgCss};${bgInner ? `background-image:${bgInner};` : ''}">\n${bgInner}${els}\n</div>`;
+  return `<div class="slx-slide" style="width:${f(deck.width)}px;height:${f(deck.height)}px;background:${bgCss};${bgInner ? `background-image:${bgInner};` : ''}">\n${bgInner}${masterEls ? masterEls + '\n' : ''}${els}\n</div>`;
 }
 
-function renderElement(el, deck, media) {
-  const idAttr = el.id ? ` data-id="${esc(el.id)}"` : '';
+function renderElement(el, deck, media, isMaster) {
+  const idAttr = el.id ? ` data-id="${esc(el.id)}"${isMaster ? ' data-master="1"' : ''}` : (isMaster ? ' data-master="1"' : '');
   const tf = [];
   if (el.rotation) tf.push(`rotate(${el.rotation}deg)`);
   if (el.flipH) tf.push('scaleX(-1)');

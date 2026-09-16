@@ -70,7 +70,10 @@ export const ELEMENT_SCHEMA = {
 
 export const SHAPE_NAMES = new Set(['rect', 'roundRect', 'ellipse', 'triangle', 'diamond', 'rightArrow', 'chevron', 'donut', 'star5', 'custom']);
 export const CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'scatter']);
-const STRUCT_TAGS = new Set(['fonts', 'font', 'theme', 'palette', 'color', 'text-styles', 'style', 'table-styles', 'table-style', 'header', 'body', 'last-row', 'first-col', 'last-col', 'cell', 'background', 'fill', 'stop', 'cols', 'rows', 'tr', 'td', 'data', 'row', 'series', 'x-axis', 'y-axis', 'slide']);
+export const ANIM_EFFECTS = new Set(['appear', 'fade-in', 'fly-in', 'zoom-in', 'wipe-in', 'float-in', 'pulse', 'fade-out', 'disappear']);
+export const ANIM_TRIGGERS = new Set(['onClick', 'withPrevious', 'afterPrevious']);
+export const TRANSITIONS = new Set(['none', 'fade', 'slide-left', 'slide-up', 'zoom']);
+const STRUCT_TAGS = new Set(['fonts', 'font', 'theme', 'palette', 'color', 'text-styles', 'style', 'table-styles', 'table-style', 'header', 'body', 'last-row', 'first-col', 'last-col', 'cell', 'background', 'fill', 'stop', 'cols', 'rows', 'tr', 'td', 'data', 'row', 'series', 'x-axis', 'y-axis', 'slide', 'master', 'animation']);
 
 export const DEFAULT_CHART_COLORS = ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4'];
 
@@ -96,7 +99,7 @@ export function parseSlideX(xml) {
 }
 
 function emptyDeck() {
-  return { version: '1', title: '', width: 960, height: 540, fonts: [], theme: defaultTheme(), slides: [] };
+  return { version: '1', title: '', width: 960, height: 540, fonts: [], theme: defaultTheme(), masters: [], slides: [] };
 }
 
 export function defaultTheme() {
@@ -131,7 +134,8 @@ function buildDeck(root, errors, warnings) {
         }
         break;
       case 'theme': buildTheme(c, deck, errors, warnings); break;
-      case 'slide': deck.slides.push(buildSlide(c, deck, errors, warnings)); break;
+      case 'master': deck.masters.push(buildSlideContainer(c, deck, errors, warnings, true)); break;
+      case 'slide': deck.slides.push(buildSlideContainer(c, deck, errors, warnings, false)); break;
       default:
         warn(warnings, c, 'W_UNKNOWN_TAG', `<deck> 内未知标签 <${c.name}>（已忽略）`);
     }
@@ -186,22 +190,38 @@ function cellStyleFromAttrs(attrs) {
 
 // ────────────────────────────── slide / element 构建 ──────────────────────────────
 
-function buildSlide(node, deck, errors, warnings) {
-  const slide = {
+function buildSlideContainer(node, deck, errors, warnings, isMaster) {
+  const container = {
     id: node.attrs.id || '',
-    type: node.attrs.type || 'content',
+    type: isMaster ? 'master' : (node.attrs.type || 'content'),
     background: null,
-    notes: node.attrs.notes || '',
+    notes: isMaster ? '' : (node.attrs.notes || ''),
+    master: isMaster ? '' : (node.attrs.master || ''),
+    transition: node.attrs.transition || 'none',
+    animations: [],
     elements: [],
     line: node.line,
   };
   for (const c of node.children) {
-    if (c.name === 'background') slide.background = fillFrom(c);
-    else if (ELEMENT_SCHEMA[c.name]) slide.elements.push(buildElement(c, deck, errors, warnings));
-    else warn(warnings, c, 'W_UNKNOWN_TAG', `<slide> 内未知标签 <${c.name}>（已忽略）`);
+    if (c.name === 'background') container.background = fillFrom(c);
+    else if (c.name === 'animation') {
+      const a = {
+        target: c.attrs.target || '',
+        effect: c.attrs.effect || 'fade-in',
+        trigger: c.attrs.trigger || 'onClick',
+        direction: c.attrs.direction || 'up',
+        duration: num(c.attrs.duration, 0),
+        delay: num(c.attrs.delay, 0),
+        line: c.line,
+      };
+      container.animations.push(a);
+    }
+    else if (ELEMENT_SCHEMA[c.name]) container.elements.push(buildElement(c, deck, errors, warnings));
+    else warn(warnings, c, 'W_UNKNOWN_TAG', `<${isMaster ? 'master' : 'slide'}> 内未知标签 <${c.name}>（已忽略）`);
   }
-  if (node.attrs.background && !slide.background) slide.background = solidFill(node.attrs.background);
-  return slide;
+  if (node.attrs.background && !container.background) container.background = solidFill(node.attrs.background);
+  if (isMaster) container.type = 'master';
+  return container;
 }
 
 function buildElement(node, deck, errors, warnings) {
@@ -336,9 +356,25 @@ export function validateDeck(deck, errors = [], warnings = []) {
     refCheck(st.color, `文本样式 ${sname}.color`);
   }
 
+  for (const master of deck.masters) {
+    const ids = new Set();
+    for (const el of master.elements) validateElement(el, deck, errors, warnings, refCheck, ids);
+  }
   for (const slide of deck.slides) {
     const ids = new Set(); // id 唯一性按页内校验
     for (const el of slide.elements) validateElement(el, deck, errors, warnings, refCheck, ids);
+    if (slide.master && !deck.masters.some(m => m.id === slide.master)) {
+      errors.push({ code: 'E_MASTER_REF', message: `<slide> 引用了不存在的母版 master="${slide.master}"`, line: slide.line });
+    }
+    if (!TRANSITIONS.has(slide.transition)) {
+      errors.push({ code: 'E_XML', message: `transition="${slide.transition}" 不受支持（none/fade/slide-left/slide-up/zoom）`, line: slide.line });
+    }
+    const elIds = new Set(slide.elements.map(e => e.id));
+    for (const a of slide.animations) {
+      if (!a.target || !elIds.has(a.target)) warnings.push({ code: 'W_ANIM_TARGET', message: `<animation target="${a.target}"> 未找到本页元素`, line: a.line });
+      if (!ANIM_EFFECTS.has(a.effect)) errors.push({ code: 'E_XML', message: `animation effect="${a.effect}" 不受支持`, line: a.line });
+      if (!ANIM_TRIGGERS.has(a.trigger)) errors.push({ code: 'E_XML', message: `animation trigger="${a.trigger}" 不受支持`, line: a.line });
+    }
   }
   return deck;
 }
@@ -502,7 +538,7 @@ function defaultsFor(type) {
 }
 
 export function newSlide(type = 'content') {
-  return { id: '', type, background: null, notes: '', elements: [], line: 0 };
+  return { id: '', type, background: null, notes: '', master: '', transition: 'none', animations: [], elements: [], line: 0 };
 }
 
 export { escapeHtml };

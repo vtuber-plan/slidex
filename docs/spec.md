@@ -130,7 +130,24 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
   - `<header .../>` 表头行样式（第 0 行）；`<body .../>` 数据行循环样式（可多个，按数据行序号循环）；`<last-row .../>` 可选末行样式；`<first-col .../>` / `<last-col .../>` 可选列样式；`<cell .../>` 全表基线。
   - 属性为 `CellStyle` 集：文本样式属性 + `fill`、`border[-top|right|bottom|left]`、`align`、`valign`。行样式优先于列样式（`row-over-col="false"` 可反转）。
 
-### 4.4 `<fonts>` 自定义字体
+### 4.4 `<master>` 母版
+
+`<deck>` 直接子元素，与 `<slide>` 同构（`background` + 元素），供多页复用：
+
+```xml
+<master id="brand" background="$paper">
+  <text id="logo" x="880" y="508" w="60" h="20" font-size="10" color="$muted">
+    <p style="text-align:right">SLIDEX</p>
+  </text>
+</master>
+<slide master="brand">...</slide>
+```
+
+- `<slide master="id">` 渲染时母版元素**垫底**（在本页元素之下），母版背景先于本页背景；
+- 母版元素在编辑器画布中**不可选中**（提示用源码编辑），可含动画（随放映播放）；
+- 引用不存在的 master → `E_MASTER_REF`。
+
+### 4.5 `<fonts>` 自定义字体
 
 ```xml
 <fonts>
@@ -160,7 +177,10 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 ## 6. 页面 `<slide>`
 
 ```xml
-<slide type="cover" background="$primaryDark" notes="演讲备注纯文本">
+<slide type="cover" background="$primaryDark" notes="演讲备注纯文本"
+       transition="fade" master="brand">
+  <animation target="title" effect="fade-in" trigger="onClick" duration="500"/>
+  <animation target="chart1" effect="fly-in" direction="up" trigger="withPrevious"/>
   ...元素...
 </slide>
 ```
@@ -170,7 +190,24 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `type` | `cover \| toc \| section \| content \| final \| 任意串` | `content` | 页面类别标签，不参与渲染，用于目录与 AI 提示 |
 | `background` | Fill 简写 | `#FFFFFF` | 纯色 `#RGB/#RRGGBB/$name`，或子元素 `<background>`（渐变/图片，见 §8.4 Fill） |
 | `notes` | string | — | 演讲者备注，纯文本（换行用 `&#10;`）；导出 PPTX 时写入真备注栏 |
+| `master` | string | — | 引用 `<master id>`；母版元素垫底渲染，本页背景覆盖母版背景 |
+| `transition` | `none \| fade \| slide-left \| slide-up \| zoom` | `none` | 放映时本页入场切换 |
 | `id` | string | 自动 | 页面标识（编辑器寻址用） |
+
+### 6.1 `<animation>` 动画
+
+页面级子标签，按**文档顺序**编排；`target` 引用本页元素 `id`（缺失 → `W_ANIM_TARGET` 警告）。
+
+| 属性 | 默认 | 说明 |
+|---|---|---|
+| `target` | 必填 | 元素 id |
+| `effect` | 必填 | 入场 `appear \| fade-in \| fly-in \| zoom-in \| wipe-in \| float-in`；强调 `pulse`；退出 `fade-out \| disappear` |
+| `trigger` | `onClick` | `onClick`（新点击组）\| `withPrevious`（与上一动画同播）\| `afterPrevious`（上一组结束后自动播） |
+| `direction` | `up` | fly/wipe/float 的方向：`up \| down \| left \| right` |
+| `duration` | 各效果默认（入/出场 500ms，pulse 600ms） | 毫秒 |
+| `delay` | `0` | 毫秒 |
+
+放映语义：首个 `withPrevious/afterPrevious` 组在进页时自动播放；`onClick` 开新点击组，点击/空格依次播放组，组播完后下一次点击才翻页。导出 PNG/PDF 永远是**最终态**（全部入场完成、退出不执行——即导出静态结果）；PPTX 可编辑导出 v1 将动画元素的整体效果近似为无动画（见 §19）。
 
 ## 7. 元素通用属性
 
@@ -463,7 +500,8 @@ def eval_(t, env):
 |---|---|---|
 | `png` | 每页 `deviceScaleFactor=2` 截图 | `out/slide-01.png ...`；`--scale` 可调 |
 | `pdf` | 每页一页（`@page` 尺寸 = 画幅 pt），浏览器打印 | 文本矢量可选中；公式/图表为矢量 DOM/SVG |
-| `pptx` | 每页嵌入整页 PNG（2x），页尺寸 = 画幅 pt | 布局与预览**像素级一致**；`notes` 写入真备注；原生可编辑导出见 roadmap |
+| `pptx` | 每页嵌入整页 PNG（2x），页尺寸 = 画幅 pt | 布局与预览**像素级一致**；`notes` 写入真备注；原生可编辑导出见下 |
+| `pptx --editable` | **原生/混合导出**：文本、9 种内置形状、图片、直线箭头映射为**原生 PPT 对象**（可编辑）；图表/代码/公式/图标/自定义形状等复杂元素按各自边界**裁图嵌入** | 文本可直接改；整体仍高度接近预览（原生部分由 PowerPoint 排版引擎渲染，字体/换行可能有细微差异——这是可编辑性的代价）；不支持元素级动画 |
 | `html` | 自包含单文件放映包 | 零依赖分发；内联全部 CSS/媒体（图片转 base64） |
 
 导出前等待条件：字体加载（`document.fonts.ready`）+ KaTeX 渲染完成标记 + 图片 `complete`，最多 10s。

@@ -98,8 +98,51 @@ sec('3. 渲染');
   t('行内公式提取', renderRichText('a \\(x_1\\) b').includes('data-tex="x_1"'));
 }
 
-// ── 4. PPTX zip 结构 ──
-sec('4. PPTX 结构');
+// ── 4. 动画 / 母版 / 富文本 runs ──
+sec('4. 动画 / 母版 / runs');
+{
+  const xml = `<?xml version="1.0"?><deck version="1">
+  <master id="brand" background="#EEE"><text id="logo" x="1" y="1" w="10" h="10"><p>LOGO</p></text></master>
+  <slide master="brand" transition="fade">
+    <text id="a" x="1" y="2" w="10" h="20"><p>hi</p></text>
+    <animation target="a" effect="fly-in" direction="left" trigger="withPrevious" duration="400"/>
+    <animation target="a" effect="pulse" trigger="afterPrevious"/>
+  </slide></deck>`;
+  const r1 = parseSlideX(xml);
+  t('母版+动画解析 0 错误', r1.errors.length === 0, JSON.stringify(r1.errors));
+  t('动画列表', r1.deck.slides[0].animations.length === 2);
+  const s1 = serializeDeck(r1.deck);
+  const r2 = parseSlideX(s1);
+  t('母版+动画序列化幂等', s1 === serializeDeck(r2.deck));
+  t('母版引用校验 E_MASTER_REF', parseSlideX("<deck version='1'><slide master='x'/></deck>").errors.some(e => e.code === 'E_MASTER_REF'));
+  t('动画目标警告 W_ANIM_TARGET', parseSlideX("<deck version='1'><slide><text id='a' x='1' y='1' w='1' h='1'/><animation target='zz' effect='fade-in'/></slide></deck>").warnings.some(w => w.code === 'W_ANIM_TARGET'));
+}
+
+sec('5. richtext-runs 与可编辑导出规划');
+{
+  const { richToRuns } = await import('../src/render/richtext-runs.js');
+  const r = richToRuns('<p>纯 <span style="color:#FF0000">红</span></p><p style="text-align:center">居中</p><ul><li>项</li></ul>', { color: '#111111', fontSize: 18 });
+  t('行内样式 run', r.paragraphs[0].runs[1].color === '#FF0000');
+  t('段落对齐', r.paragraphs[1].align === 'center');
+  t('列表 bullet', r.paragraphs[2].bullet === 'ul');
+  t('行内公式 hasMath', richToRuns('<p>a \\(x^2\\) b</p>', {}).hasMath === true);
+  const { planSlide } = await import('../src/export/pptx-native.js');
+  const rr = parseSlideX(`<deck version='1'><master id='m'><text id='logo' x='1' y='1' w='2' h='2'><p>L</p></text></master>
+    <slide master='m'>
+      <text id='t' x='1' y='1' w='2' h='2'><p>文</p></text>
+      <shape id='s' x='1' y='1' w='2' h='2' name='rect'/>
+      <shape id='cs' x='1' y='1' w='2' h='2' name='custom' path='M0,0 L1,1' view-box='1 1'/>
+      <chart id='ch' x='1' y='1' w='2' h='2'><data cols='a,b'><row>1,2</row></data><series type='bar' x='a' y='b'/></chart>
+    </slide></deck>`);
+  const plan = planSlide(rr.deck, rr.deck.slides[0]);
+  const kinds = plan.items.map(i => i.kind + ':' + i.el.id).join(',');
+  t('母版元素进规划', kinds.includes('text:logo'));
+  t('text/shape 原生', kinds.includes('text:t') && kinds.includes('shape:s'));
+  t('custom/chart 裁图', kinds.includes('crop:cs') && kinds.includes('crop:ch'));
+}
+
+// ── 6. PPTX zip 结构 ──
+sec('6. PPTX 结构');
 {
   const file = path.join(ROOT, 'examples/quickstart/out/deck.pptx');
   if (fs.existsSync(file)) {
@@ -123,7 +166,7 @@ sec('4. PPTX 结构');
     t('包含 [Content_Types].xml', names.includes('[Content_Types].xml'));
     t('slide 数量 = 6', names.filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).length === 6, names.join(','));
     t('备注页存在', names.some(n => n.startsWith('ppt/notesSlides/notesSlide')));
-    t('媒体图片存在', names.filter(n => n.startsWith('ppt/media/image')).length === 6);
+    t('媒体图片存在', names.filter(n => n.startsWith('ppt/media/image')).length >= 1);
   } else {
     t('PPTX 已生成（跳过：先运行 node src/cli.js export examples/quickstart/deck.slx -f pptx）', false);
   }

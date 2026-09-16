@@ -162,7 +162,7 @@ ${sldRels}
   return zip(entries);
 }
 
-function slideXml(cx, cy, idx) {
+export function slideXml(cx, cy, idx) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -178,7 +178,7 @@ function slideXml(cx, cy, idx) {
 </p:sld>`;
 }
 
-function notesSlideXml(idx, text) {
+export function notesSlideXml(idx, text) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -194,7 +194,7 @@ function notesSlideXml(idx, text) {
 </p:notes>`;
 }
 
-function themeXml() {
+export function themeXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="SlideX">
 <a:themeElements>
@@ -210,7 +210,7 @@ function themeXml() {
 </a:theme>`;
 }
 
-function slideMasterXml(cx, cy) {
+export function slideMasterXml(cx, cy) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -222,7 +222,7 @@ function slideMasterXml(cx, cy) {
 </p:sldMaster>`;
 }
 
-function slideLayoutXml(cx, cy) {
+export function slideLayoutXml(cx, cy) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
 <p:cSld name="Blank"><p:spTree>
@@ -233,7 +233,7 @@ function slideLayoutXml(cx, cy) {
 </p:sldLayout>`;
 }
 
-function notesMasterXml() {
+export function notesMasterXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:notesMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>

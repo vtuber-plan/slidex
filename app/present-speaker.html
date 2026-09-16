@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>SlideX 演讲者视图</title>
+<link rel="stylesheet" href="/runtime.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<style>
+html, body { margin: 0; height: 100%; background: #1B2027; color: #DDE4EC; font-family: 'Segoe UI', 'MiSans', sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #222933; border-bottom: 1px solid #2A323C; }
+header b { color: #EAF2F6; }
+#timer { font-size: 20px; font-variant-numeric: tabular-nums; color: #3FB6C9; }
+header button { background: #2C3540; color: #C7D1DC; border: 1px solid #3A4450; border-radius: 5px; padding: 3px 12px; cursor: pointer; }
+main { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; }
+.box { background: #141920; border: 1px solid #2A323C; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.box .tag { position: absolute; left: 8px; top: 6px; font-size: 11px; color: #8794A2; z-index: 2; }
+#curBox { flex: 3; } #nextBox { flex: 2; }
+.holder { transform-origin: 0 0; position: absolute; }
+#notesBox { height: 32%; margin: 0 12px 12px; background: #E7EDF2; color: #22303A; border-radius: 8px; padding: 12px 18px; font-size: 16px; line-height: 1.7; overflow: auto; }
+#nav { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <b>演讲者视图</b>
+  <span id="pos" class="muted">- / -</span>
+  <span id="timer">00:00</span>
+  <button id="timerToggle">开始计时</button>
+  <button id="timerReset">归零</button>
+  <div style="flex:1"></div>
+  <div id="nav">
+    <button id="prev">◀ 上一页</button>
+    <button id="next">下一页 ▶</button>
+  </div>
+</header>
+<main>
+  <div class="box" id="curBox"><span class="tag">当前</span></div>
+  <div class="box" id="nextBox"><span class="tag">下一页</span></div>
+</main>
+<div id="notesBox">（备注）</div>
+<script src="/runtime.js"></script>
+<script type="module">
+import { parseSlideX } from '/src/ir.js';
+import { renderSlide } from '/src/render/render.js';
+
+const { xml } = await fetch('/api/deck').then(r => r.json());
+const { deck } = parseSlideX(xml);
+const curBox = document.getElementById('curBox');
+const nextBox = document.getElementById('nextBox');
+const holders = deck.slides.map(s => {
+  const h = document.createElement('div');
+  h.className = 'holder';
+  h.innerHTML = renderSlide(deck, s, { mediaBase: '/f/' });
+  h.style.display = 'none';
+  return h;
+});
+holders[0].remove(); // 占位前先收集
+curBox.appendChild(holders[0]);
+if (holders[1]) nextBox.appendChild(holders[1]);
+if (window.slxRenderMath) { slxRenderMath(curBox); slxRenderMath(nextBox); }
+
+let cur = 0;
+function fit() {
+  for (const [box, idx] of [[curBox, cur], [nextBox, cur + 1]]) {
+    const h = box.querySelector('.holder');
+    if (!h) continue;
+    const pad = 14;
+    const k = Math.min((box.clientWidth - pad * 2) / deck.width, (box.clientHeight - pad * 2) / deck.height);
+    h.style.transform = `scale(${k})`;
+    h.style.left = (box.clientWidth - deck.width * k) / 2 + 'px';
+    h.style.top = (box.clientHeight - deck.height * k) / 2 + 'px';
+  }
+}
+function show(i) {
+  if (i < 0 || i >= holders.length) return;
+  const prevCur = curBox.querySelector('.holder');
+  const prevNext = nextBox.querySelector('.holder');
+  if (prevCur) prevCur.remove();
+  if (prevNext) prevNext.remove();
+  cur = i;
+  curBox.appendChild(holders[cur]);
+  if (holders[cur + 1]) nextBox.appendChild(holders[cur + 1]);
+  document.getElementById('pos').textContent = `${cur + 1} / ${holders.length}`;
+  document.getElementById('notesBox').textContent = deck.slides[cur].notes || '（本页无备注）';
+  if (window.slxRenderMath) slxRenderMath(curBox);
+  fit();
+}
+addEventListener('resize', fit);
+
+let ch = null;
+try { ch = new BroadcastChannel('slidex-present'); } catch {}
+if (ch) {
+  ch.onmessage = (ev) => {
+    if (ev.data && ev.data.type === 'state') show(ev.data.i);
+  };
+}
+function goto(i) { ch && ch.postMessage({ type: 'goto', i }); }
+document.getElementById('prev').addEventListener('click', () => goto(Math.max(0, cur - 1)));
+document.getElementById('next').addEventListener('click', () => goto(Math.min(holders.length - 1, cur + 1)));
+
+let t0 = 0, acc = 0, running = false;
+const timerEl = document.getElementById('timer');
+function tick() {
+  if (!running) return;
+  const sec = acc + Math.floor((Date.now() - t0) / 1000);
+  timerEl.textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+}
+setInterval(tick, 500);
+document.getElementById('timerToggle').addEventListener('click', (e) => {
+  running = !running;
+  e.target.textContent = running ? '暂停' : '开始计时';
+  if (running) t0 = Date.now(); else acc += Math.floor((Date.now() - t0) / 1000);
+});
+document.getElementById('timerReset').addEventListener('click', () => { acc = 0; t0 = Date.now(); timerEl.textContent = '00:00'; });
+addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') goto(Math.min(holders.length - 1, cur + 1));
+  if (e.key === 'ArrowLeft') goto(Math.max(0, cur - 1));
+});
+show(0);
+</script>
+</body>
+</html>

@@ -20,9 +20,9 @@ const MIME = {
 };
 
 export function startServer(deckPath, opts = {}) {
-  const deckFile = path.resolve(deckPath);
-  const deckDir = path.dirname(deckFile);
-  const outDir = path.join(deckDir, 'out');
+  let deckFile = path.resolve(deckPath);
+  let deckDir = path.dirname(deckFile);
+  const outDir = () => path.join(deckDir, 'out');
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -65,6 +65,7 @@ export function startServer(deckPath, opts = {}) {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) { serveFile(res, path.join(APP, 'index.html')); return; }
     if (req.method === 'GET' && p === '/favicon.ico') { send(res, 204, ''); return; }
     if (req.method === 'GET' && p === '/present') { serveFile(res, path.join(APP, 'present.html')); return; }
+    if (req.method === 'GET' && p === '/present-speaker') { serveFile(res, path.join(APP, 'present-speaker.html')); return; }
     if (req.method === 'GET' && p === '/runtime.js') { send(res, 200, runtimeJs(), { 'Content-Type': MIME['.js'] }); return; }
     if (req.method === 'GET' && p === '/runtime.css') { send(res, 200, slideCss(), { 'Content-Type': MIME['.css'] }); return; }
     if (req.method === 'GET' && p.startsWith('/app/')) { const f = safeJoin(APP, p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
@@ -76,7 +77,7 @@ export function startServer(deckPath, opts = {}) {
       return;
     }
     if (req.method === 'GET' && p.startsWith('/out/')) {
-      const f = safeJoin(outDir, p.slice(4));
+      const f = safeJoin(outDir(), p.slice(4));
       if (!f) { send(res, 403, {}); return; }
       serveFile(res, f, true);
       return;
@@ -107,6 +108,15 @@ export function startServer(deckPath, opts = {}) {
       send(res, 200, { errors: r.errors, warnings: r.warnings });
       return;
     }
+    if (req.method === 'POST' && p === '/api/open') {
+      const { path: newPath } = await readBody(req);
+      const abs2 = path.resolve(newPath);
+      if (!fs.existsSync(abs2) || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
+      deckFile = abs2;
+      deckDir = path.dirname(abs2);
+      send(res, 200, { ok: true, path: deckFile, dir: deckDir });
+      return;
+    }
     if (req.method === 'POST' && p === '/api/save') {
       const { xml } = await readBody(req);
       const r = parseSlideX(xml || '');
@@ -121,9 +131,9 @@ export function startServer(deckPath, opts = {}) {
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2 } = await readBody(req);
+      const { format = 'png', scale = 2, editable = false } = await readBody(req);
       try {
-        const result = await exportDeck(deckFile, { format, scale, baseUrl: null });
+        const result = await exportDeck(deckFile, { format, scale, editable });
         send(res, 200, { ok: true, ...result });
       } catch (e) {
         send(res, 200, { ok: false, error: String(e && e.message || e) });
