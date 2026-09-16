@@ -252,12 +252,15 @@ function startDrag(ev: PointerEvent, els: SlideElement[]): void {
   if (!els.length) return;
   const start = { x: ev.clientX, y: ev.clientY };
   const orig: DragOrig[] = els.map(e => ({ e, x: e.x, y: e.y }));
+  // 拖动期间的实时视觉反馈：直接写元素 DOM（廉价），松手才做整页重渲染
+  const host = $('canvasHost');
+  const nodes = new Map<string, HTMLElement | null>(orig.map(o => [o.e.id, host.querySelector<HTMLElement>(`.slx-el[data-id="${CSS.escape(o.e.id)}"]`)]));
   let moved = false;
   const move = (ev2: PointerEvent): void => {
     let dx = (ev2.clientX - start.x) / zoom;
     let dy = (ev2.clientY - start.y) / zoom;
     if (!dx && !dy) return;
-    if (!moved) { moved = true; openBurst(); }
+    if (!moved) { moved = true; openBurst(); $('canvasArea').classList.add('dragging'); }
     if (ev2.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
     for (const o of orig) {
       let nx = o.x + dx, ny = o.y + dy;
@@ -267,13 +270,16 @@ function startDrag(ev: PointerEvent, els: SlideElement[]): void {
       }
       o.e.x = Math.round(nx * 2) / 2;
       o.e.y = Math.round(ny * 2) / 2;
+      const n = nodes.get(o.e.id);
+      if (n) { n.style.left = o.e.x + 'px'; n.style.top = o.e.y + 'px'; }
     }
     renderOverlay();
   };
   const up = (): void => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    if (moved) renderCanvas();
+    $('canvasArea').classList.remove('dragging');
+    if (moved) { renderCanvas(); renderInspector(); }
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
@@ -283,12 +289,13 @@ function startResize(ev: PointerEvent, el: SlideElement, dir: string): void {
   const start = { x: ev.clientX, y: ev.clientY };
   const orig = { x: el.x, y: el.y, w: el.w, h: el.h };
   const ratio = orig.w / (orig.h || 1);
+  const node = $('canvasHost').querySelector<HTMLElement>(`.slx-el[data-id="${CSS.escape(el.id)}"]`);
   let moved = false;
   const move = (ev2: PointerEvent): void => {
     const dx = (ev2.clientX - start.x) / zoom;
     const dy = (ev2.clientY - start.y) / zoom;
     if (!dx && !dy) return;
-    if (!moved) { moved = true; openBurst(); }
+    if (!moved) { moved = true; openBurst(); $('canvasArea').classList.add('dragging'); }
     let { x, y, w, h } = orig;
     if (dir.includes('e')) w = Math.max(2, orig.w + dx);
     if (dir.includes('s')) h = Math.max(2, orig.h + dy);
@@ -301,12 +308,19 @@ function startResize(ev: PointerEvent, el: SlideElement, dir: string): void {
     }
     el.x = Math.round(x * 2) / 2; el.y = Math.round(y * 2) / 2;
     el.w = Math.round(w * 2) / 2; el.h = Math.round(h * 2) / 2;
+    if (node) {
+      node.style.left = el.x + 'px';
+      node.style.top = el.y + 'px';
+      node.style.width = el.w + 'px';
+      node.style.height = el.h + 'px';
+    }
     renderOverlay();
   };
   const up = (): void => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    if (moved) renderCanvas();
+    $('canvasArea').classList.remove('dragging');
+    if (moved) { renderCanvas(); renderInspector(); }
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);

@@ -67,8 +67,9 @@ select { background: var(--input); border: 1px solid var(--input-border); border
 #canvasScroll { position: absolute; inset: 0; overflow: auto; }
 #canvasWrap { position: relative; margin: 40px auto; width: min-content; box-shadow: 0 4px 30px var(--shadow); }
 #canvasHost { pointer-events: none; }
-#canvasHost .slx-el { pointer-events: auto; }
-#canvasHost .slx-el[data-master] { pointer-events: none; }
+#canvasHost .slx-el { pointer-events: auto; cursor: move; }
+#canvasHost .slx-el[data-master] { pointer-events: none; cursor: default; }
+#canvasArea.dragging, #canvasArea.dragging * { cursor: grabbing !important; }
 #overlay { position: absolute; inset: 0; pointer-events: none; }
 .selbox { position: absolute; border: 1px solid var(--accent); pointer-events: none; }
 .selbox .handle {
