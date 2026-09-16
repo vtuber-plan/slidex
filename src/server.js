@@ -164,6 +164,8 @@ ${(deck.fonts || []).map(f => `<link rel="stylesheet" href="${f.src}">`).join(''
 html,body{margin:0;padding:0}
 .pg{page-break-after:always;overflow:hidden;position:relative}
 .pg:last-child{page-break-after:auto}
+/* 幻灯片以 px 布局而页面为 pt：按 4/3（96/72）放大铺满，保持 1px=1pt 语义 */
+.pg > .slx-slide{transform:scale(${(4 / 3).toFixed(6)});transform-origin:0 0}
 ${slideCss()}
 </style></head><body>
 ${pages}
