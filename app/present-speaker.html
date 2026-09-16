@@ -22,101 +22,23 @@ main { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; }
 </head>
 <body>
 <header>
-  <b>演讲者视图</b>
+  <b data-i18n="sp.title">演讲者视图</b>
   <span id="pos" class="muted">- / -</span>
   <span id="timer">00:00</span>
-  <button id="timerToggle">开始计时</button>
-  <button id="timerReset">归零</button>
+  <button id="timerToggle" data-i18n="sp.start">开始计时</button>
+  <button id="timerReset" data-i18n="sp.reset">归零</button>
   <div style="flex:1"></div>
   <div id="nav">
-    <button id="prev">◀ 上一页</button>
-    <button id="next">下一页 ▶</button>
+    <button id="prev" data-i18n="sp.prev">◀ 上一页</button>
+    <button id="next" data-i18n="sp.nextBtn">下一页 ▶</button>
   </div>
 </header>
 <main>
-  <div class="box" id="curBox"><span class="tag">当前</span></div>
-  <div class="box" id="nextBox"><span class="tag">下一页</span></div>
+  <div class="box" id="curBox"><span class="tag" data-i18n="sp.current">当前</span></div>
+  <div class="box" id="nextBox"><span class="tag" data-i18n="sp.next">下一页</span></div>
 </main>
-<div id="notesBox">（备注）</div>
+<div id="notesBox" data-i18n="sp.notes">（备注）</div>
 <script src="/runtime.js"></script>
-<script type="module">
-import { parseSlideX } from '/src/ir.js';
-import { renderSlide } from '/src/render/render.js';
-
-const { xml } = await fetch('/api/deck').then(r => r.json());
-const { deck } = parseSlideX(xml);
-const curBox = document.getElementById('curBox');
-const nextBox = document.getElementById('nextBox');
-const holders = deck.slides.map(s => {
-  const h = document.createElement('div');
-  h.className = 'holder';
-  h.innerHTML = renderSlide(deck, s, { mediaBase: '/f/' });
-  h.style.display = 'none';
-  return h;
-});
-holders[0].remove(); // 占位前先收集
-curBox.appendChild(holders[0]);
-if (holders[1]) nextBox.appendChild(holders[1]);
-if (window.slxRenderMath) { slxRenderMath(curBox); slxRenderMath(nextBox); }
-
-let cur = 0;
-function fit() {
-  for (const [box, idx] of [[curBox, cur], [nextBox, cur + 1]]) {
-    const h = box.querySelector('.holder');
-    if (!h) continue;
-    const pad = 14;
-    const k = Math.min((box.clientWidth - pad * 2) / deck.width, (box.clientHeight - pad * 2) / deck.height);
-    h.style.transform = `scale(${k})`;
-    h.style.left = (box.clientWidth - deck.width * k) / 2 + 'px';
-    h.style.top = (box.clientHeight - deck.height * k) / 2 + 'px';
-  }
-}
-function show(i) {
-  if (i < 0 || i >= holders.length) return;
-  const prevCur = curBox.querySelector('.holder');
-  const prevNext = nextBox.querySelector('.holder');
-  if (prevCur) prevCur.remove();
-  if (prevNext) prevNext.remove();
-  cur = i;
-  curBox.appendChild(holders[cur]);
-  if (holders[cur + 1]) nextBox.appendChild(holders[cur + 1]);
-  document.getElementById('pos').textContent = `${cur + 1} / ${holders.length}`;
-  document.getElementById('notesBox').textContent = deck.slides[cur].notes || '（本页无备注）';
-  if (window.slxRenderMath) slxRenderMath(curBox);
-  fit();
-}
-addEventListener('resize', fit);
-
-let ch = null;
-try { ch = new BroadcastChannel('slidex-present'); } catch {}
-if (ch) {
-  ch.onmessage = (ev) => {
-    if (ev.data && ev.data.type === 'state') show(ev.data.i);
-  };
-}
-function goto(i) { ch && ch.postMessage({ type: 'goto', i }); }
-document.getElementById('prev').addEventListener('click', () => goto(Math.max(0, cur - 1)));
-document.getElementById('next').addEventListener('click', () => goto(Math.min(holders.length - 1, cur + 1)));
-
-let t0 = 0, acc = 0, running = false;
-const timerEl = document.getElementById('timer');
-function tick() {
-  if (!running) return;
-  const sec = acc + Math.floor((Date.now() - t0) / 1000);
-  timerEl.textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
-}
-setInterval(tick, 500);
-document.getElementById('timerToggle').addEventListener('click', (e) => {
-  running = !running;
-  e.target.textContent = running ? '暂停' : '开始计时';
-  if (running) t0 = Date.now(); else acc += Math.floor((Date.now() - t0) / 1000);
-});
-document.getElementById('timerReset').addEventListener('click', () => { acc = 0; t0 = Date.now(); timerEl.textContent = '00:00'; });
-addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight') goto(Math.min(holders.length - 1, cur + 1));
-  if (e.key === 'ArrowLeft') goto(Math.max(0, cur - 1));
-});
-show(0);
-</script>
+<script type="module" src="/app/dist/present-speaker.js"></script>
 </body>
 </html>

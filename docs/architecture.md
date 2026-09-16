@@ -73,7 +73,13 @@
 - **源码视图**：`serializeDeck` 全文 textarea；「应用」= parse 校验，0 error 才替换 IR，否则红条提示行号；
 - **放映**：全屏 overlay，`renderSlide` 输出按窗口 `transform: scale()` 适配；←/→/Space/PgUp/PgDn 翻页，`N` 切换备注，`Esc` 退出。
 
-### 3.3 服务端 API（`server.js`）
+### 3.3 TypeScript 与 i18n
+
+- 编辑器前端为 **TypeScript strict**（`app/ts/*.ts` → `tsc` 编译到 `app/dist/`，页面只引用 dist）；IR 数据模型（Deck / SlideContainer / SlideElement / Animation）在 `app/types/slidex.d.ts` 中强类型化——编辑器大量动态属性读写正是历史 bug 高发区，strict 模式在编译期拦截。
+- `src/` 保持**零构建 JavaScript**（CLI / 导出 / Node 端共用），通过 d.ts shim + tsconfig `paths` 给前端提供类型，运行时零依赖关系不变。
+- **i18n**：`app/ts/i18n.ts` 集中管理全部界面文案（zh-CN / en）。静态 HTML 用 `data-i18n` / `data-i18n-title` 标记，动态文案一律 `t(key, params)`；语言选择器持久化到 localStorage，默认跟随浏览器语言。
+
+### 3.4 服务端 API（`server.js`）
 
 | 路由 | 说明 |
 |---|---|

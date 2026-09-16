@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "/src/ir.js": [
+        "./types/src/ir.d.ts"
+      ],
+      "/src/serializer.js": [
+        "./types/src/serializer.d.ts"
+      ],
+      "/src/render/render.js": [
+        "./types/src/render.d.ts"
+      ],
+      "/src/render/richtext.js": [
+        "./types/src/richtext.d.ts"
+      ]
+    },
+    "lib": [
+      "ES2021",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmitOnError": true,
+    "rootDir": "ts",
+    "outDir": "dist",
+    "sourceMap": false,
+    "skipLibCheck": true
+  },
+  "include": [
+    "ts/**/*.ts",
+    "types/**/*.d.ts"
+  ]
+}

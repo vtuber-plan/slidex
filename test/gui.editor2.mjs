@@ -26,7 +26,7 @@ const t = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`  ${ok 
 await page.evaluate(() => { document.querySelector('#canvasHost .slx-slide').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); });
 await new Promise(r => setTimeout(r, 200));
 let head = await page.$eval('#inspectorBody b', el => el.textContent).catch(() => '');
-t('页面属性面板', head === '页面属性', `head=${head}`);
+t('页面属性面板', head === '页面属性' || head === 'Slide properties', `head=${head}`);
 
 // 2) 画布内直接编辑：双击文本 → contentEditable → 输入 → 完成
 await page.click('#canvasHost .slx-el[data-id="title"]');
@@ -57,7 +57,7 @@ t('工具条编辑后隐藏', barHidden === true);
 await page.click('#canvasHost .slx-el[data-id="features"]', { button: 'right' });
 await new Promise(r => setTimeout(r, 200));
 const menuItems = await page.$$eval('.ctxmenu button', els => els.map(e => e.textContent));
-t('右键菜单出现', menuItems.includes('复制') && menuItems.includes('删除'), menuItems.slice(0, 4).join(','));
+t('右键菜单出现', (menuItems.includes('复制') || menuItems.includes('Copy')) && (menuItems.includes('删除') || menuItems.includes('Delete')), menuItems.slice(0, 4).join(','));
 await page.keyboard.press('Escape');
 
 // 5) 复制/粘贴（Ctrl+C / Ctrl+V 跨页）
