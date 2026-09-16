@@ -43,6 +43,12 @@ async function main() {
     case 'serve': case 'edit': {
       const file = args[1];
       if (!file) die('用法: slidex serve <deck.slx> [--port 4870] [--no-open]');
+      // 编辑器前端是 TS 编译产物，缺失时自动构建一次
+      const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+      if (!fs.existsSync(path.join(rootDir, 'app', 'dist', 'editor.js'))) {
+        console.log('首次运行：编译编辑器前端（tsc）…');
+        execSync('npx tsc -p app', { cwd: rootDir, stdio: 'inherit' });
+      }
       const { startServer } = await import('./server.js');
       const port = Number(flag('--port', 4870));
       const s = await startServer(path.resolve(file), { port });
