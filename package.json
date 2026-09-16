@@ -1,0 +1,23 @@
+{
+  "name": "slidex",
+  "version": "0.1.0",
+  "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
+  "type": "module",
+  "bin": {
+    "slidex": "src/cli.js"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/cli.js serve examples/quickstart/quickstart.slx",
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  },
+  "optionalDependencies": {},
+  "keywords": ["slides", "presentation", "xml", "dsl", "pptx", "export", "editor"],
+  "license": "MIT"
+}

@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<deck version="1" title="SlideX 快速上手" width="960" height="540">
+  <fonts>
+    <font family="JetBrains Mono" src="https://fonts.googleapis.com/css2?family=JetBrains+Mono"/>
+  </fonts>
+  <theme>
+    <palette>
+      <color name="paper" value="#FAF8F4"/>
+      <color name="ink" value="#232A31"/>
+      <color name="primary" value="#14606C"/>
+      <color name="primaryDark" value="#0C434C"/>
+      <color name="accent" value="#B4632C"/>
+      <color name="success" value="#4F7A38"/>
+      <color name="muted" value="#6E7A82"/>
+      <color name="line" value="#D8D2C6"/>
+      <color name="tint" value="#F1EDE4"/>
+    </palette>
+    <text-styles>
+      <style name="kicker" font-size="11" color="$primary" letter-spacing="2"/>
+      <style name="pageTitle" font-size="25" bold="true" color="$ink"/>
+      <style name="body" font-size="15.5" color="$ink" line-height="1.55"/>
+      <style name="caption" font-size="10.5" color="$muted"/>
+    </text-styles>
+    <table-styles>
+      <table-style name="default">
+        <header fill="$primary" color="#FAF8F4" bold="true" font-size="13"/>
+        <body fill="#FFFFFF"/>
+        <body fill="$tint"/>
+        <cell font-size="13" line-height="1.35" border-bottom="1 solid $line" align="left middle"/>
+      </table-style>
+    </table-styles>
+  </theme>
+  <slide type="cover" background="$primaryDark" notes="欢迎页。介绍 SlideX 是什么：XML 语法的幻灯片语言。">
+    <text id="watermark" x="600" y="40" w="330" h="440" font-size="260" color="#FFFFFF12">
+      <p style="text-align:center">&lt;/&gt;</p>
+    </text>
+    <text id="kicker" x="64" y="44" w="620" h="20" style="$kicker" color="#FAF8F4A8" letter-spacing="3">
+      <p>SLIDEX · XML 幻灯片语言</p>
+    </text>
+    <text id="title" x="64" y="130" w="660" h="130" font-size="42" bold="true" color="#FAF8F4" line-height="1.25">
+      <p>用 XML 写幻灯片</p>
+      <p style="margin-top:10px"><span style="font-size:24px; color:#FAF8F4D0">AI 友好 · 一比一导出 · 类 PPT 编辑器</span></p>
+    </text>
+    <shape id="hairline" x="64" y="290" w="280" h="2" name="rect" fill="#FAF8F440"/>
+    <text id="features" x="64" y="312" w="640" h="80" style="$body" color="#FAF8F4C0">
+      <p>· 单文件 <strong>.slx</strong>，纯文本可 diff，LLM 一次生成</p>
+      <p>· 编辑器所见 = PNG / PDF / PPTX 所得</p>
+    </text>
+    <formula id="eq" x="660" y="380" w="240" h="60" font-size="24" color="#FAF8F4E8" tex="\textsf{slide} \to \textsf{pptx}"/>
+    <text id="footer" x="64" y="470" w="620" h="30" style="$caption" color="#FAF8F4A0">
+      <p>examples/quickstart · 6 页 · 960×540</p>
+    </text>
+  </slide>
+  <slide type="toc" background="$paper" notes="目录：语言元素一览。">
+    <text id="kicker" x="64" y="28" w="480" h="16" style="$kicker"><p>OVERVIEW</p></text>
+    <text id="title" x="64" y="46" w="800" h="38" style="$pageTitle"><p>九种元素，各司其职</p></text>
+    <shape id="accentbar" x="64" y="94" w="44" h="3" name="rect" fill="$primary"/>
+    <text id="intro" x="64" y="116" w="832" h="46" style="$body">
+      <p>每个元素是一个 XML 标签：几何用属性（<span style="font-family:JetBrains Mono">x y w h</span>），富文本用内容，主题用 <span style="font-family:JetBrains Mono">$ref</span> 引用。</p>
+    </text>
+    <table id="tbl" x="64" y="180" w="832" h="290" style="$default">
+      <cols>0.22 0.5 0.28</cols>
+      <tr>
+        <td>元素</td><td>用途</td><td>关键属性</td>
+      </tr>
+      <tr><td>text</td><td>富文本框：段落、行内样式、行内公式 \ LaTex</td><td>style, align, wrap</td></tr>
+      <tr><td>shape / line</td><td>形状（10 内置 + custom path）、带箭头曲线</td><td>name, fill, points</td></tr>
+      <tr><td>image / icon</td><td>图片（fit/crop/圆角）、Font Awesome 图标</td><td>src, fit · name</td></tr>
+      <tr><td>table</td><td>表格：主题样式、斑马纹、行列合并</td><td>style, cols</td></tr>
+      <tr><td>chart</td><td>bar / line / area / pie / scatter，纯 SVG 渲染</td><td>series, legend</td></tr>
+      <tr><td>code / formula</td><td>语法高亮代码块、KaTeX 块级公式</td><td>lang · tex</td></tr>
+    </table>
+  </slide>
+  <slide type="section" background="$paper" notes="形状与线条演示页。">
+    <text id="kicker" x="64" y="28" w="480" h="16" style="$kicker"><p>SHAPES &amp; LINES</p></text>
+    <text id="title" x="64" y="46" w="800" h="38" style="$pageTitle"><p>形状与线条</p></text>
+    <shape id="r1" x="64" y="130" w="120" h="80" name="rect" fill="$primary"/>
+    <shape id="r2" x="204" y="130" w="120" h="80" name="roundRect" adj="12" fill="$tint" stroke="$primary" stroke-width="2"/>
+    <shape id="r3" x="344" y="130" w="120" h="80" name="ellipse" fill="$accent"/>
+    <shape id="r4" x="484" y="130" w="120" h="80" name="triangle" fill="$success"/>
+    <shape id="r5" x="624" y="130" w="120" h="80" name="diamond" fill="$primary" opacity="0.85"/>
+    <shape id="r6" x="764" y="130" w="120" h="80" name="rightArrow" fill="$primaryDark"/>
+    <shape id="r7" x="64" y="240" w="120" h="80" name="chevron" fill="$muted"/>
+    <shape id="r8" x="204" y="240" w="120" h="80" name="star5" fill="#D9A521" shadow="8 0 3 #00000026"/>
+    <shape id="r9" x="344" y="240" w="120" h="80" name="donut" fill="$primary"/>
+    <shape id="r10" x="484" y="240" w="260" h="80" name="custom" view-box="100 40" path="M0,40 C20,0 80,0 100,40 Z" fill="$accent"/>
+    <line id="ln1" x="64" y="370" w="380" h="70" points="0,35 120,0 260,70 380,20" curve="smooth" stroke="$primary" stroke-width="2.5" arrow-end="stealth"/>
+    <line id="ln2" x="500" y="380" w="380" h="50" points="0,25 190,0 380,25" curve="round" stroke="$accent" stroke-width="2" stroke-dash="dash" arrow-start="oval" arrow-end="arrow"/>
+    <text id="cap1" x="64" y="448" w="380" h="20" style="$caption"><p>smooth 贝塞尔 + stealth 箭头</p></text>
+    <text id="cap2" x="500" y="440" w="380" h="20" style="$caption"><p>round 折线 + 虚线 + 双端箭头</p></text>
+    <text id="gradcap" x="760" y="250" w="170" h="90" style="$body" font-size="12">
+      <p><strong>custom</strong>：view-box + SVG path，任意轮廓</p>
+    </text>
+  </slide>
+  <slide type="content" background="$paper" notes="图表演示：柱状+折线混合、饼图。">
+    <text id="kicker" x="64" y="28" w="480" h="16" style="$kicker"><p>CHARTS</p></text>
+    <text id="title" x="64" y="46" w="800" h="38" style="$pageTitle"><p>图表：纯 SVG，导出零漂移</p></text>
+    <chart id="c1" x="56" y="120" w="480" h="330" title="季度营收与增速" legend="bottom">
+      <data cols="季度,营收,目标">
+        <row>Q1,120,110</row>
+        <row>Q2,150,140</row>
+        <row>Q3,132,150</row>
+        <row>Q4,178,160</row>
+      </data>
+      <series type="bar" x="季度" y="营收" name="营收" fill="$primary" data-labels="value"/>
+      <series type="line" x="季度" y="目标" name="目标线" stroke="$accent" smooth="true" marker="circle"/>
+    </chart>
+    <chart id="c2" x="580" y="120" w="320" h="330" title="渠道占比" legend="bottom">
+      <data cols="渠道,占比">
+        <row>搜索,42</row>
+        <row>直接,28</row>
+        <row>社交,18</row>
+        <row>其他,12</row>
+      </data>
+      <series type="pie" x="渠道" y="占比" inner-radius="0.45" fill="$primary $accent $success $muted" data-labels="percent"/>
+    </chart>
+  </slide>
+  <slide type="content" background="$paper" notes="代码与公式：教学场景两大刚需。">
+    <text id="kicker" x="64" y="28" w="480" h="16" style="$kicker"><p>CODE &amp; MATH</p></text>
+    <text id="title" x="64" y="46" w="800" h="38" style="$pageTitle"><p>代码高亮与 LaTeX 公式</p></text>
+    <code id="evalcode" x="64" y="120" w="470" h="300" lang="js" line-numbers="true" font-size="13.5" fill="#1E1E2E" color="#CDD6F4" radius="10">
+// STLC 求值器（大步语义）
+const eval_ = (t, env) =&gt; t.cata({
+  Var: (x) =&gt; env[x],
+  Lam: (x, body) =&gt; ({ tag: &quot;closure&quot;, x, body, env }),
+  App: (rator, rand) =&gt; {
+    const f = eval_(rator, env);
+    const v = eval_(rand, env);
+    return eval_(f.body, { ...f.env, [f.x]: v });
+  },
+});</code>
+    <text id="codecap" x="64" y="430" w="470" h="24" style="$caption"><p>lang="js" · line-numbers · 自带 12 语言轻量高亮</p></text>
+    <text id="m1" x="580" y="120" w="340" h="70" style="$body">
+      <p><strong>行内公式</strong>：类型规则 \( \dfrac{\Gamma, x{:}\sigma \vdash t : \tau}{\Gamma \vdash \lambda x{:}\sigma.\, t : \sigma \to \tau} \) 写在文本里。</p>
+    </text>
+    <formula id="big1" x="580" y="230" w="340" h="90" font-size="26" tex="\Gamma \vdash t : \tau \iff \exists \sigma,\ \Gamma \vdash t : \sigma"/>
+    <formula id="big2" x="580" y="330" w="340" h="90" font-size="26" color="$accent" tex="\int_0^1 x^2 \, \mathrm{d}x = \tfrac{1}{3}"/>
+    <text id="mcap" x="580" y="440" w="340" h="24" style="$caption"><p>&lt;formula&gt; 块级公式：KaTeX displayMode</p></text>
+  </slide>
+  <slide type="final" background="$primaryDark" notes="结尾：下一步。">
+    <shape id="bgdonut" x="640" y="60" w="380" h="380" name="donut" adj="0.12" fill="#FFFFFF0E"/>
+    <icon id="ic1" x="64" y="150" w="56" h="56" name="fas:rocket" fill="#FAF8F4"/>
+    <text id="t1" x="64" y="230" w="700" h="70" font-size="34" bold="true" color="#FAF8F4">
+      <p>下一步：打开编辑器试试</p>
+    </text>
+    <code id="cli" x="64" y="320" w="520" h="110" lang="bash" font-size="14" fill="#0A3540" color="#9FE0D8" radius="8">npm start                          # 打开编辑器
+node src/cli.js export deck.slx -f pptx  # 导出 PPTX</code>
+    <line id="arrow" x="620" y="370" w="200" h="60" points="0,30 90,30 90,8 200,45" curve="smooth" stroke="#FAF8F4B0" stroke-width="2.5" arrow-end="stealth"/>
+    <text id="t2" x="64" y="470" w="700" h="30" style="$caption" color="#FAF8F4A0">
+      <p>github.com/you/slidex · MIT License · docs/spec.md</p>
+    </text>
+  </slide>
+</deck>

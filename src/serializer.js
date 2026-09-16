@@ -1,0 +1,225 @@
+// serializer.js — IR → 规范形 XML（spec §18）
+// 打开 → 保存 → 再打开，IR 不变（幂等）。编辑器所有保存都走这里。
+
+import { ELEMENT_SCHEMA } from './ir.js';
+import { decodeEntities } from './parser.js';
+
+const IND = '  ';
+
+export function serializeDeck(deck) {
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>'];
+  const attrs = [`version="${esc(deck.version || '1')}"`];
+  if (deck.title) attrs.push(`title="${esc(deck.title)}"`);
+  attrs.push(`width="${fmt(deck.width)}"`, `height="${fmt(deck.height)}"`);
+  out.push(`<deck ${attrs.join(' ')}>`);
+  if (deck.fonts?.length) {
+    out.push(`${IND}<fonts>`);
+    for (const f of deck.fonts) out.push(`${IND}${IND}<font family="${esc(f.family)}" src="${esc(f.src)}"/>`);
+    out.push(`${IND}</fonts>`);
+  }
+  const th = deck.theme || {};
+  if (Object.keys(th.colors || {}).length || Object.keys(th.textStyles || {}).length || Object.keys(th.tableStyles || {}).length) {
+    out.push(serializeTheme(th, IND));
+  }
+  deck.slides.forEach((s, idx) => out.push(serializeSlide(s, idx, IND)));
+  out.push('</deck>');
+  return out.join('\n') + '\n';
+}
+
+function serializeTheme(theme, pad) {
+  const t = theme || { colors: {}, textStyles: {}, tableStyles: {} };
+  const lines = [`${pad}<theme>`];
+  const colorNames = Object.keys(t.colors || {});
+  if (colorNames.length) {
+    lines.push(`${pad}${IND}<palette>`);
+    for (const nm of colorNames) lines.push(`${pad}${IND}${IND}<color name="${esc(nm)}" value="${esc(t.colors[nm])}"/>`);
+    lines.push(`${pad}${IND}</palette>`);
+  }
+  const styleNames = Object.keys(t.textStyles || {});
+  if (styleNames.length) {
+    lines.push(`${pad}${IND}<text-styles>`);
+    const order = ['font-size', 'bold', 'italic', 'color', 'font-family', 'line-height', 'line-height-px', 'letter-spacing', 'background-color', 'align'];
+    for (const nm of styleNames) {
+      const st = t.textStyles[nm];
+      const a = [`name="${esc(nm)}"`];
+      for (const k of order) if (st[k] !== undefined && st[k] !== '') a.push(`${k}="${esc(String(st[k]))}"`);
+      lines.push(`${pad}${IND}${IND}<style ${a.join(' ')}/>`);
+    }
+    lines.push(`${pad}${IND}</text-styles>`);
+  }
+  const tableNames = Object.keys(t.tableStyles || {});
+  if (tableNames.length) {
+    lines.push(`${pad}${IND}<table-styles>`);
+    const cellOrder = ['fill', 'color', 'font-size', 'bold', 'italic', 'font-family', 'line-height', 'align', 'valign', 'border-bottom', 'border-top', 'border-left', 'border-right'];
+    for (const nm of tableNames) {
+      const ts = t.tableStyles[nm];
+      lines.push(`${pad}${IND}${IND}<table-style name="${esc(nm)}"${ts.rowOverCol === false ? ' row-over-col="false"' : ''}>`);
+      for (const [tag, style] of [['header', ts.header], ['last-row', ts.lastRow], ['first-col', ts.firstCol], ['last-col', ts.lastCol]]) {
+        if (style) lines.push(`${pad}${IND}${IND}${IND}<${tag}${styleAttrs(style, cellOrder)}/>`);
+      }
+      for (const b of ts.body || []) lines.push(`${pad}${IND}${IND}${IND}<body${styleAttrs(b, cellOrder)}/>`);
+      if (ts.cell && Object.keys(ts.cell).length) lines.push(`${pad}${IND}${IND}${IND}<cell${styleAttrs(ts.cell, cellOrder)}/>`);
+      lines.push(`${pad}${IND}${IND}</table-style>`);
+    }
+    lines.push(`${pad}${IND}</table-styles>`);
+  }
+  lines.push(`${pad}</theme>`);
+  return lines.join('\n');
+}
+
+function styleAttrs(style, order) {
+  const a = [];
+  for (const k of order) if (style[k] !== undefined && style[k] !== '') a.push(`${k}="${esc(String(style[k]))}"`);
+  return a.length ? ' ' + a.join(' ') : '';
+}
+
+function serializeSlide(slide, idx, pad) {
+  const attrs = [];
+  if (slide.id) attrs.push(`id="${esc(slide.id)}"`);
+  if (slide.type && slide.type !== 'content') attrs.push(`type="${esc(slide.type)}"`);
+  let bgChild = '';
+  if (slide.background) {
+    if (slide.background.type === 'solid') attrs.push(`background="${esc(slide.background.color)}"`);
+    else bgChild = fillChild(slide.background, pad + IND);
+  }
+  if (slide.notes) attrs.push(`notes="${esc(slide.notes)}"`);
+  const head = attrs.length ? `<slide ${attrs.join(' ')}` : '<slide';
+  if (!slide.elements.length && !bgChild) return `${pad}${head}/>`;
+  const lines = [`${pad}${head}>`];
+  if (bgChild) lines.push(bgChild);
+  for (const el of slide.elements) lines.push(serializeElement(el, pad + IND));
+  lines.push(`${pad}</slide>`);
+  return lines.join('\n');
+}
+
+// 元素属性顺序：id/几何/变换 → schema 定义顺序
+const GEOM_ATTRS = ['id', 'x', 'y', 'w', 'h', 'rotation', 'opacity', 'flip-h', 'flip-v'];
+const CELL_ATTR_ORDER = ['fill', 'color', 'font-size', 'bold', 'italic', 'font-family', 'line-height', 'align', 'valign', 'border-bottom', 'border-top', 'border-left', 'border-right', 'row-span', 'col-span', 'style'];
+const SERIES_ATTR_ORDER = ['x', 'y', 'name', 'fill', 'stroke', 'stroke-width', 'stack', 'smooth', 'marker', 'dash', 'inner-radius', 'data-labels'];
+
+export function serializeElement(el, pad = IND) {
+  const schema = ELEMENT_SCHEMA[el.type];
+  const parts = [];
+
+  const push = (name, value) => {
+    if (value === undefined || value === null || value === '') return;
+    const dflt = schema.attrs.find(a => a[0] === name)?.[2];
+    if (typeof value === 'boolean') {
+      if (value === (dflt ?? false)) return;
+      parts.push(`${name}="${value}"`);
+      return;
+    }
+    if (typeof value === 'number') {
+      if (value === dflt) return;
+      parts.push(`${name}="${fmt(value)}"`);
+      return;
+    }
+    if (value === dflt) return;
+    parts.push(`${name}="${esc(String(value))}"`);
+  };
+
+  if (el.id) parts.push(`id="${esc(el.id)}"`);
+  for (const name of ['x', 'y', 'w', 'h', 'rotation', 'opacity', 'flip-h', 'flip-v']) {
+    const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    push(name, el[key]);
+  }
+  for (const [name] of schema.attrs) {
+    if (GEOM_ATTRS.includes(name)) continue;
+    const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (name === 'fill' && el.fillObj) continue; // 渐变/图片走子元素
+    push(name, el[key]);
+  }
+
+  const open = `<${el.type}${parts.length ? ' ' + parts.join(' ') : ''}`;
+  const children = [];
+
+  if (el.fillObj) children.push(fillChild(el.fillObj, pad + IND));
+
+  switch (el.type) {
+    case 'text': return withRichContent(open, el.content, pad);
+    case 'formula': {
+      const tex = el.tex || decodeEntities(el.content || '').trim();
+      if (!el.tex && tex) return withCodeContent(open, tex, pad);
+      return `${pad}${open}/>`;
+    }
+    case 'code': return withCodeContent(open, el.content || '', pad);
+    case 'table': {
+      if (el.cols?.length) children.push(`${pad}${IND}<cols>${el.cols.map(fmt).join(' ')}</cols>`);
+      if (el.rowsRatio?.length) children.push(`${pad}${IND}<rows>${el.rowsRatio.map(fmt).join(' ')}</rows>`);
+      for (const row of el.rowsData || []) {
+        const tds = row.map(c => {
+          const a = [];
+          for (const k of CELL_ATTR_ORDER) if (c[k] !== undefined && c[k] !== '' && c[k] !== false) a.push(`${k}="${esc(String(c[k]))}"`);
+          const inner = c.text || '';
+          if (!inner.trim()) return `${pad}${IND}${IND}<td${a.length ? ' ' + a.join(' ') : ''}/>`;
+          const oneLine = !inner.includes('\n');
+          if (oneLine && !/[<>]/.test(inner)) return `${pad}${IND}${IND}<td${a.length ? ' ' + a.join(' ') : ''}>${inner}</td>`;
+          return `${pad}${IND}${IND}<td${a.length ? ' ' + a.join(' ') : ''}>\n${indentRich(inner, pad + IND + IND + IND)}\n${pad}${IND}${IND}</td>`;
+        });
+        children.push(`${pad}${IND}<tr>\n${tds.join('\n')}\n${pad}${IND}</tr>`);
+      }
+      break;
+    }
+    case 'chart': {
+      const d = el.chartData || { cols: [], rows: [] };
+      children.push(`${pad}${IND}<data cols="${esc(d.cols.join(','))}">${d.rows.length ? '\n' + d.rows.map(r => `${pad}${IND}${IND}<row>${r.map(v => v === null || v === undefined ? '' : String(v)).join(',')}</row>`).join('\n') + '\n' + pad + IND : ''}</data>`);
+      for (const se of el.seriesList || []) {
+        const a = [`type="${esc(se.type)}"`];
+        for (const k of SERIES_ATTR_ORDER) if (se[k] !== undefined && se[k] !== '' && se[k] !== false) a.push(`${k}="${esc(String(se[k]))}"`);
+        children.push(`${pad}${IND}<series ${a.join(' ')}/>`);
+      }
+      for (const [tag, ax] of [['x-axis', el.xAxis], ['y-axis', el.yAxis]]) {
+        if (!ax) continue;
+        const { line: _l, ...rest } = ax;
+        const a = Object.keys(rest).filter(k => rest[k] !== '' && rest[k] !== undefined).map(k => `${k}="${esc(String(rest[k]))}"`);
+        children.push(`${pad}${IND}<${tag}${a.length ? ' ' + a.join(' ') : ''}/>`);
+      }
+      break;
+    }
+  }
+
+  if (!children.length) return `${pad}${open}/>`;
+  return `${pad}${open}>\n${children.join('\n')}\n${pad}</${el.type}>`;
+}
+
+function fillChild(fill, pad) {
+  if (fill.type === 'gradient') {
+    const stops = fill.stops.map(s => `${pad}${IND}<stop pos="${fmt(s.pos)}" color="${esc(s.color)}"/>`).join('\n');
+    return `${pad}<fill type="gradient" angle="${fmt(fill.angle || 0)}">\n${stops}\n${pad}</fill>`;
+  }
+  if (fill.type === 'image') {
+    return `${pad}<fill type="image" src="${esc(fill.src)}" fit="${esc(fill.fit || 'cover')}"${fill.opacity !== undefined && fill.opacity !== 1 ? ` opacity="${fmt(fill.opacity)}"` : ''}/>`;
+  }
+  return `${pad}<fill type="solid" color="${esc(fill.color)}"/>`;
+}
+
+function withRichContent(open, content, pad) {
+  const c = (content || '').replace(/^\n+|\n+$/g, '');
+  if (!c.trim()) return `${pad}${open}/>`;
+  return `${pad}${open}>\n${indentRich(c, pad + IND)}\n${pad}</text>`;
+}
+
+function withCodeContent(open, code, pad) {
+  const c = decodeEntities((code || '')).replace(/^\n+|\n+$/g, '');
+  const tagName = open.slice(1).split(/[\s>]/)[0];
+  if (!c) return `${pad}${open}/>`;
+  if (/[<&]/.test(c)) {
+    const safe = c.replace(/\]\]>/g, ']]]]><![CDATA[>');
+    return `${pad}${open}>\n${pad}${IND}<![CDATA[${safe}]]>\n${pad}</${tagName}>`;
+  }
+  return `${pad}${open}>\n${c.split('\n').map(l => `${pad}${IND}${l}`).join('\n')}\n${pad}</${tagName}>`;
+}
+
+function indentRich(text, pad) {
+  return text.split('\n').map(l => l.trim() ? pad + l : l).join('\n');
+}
+
+export function fmt(v) {
+  if (typeof v !== 'number') return String(v);
+  const r = Math.round(v * 1000) / 1000;
+  return String(r);
+}
+
+export function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}

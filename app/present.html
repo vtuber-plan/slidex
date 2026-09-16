@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>SlideX 放映</title>
+<link rel="stylesheet" href="/runtime.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css">
+<style>
+html, body { margin: 0; height: 100%; background: #101419; overflow: hidden; font-family: 'Segoe UI', 'MiSans', sans-serif; }
+#stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+.slide-holder { position: absolute; transform-origin: center center; box-shadow: 0 10px 60px #000C; }
+#hud { position: fixed; right: 16px; bottom: 12px; color: #93A2B2; font-size: 13px; z-index: 9; user-select: none; }
+#hint { position: fixed; left: 16px; bottom: 12px; color: #5A6673; font-size: 12px; z-index: 9; user-select: none; }
+#notes { position: fixed; left: 0; right: 0; bottom: 0; background: #E7EDF2; color: #22303A; padding: 10px 18px; font-size: 15px; line-height: 1.6; max-height: 22vh; overflow: auto; display: none; z-index: 8; border-top: 2px solid #14606C; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="notes"></div>
+<div id="hud">1 / ?</div>
+<div id="hint">←→/空格 翻页 · N 备注 · F 全屏 · Esc 退出</div>
+<script src="/runtime.js"></script>
+<script type="module">
+import { parseSlideX } from '/src/ir.js';
+import { renderSlide } from '/src/render/render.js';
+
+const { xml } = await fetch('/api/deck').then(r => r.json());
+const { deck } = parseSlideX(xml);
+const stage = document.getElementById('stage');
+const holders = [];
+deck.slides.forEach((s, i) => {
+  const h = document.createElement('div');
+  h.className = 'slide-holder';
+  h.style.display = i === 0 ? '' : 'none';
+  h.innerHTML = renderSlide(deck, s, { mediaBase: '/f/' });
+  stage.appendChild(h);
+  holders.push(h);
+});
+let cur = 0;
+function fit() {
+  const k = Math.min(innerWidth / deck.width, (innerHeight - 14) / deck.height);
+  for (const h of holders) h.style.transform = `scale(${k})`;
+}
+function show(i) {
+  if (i < 0 || i >= holders.length) return;
+  holders[cur].style.display = 'none';
+  cur = i;
+  const h = holders[cur];
+  h.style.display = '';
+  fit();
+  document.getElementById('hud').textContent = `${cur + 1} / ${holders.length}`;
+  if (window.slxRenderMath) slxRenderMath(h);
+  document.getElementById('notes').textContent = deck.slides[cur].notes || '（本页无备注）';
+}
+addEventListener('resize', fit);
+addEventListener('keydown', (e) => {
+  if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { show(cur + 1); e.preventDefault(); }
+  else if (['ArrowLeft', 'PageUp'].includes(e.key)) { show(cur - 1); e.preventDefault(); }
+  else if (e.key === 'Home') show(0);
+  else if (e.key === 'End') show(holders.length - 1);
+  else if (e.key === 'n' || e.key === 'N') { const n = document.getElementById('notes'); n.style.display = n.style.display === 'block' ? 'none' : 'block'; }
+  else if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+  else if (e.key === 'Escape' && document.fullscreenElement) document.exitFullscreen?.();
+});
+document.addEventListener('click', (e) => {
+  if (e.clientX > innerWidth / 2) show(cur + 1); else show(cur - 1);
+});
+show(0);
+</script>
+</body>
+</html>

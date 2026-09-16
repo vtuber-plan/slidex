@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlideX Editor</title>
+<link rel="stylesheet" href="/runtime.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css">
+<link rel="stylesheet" href="/app/styles.css">
+</head>
+<body>
+<header id="toolbar">
+  <div class="tb-group">
+    <span id="logo">Slide<b>X</b></span>
+    <span id="deckName" class="muted" title="">—</span>
+  </div>
+  <div class="tb-group">
+    <button id="btnNewSlide" title="新建页">＋页</button>
+    <button id="btnDupSlide" title="复制当前页">复制页</button>
+    <button id="btnDelSlide" title="删除当前页">删页</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnUndo" title="撤销 (Ctrl+Z)">↩</button>
+    <button id="btnRedo" title="重做 (Ctrl+Y)">↪</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <span class="tb-label">插入</span>
+    <select id="insertType">
+      <option value="">选择元素…</option>
+      <option value="text">文本</option>
+      <option value="shape:rect">矩形</option>
+      <option value="shape:roundRect">圆角矩形</option>
+      <option value="shape:ellipse">椭圆</option>
+      <option value="shape:rightArrow">箭头</option>
+      <option value="shape:star5">五角星</option>
+      <option value="shape:donut">圆环</option>
+      <option value="line">线条</option>
+      <option value="image">图片</option>
+      <option value="icon">图标</option>
+      <option value="table">表格</option>
+      <option value="chart">图表</option>
+      <option value="code">代码</option>
+      <option value="formula">公式</option>
+    </select>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button class="align-btn" data-align="left" title="左对齐">⇤</button>
+    <button class="align-btn" data-align="center" title="水平居中">↔</button>
+    <button class="align-btn" data-align="right" title="右对齐">⇥</button>
+    <button class="align-btn" data-align="top" title="顶对齐">⇧</button>
+    <button class="align-btn" data-align="middle" title="垂直居中">↕</button>
+    <button class="align-btn" data-align="bottom" title="底对齐">⇩</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <button id="btnFront" title="置于顶层">⬆</button>
+    <button id="btnBack" title="置于底层">⬇</button>
+  </div>
+  <div class="tb-spacer"></div>
+  <div class="tb-group">
+    <button id="btnSource" title="查看/编辑 XML 源码">源码</button>
+    <button id="btnPresent" title="放映 (F5)">放映</button>
+    <button id="btnSave" class="primary" title="保存 (Ctrl+S)">保存</button>
+    <select id="exportFormat">
+      <option value="">导出…</option>
+      <option value="png">PNG（每页 2x）</option>
+      <option value="pdf">PDF（矢量文本）</option>
+      <option value="pptx">PPTX（一比一）</option>
+      <option value="html">HTML（自包含）</option>
+    </select>
+  </div>
+</header>
+
+<div id="main">
+  <aside id="slidesPane">
+    <div id="thumbs"></div>
+  </aside>
+  <div id="canvasArea">
+    <div id="canvasScroll">
+      <div id="canvasWrap">
+        <div id="canvasHost"></div>
+        <div id="overlay"></div>
+      </div>
+    </div>
+  </div>
+  <aside id="inspector">
+    <div id="inspectorBody">
+      <div class="insp-empty">未选中元素<br><small>点击画布中的元素查看属性</small></div>
+    </div>
+  </aside>
+</div>
+
+<footer id="statusbar">
+  <div id="diag">就绪</div>
+  <div id="statusRight">
+    <button id="zoomOut">−</button>
+    <span id="zoomLabel">100%</span>
+    <button id="zoomIn">＋</button>
+    <button id="zoomFit">适配</button>
+  </div>
+</footer>
+
+<div id="sourceModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <b>deck.slx 源码</b>
+      <span class="muted small">编辑后点「应用」——有语法错误不会应用</span>
+      <div>
+        <button id="srcFormat">整理格式</button>
+        <button id="srcApply" class="primary">应用</button>
+        <button id="srcClose">关闭</button>
+      </div>
+    </div>
+    <div id="srcError" class="src-error hidden"></div>
+    <textarea id="sourceText" spellcheck="false"></textarea>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+window.__slxErrors = [];
+window.addEventListener('error', e => window.__slxErrors.push('ERROR ' + e.message + ' @' + (e.filename||'').split('/').pop() + ':' + e.lineno));
+window.addEventListener('unhandledrejection', e => window.__slxErrors.push('REJECT ' + String(e.reason && e.reason.stack || e.reason).slice(0, 300)));
+</script>
+<script src="/runtime.js"></script>
+<script type="module" src="/app/editor.js"></script>
+</body>
+</html>

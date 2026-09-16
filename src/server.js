@@ -1,0 +1,163 @@
+// server.js — 本地编辑服务器：静态 app + deck API + 媒体挂载 + 渲染页 + 导出触发
+
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseSlideX } from './ir.js';
+import { slidePageHtml, renderSlide, slideCss, cdnLinks, runtimeJs } from './render/render.js';
+import { exportDeck } from './export/export.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const APP = path.join(ROOT, 'app');
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon',
+  '.ttf': 'font/ttf', '.woff': 'font/woff', '.woff2': 'font/woff2', '.pdf': 'application/pdf',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
+export function startServer(deckPath, opts = {}) {
+  const deckFile = path.resolve(deckPath);
+  const deckDir = path.dirname(deckFile);
+  const outDir = path.join(deckDir, 'out');
+
+  const server = http.createServer(async (req, res) => {
+    try {
+      await route(req, res);
+    } catch (e) {
+      send(res, 500, { error: String(e && e.message || e) });
+    }
+  });
+
+  function send(res, code, body, headers = {}) {
+    res.writeHead(code, { 'Cache-Control': 'no-store', ...headers });
+    res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
+  }
+
+  function readBody(req) {
+    return new Promise((ok) => {
+      let buf = '';
+      req.on('data', (c) => { buf += c; });
+      req.on('end', () => { try { ok(JSON.parse(buf || '{}')); } catch { ok({}); } });
+    });
+  }
+
+  function serveFile(res, file, download) {
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { send(res, 404, { error: 'not found: ' + file }); return; }
+    const ext = path.extname(file).toLowerCase();
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store', ...(download ? { 'Content-Disposition': `attachment; filename="${path.basename(file)}"` } : {}) });
+    fs.createReadStream(file).pipe(res);
+  }
+
+  // 路径安全：不允许 ..，限定在 base 内
+  const safeJoin = (base, rel) => {
+    const p = path.resolve(base, '.' + path.sep + rel.replace(/\\/g, '/'));
+    return p.startsWith(path.resolve(base)) ? p : null;
+  };
+
+  async function route(req, res) {
+    const u = new URL(req.url, 'http://x');
+    const p = u.pathname;
+
+    if (req.method === 'GET' && (p === '/' || p === '/index.html')) { serveFile(res, path.join(APP, 'index.html')); return; }
+    if (req.method === 'GET' && p === '/favicon.ico') { send(res, 204, ''); return; }
+    if (req.method === 'GET' && p === '/present') { serveFile(res, path.join(APP, 'present.html')); return; }
+    if (req.method === 'GET' && p === '/runtime.js') { send(res, 200, runtimeJs(), { 'Content-Type': MIME['.js'] }); return; }
+    if (req.method === 'GET' && p === '/runtime.css') { send(res, 200, slideCss(), { 'Content-Type': MIME['.css'] }); return; }
+    if (req.method === 'GET' && p.startsWith('/app/')) { const f = safeJoin(APP, p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
+    if (req.method === 'GET' && p.startsWith('/src/')) { const f = safeJoin(path.join(ROOT, 'src'), p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
+    if (req.method === 'GET' && p.startsWith('/f/')) {
+      const f = safeJoin(deckDir, decodeURIComponent(p.slice(3)));
+      if (!f) { send(res, 403, {}); return; }
+      serveFile(res, f);
+      return;
+    }
+    if (req.method === 'GET' && p.startsWith('/out/')) {
+      const f = safeJoin(outDir, p.slice(4));
+      if (!f) { send(res, 403, {}); return; }
+      serveFile(res, f, true);
+      return;
+    }
+    if (req.method === 'GET' && p === '/api/deck') {
+      const xml = fs.readFileSync(deckFile, 'utf8');
+      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml });
+      return;
+    }
+    if (req.method === 'GET' && /^\/render\/\d+$/.test(p)) {
+      const i = Number(p.slice(8));
+      const xml = fs.readFileSync(deckFile, 'utf8');
+      const { deck, errors } = parseSlideX(xml);
+      if (!deck.slides[i]) { send(res, 404, { error: 'slide ' + i + ' 不存在' }); return; }
+      send(res, 200, slidePageHtml(deck, i, { mediaBase: '/f/' }), { 'Content-Type': MIME['.html'] });
+      return;
+    }
+    if (req.method === 'GET' && p === '/api/print') {
+      // 全部页拼接的打印视图（PDF 抓取用）
+      const xml = fs.readFileSync(deckFile, 'utf8');
+      const { deck } = parseSlideX(xml);
+      send(res, 200, printHtml(deck), { 'Content-Type': MIME['.html'] });
+      return;
+    }
+    if (req.method === 'POST' && p === '/api/validate') {
+      const { xml } = await readBody(req);
+      const r = parseSlideX(xml || '');
+      send(res, 200, { errors: r.errors, warnings: r.warnings });
+      return;
+    }
+    if (req.method === 'POST' && p === '/api/save') {
+      const { xml } = await readBody(req);
+      const r = parseSlideX(xml || '');
+      if (r.errors.some(e => e.code.startsWith('E_XML'))) {
+        send(res, 200, { ok: false, errors: r.errors });
+        return;
+      }
+      const tmp = deckFile + '.tmp';
+      fs.writeFileSync(tmp, xml, 'utf8');
+      fs.renameSync(tmp, deckFile);
+      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings });
+      return;
+    }
+    if (req.method === 'POST' && p === '/api/export') {
+      const { format = 'png', scale = 2 } = await readBody(req);
+      try {
+        const result = await exportDeck(deckFile, { format, scale, baseUrl: null });
+        send(res, 200, { ok: true, ...result });
+      } catch (e) {
+        send(res, 200, { ok: false, error: String(e && e.message || e) });
+      }
+      return;
+    }
+    send(res, 404, { error: 'no route: ' + p });
+  }
+
+  return new Promise((resolve) => {
+    server.listen(opts.port || 0, opts.host || '127.0.0.1', () => {
+      resolve({ server, port: server.address().port, deckFile, deckDir, close: () => server.close() });
+    });
+  });
+}
+
+function printHtml(deck) {
+  const cdn = cdnLinks();
+  const pages = deck.slides.map((s) => {
+    const html = renderSlide(deck, s, { mediaBase: '/f/' });
+    return `<div class="pg" style="width:${deck.width}pt;height:${deck.height}pt">${html}</div>`;
+  }).join('\n');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link rel="stylesheet" href="${cdn.katexCss}"><link rel="stylesheet" href="${cdn.faCss}">
+${(deck.fonts || []).map(f => `<link rel="stylesheet" href="${f.src}">`).join('')}
+<style>
+@page { size: ${deck.width}pt ${deck.height}pt; margin: 0 }
+html,body{margin:0;padding:0}
+.pg{page-break-after:always;overflow:hidden;position:relative}
+.pg:last-child{page-break-after:auto}
+${slideCss()}
+</style></head><body>
+${pages}
+<script src="${cdn.katexJs}" onerror=""></script>
+<script>${runtimeJs()}</script>
+</body></html>`;
+}
