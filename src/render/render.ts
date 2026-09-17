@@ -105,10 +105,10 @@ window.slxRenderMath = function (root) {
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
     if (el.getAttribute('data-done')) continue;
-    el.setAttribute('data-done', '1');
     if (ok) {
       try {
         katex.render(el.getAttribute('data-tex') || '', el, { throwOnError: false, displayMode: el.classList.contains('slx-formula') });
+        el.setAttribute('data-done', '1');
       } catch (e) { /* 保留原文 */ }
     }
   }

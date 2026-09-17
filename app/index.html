@@ -165,6 +165,7 @@ window.addEventListener('error', e => window.__slxErrors.push('ERROR ' + e.messa
 window.addEventListener('unhandledrejection', e => window.__slxErrors.push('REJECT ' + String(e.reason && e.reason.stack || e.reason).slice(0, 300)));
 </script>
 <script src="/runtime.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" onerror="window.__katex_failed=1" onload="try{window.slxRenderMath(document)}catch(e){}"></script>
 <script type="module" src="/app/dist/editor.js"></script>
 </body>
 </html>
