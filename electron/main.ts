@@ -215,6 +215,39 @@ function createWindow(): void {
     void syncLang();
   });
   win.on('closed', () => { win = null; });
+  // 页面的 beforeunload 在 Electron 里会静默拦截关闭（点 ✕ 毫无反应），
+  // 这里显式接管：脏状态下询问 保存/不保存/取消，destroy() 绕过 beforeunload
+  win.on('close', (e) => {
+    if (!win || win.isDestroyed()) return;
+    e.preventDefault();
+    void handleClose();
+  });
+}
+
+let closeIntent = false;
+async function handleClose(): Promise<void> {
+  if (!win || win.isDestroyed() || closeIntent) return;
+  closeIntent = true;
+  try {
+    const dirty = await win.webContents.executeJavaScript('window.__slxDirty === true').catch(() => false) as boolean;
+    if (dirty) {
+      const r = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        title: 'SlideX',
+        message: M(`保存对「${deckFile ? deckFile.split(/[\\/]/).pop() : 'deck'}」的更改吗？`, `Save changes to "${deckFile ? deckFile.split(/[\\/]/).pop() : 'deck'}"?`),
+        detail: M('未保存的修改将会丢失。', 'Unsaved changes will be lost.'),
+        buttons: [M('保存', 'Save'), M('不保存', "Don't Save"), M('取消', 'Cancel')],
+        defaultId: 0, cancelId: 2, noLink: true,
+      });
+      if (r === 2) return;                      // 取消：留在编辑器
+      if (r === 0) {                            // 保存：等待 /api/save 完成再关
+        await win.webContents.executeJavaScript('window.__slxSave ? window.__slxSave() : Promise.resolve()').catch(() => {});
+      }
+    }
+    win.destroy();
+  } finally {
+    closeIntent = false;
+  }
 }
 
 app.whenReady().then(async () => {

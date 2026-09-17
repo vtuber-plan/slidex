@@ -12,7 +12,8 @@ declare global {
     slxRenderMath?: (root?: ParentNode) => boolean;
     __slxErrors?: string[];
     __slxGetXml?: () => string;
-    __slxSave?: () => void;
+    __slxSave?: () => Promise<void>;
+    __slxDirty?: boolean;
   }
 }
 
@@ -25,6 +26,8 @@ let cur = 0;
 let sel = new Set<string>();
 let zoom = 1;
 let dirty = false;
+/** 脏标记同步到 window.__slxDirty：Electron 主进程据此决定关闭前是否询问保存 */
+function setDirty(v: boolean): void { dirty = v; (window as unknown as { __slxDirty?: boolean }).__slxDirty = v; }
 let history: string[] = [], future: string[] = [];
 let burstOpen = false, burstTimer = 0;
 let clipboard: SlideElement[] = [];
@@ -64,14 +67,14 @@ function snapshot(): void {
   history.push(serializeDeck(deck));
   if (history.length > 100) history.shift();
   future = [];
-  dirty = true;
+  setDirty(true);
   updateUndo();
 }
 function openBurst(): void {
   if (!burstOpen) { history.push(serializeDeck(deck)); if (history.length > 100) history.shift(); future = []; burstOpen = true; updateUndo(); }
   clearTimeout(burstTimer);
   burstTimer = window.setTimeout(() => { burstOpen = false; }, 1200);
-  dirty = true;
+  setDirty(true);
 }
 function undo(): void {
   if (!history.length) return;
@@ -97,7 +100,7 @@ function applyXml(xml: string, { keepHistory = false } = {}): boolean {
   cur = Math.min(cur, deck.slides.length - 1);
   const ids = new Set(slide().elements.map(e => e.id));
   sel = new Set([...sel].filter(id => ids.has(id)));
-  dirty = true;
+  setDirty(true);
   renderAll();
   return true;
 }
@@ -900,7 +903,7 @@ async function save(): Promise<void> {
   const xml = serializeDeck(deck);
   const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ xml }) }).then(x => x.json()) as { ok: boolean; errors?: Diag[]; warnings?: Diag[] };
   if (r.ok) {
-    dirty = false;
+    setDirty(false);
     errors = r.errors ?? errors;
     warnings = r.warnings ?? warnings;
     renderDiag();
@@ -1057,6 +1060,6 @@ function toast(html: string, cls = '', ms = 3200): void {
 
 // 桌面端（Electron 菜单）集成接口
 window.__slxGetXml = () => serializeDeck(deck);
-window.__slxSave = () => save();
+window.__slxSave = () => save(); // 返回 Promise：Electron 关闭前保存需要 await 完成
 
 init();

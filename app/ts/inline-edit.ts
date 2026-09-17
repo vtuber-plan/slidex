@@ -106,6 +106,9 @@ export function initEditBar(): void {
   const color = bar.querySelector<HTMLInputElement>('#editColor');
   color?.addEventListener('mousedown', e => e.stopPropagation());
   color?.addEventListener('input', () => { if (color.value) applyStyleToSelection('color', color.value); });
+  const done = bar.querySelector<HTMLButtonElement>('#editDone');
+  done?.addEventListener('mousedown', e => e.preventDefault()); // 不让按钮抢走编辑焦点
+  done?.addEventListener('click', () => finishInlineEdit(true));
   document.execCommand('defaultParagraphSeparator', false, 'p');
 }
 
