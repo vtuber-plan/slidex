@@ -109,11 +109,15 @@ button.active { border-color: var(--accent); color: var(--accent); background: t
 
 /* 画布区 */
 #canvasArea { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
-#canvasScroll { position: absolute; inset: 0; overflow: auto; }
+/* scrollbar-gutter 常驻留位：滚动条出现/消失时内容不再横竖跳动 */
+#canvasScroll { position: absolute; inset: 0; overflow: auto; scrollbar-gutter: stable; }
 #canvasWrap { position: relative; margin: 36px auto; width: min-content; box-shadow: 0 3px 14px var(--shadow), 0 12px 44px var(--shadow); }
 #canvasHost { pointer-events: none; }
 #canvasHost .slx-slide { outline: 1px solid var(--slide-edge); outline-offset: -1px; }
 #canvasHost .slx-el { pointer-events: auto; cursor: move; }
+/* 禁原生文本选择：dblclick 的词选中会触发浏览器"揭示选区"滚动，导致画布跳动 */
+#canvasHost .slx-el, #canvasHost .slx-el * { user-select: none; }
+.slx-editing, .slx-editing * { user-select: text !important; }
 #canvasHost .slx-el[data-master] { pointer-events: none; cursor: default; }
 #canvasArea.dragging, #canvasArea.dragging * { cursor: grabbing !important; }
 #overlay { position: absolute; inset: 0; pointer-events: none; }

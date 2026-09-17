@@ -199,14 +199,14 @@ function buildHitboxes(slideEl: HTMLElement): void {
         const host = elDiv.querySelector<HTMLElement>('.slx-text') ?? elDiv;
         startInlineEdit(el, host, deck, {
           onSnapshot: snapshot,
-          showBar: (tel) => showEditBar(tel, zoom),
+          showBar: (tel) => showEditBar(tel, zoom, deck.width),
           hideBar: hideEditBar,
           onDone: () => renderCanvas(),
           onSave: () => save(),
         });
       } else {
         const ta = $('inspectorBody').querySelector<HTMLTextAreaElement>('textarea');
-        if (ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+        if (ta) { ta.focus({ preventScroll: true }); ta.selectionStart = ta.value.length; }
       }
     });
   });
@@ -244,6 +244,11 @@ function renderOverlay(): void {
     const tag = document.createElement('div');
     tag.className = 'size-tag';
     tag.textContent = `${Math.round(el.w ?? 0)} × ${Math.round(el.h ?? 0)}`;
+    // 贴近画布底边时收到选框内侧，避免越界撑出滚动条
+    if (((el.y ?? 0) + (el.h ?? 0)) * zoom + 24 > deck.height * zoom) {
+      tag.style.bottom = 'auto';
+      tag.style.top = '-20px';
+    }
     box.appendChild(tag);
     ov.appendChild(box);
   }
@@ -702,7 +707,7 @@ function insertElement(spec: string): void {
   const el = newElement(type as ElementType);
   if (variant && type === 'shape') el.name = variant;
   if (type === 'image') {
-    const src = prompt(t('insp.none'), 'media/');
+    const src = prompt(t('t.imgSrc'), 'media/');
     if (src === null) return;
     el.src = src;
   }

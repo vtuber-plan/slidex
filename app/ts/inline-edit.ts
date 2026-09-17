@@ -32,13 +32,25 @@ export function startInlineEdit(el: SlideElement, hostEl: HTMLElement, deck: Dec
   hostEl.innerHTML = renderRichText(el.content ?? '', { deck });
   hostEl.contentEditable = 'true';
   hostEl.classList.add('slx-editing');
-  hostEl.focus();
+  // 记录滚动位置：focus 与 addRange 都会触发"滚动到光标"，统一还原，避免画布跳动
+  const scroller = hostEl.closest('#canvasScroll') as HTMLElement | null;
+  const sl = scroller?.scrollLeft ?? 0, st = scroller?.scrollTop ?? 0;
+  hostEl.focus({ preventScroll: true });
   const range = document.createRange();
   range.selectNodeContents(hostEl);
   range.collapse(false);
   const s = getSelection();
   s?.removeAllRanges();
   if (s) s.addRange(range);
+  // Chrome 在 dblclick/选区后的异步"滚动到揭示"会挪动画布（约 20-40ms 后发生，
+  // 与单次还原存在竞态）：进入编辑后的短窗口内周期性重申滚动位置，保证不位移
+  if (scroller) {
+    let n = 0;
+    const iv = setInterval(() => {
+      scroller.scrollLeft = sl; scroller.scrollTop = st;
+      if (++n >= 10) clearInterval(iv);
+    }, 30);
+  }
   hostEl.addEventListener('keydown', onKey);
   hostEl.addEventListener('blur', onBlur);
   opts.showBar(el);
@@ -97,12 +109,16 @@ export function initEditBar(): void {
   document.execCommand('defaultParagraphSeparator', false, 'p');
 }
 
-export function showEditBar(el: SlideElement, zoom: number): void {
+export function showEditBar(el: SlideElement, zoom: number, canvasW = Infinity): void {
   const bar = document.getElementById('editBar');
   if (!bar) return;
   bar.classList.remove('hidden');
-  bar.style.left = Math.max(4, (el.x ?? 0) * zoom) + 'px';
-  bar.style.top = Math.max(34, (el.y ?? 0) * zoom - 40) + 'px';
+  // 夹紧在画布可视范围内：越界的绝对定位会撑大滚动区，导致画布跳动
+  const viewW = canvasW * zoom;
+  const barW = bar.offsetWidth || 420;
+  const left = Math.min(Math.max(4, (el.x ?? 0) * zoom), Math.max(4, viewW - barW - 4));
+  bar.style.left = left + 'px';
+  bar.style.top = Math.max(4, (el.y ?? 0) * zoom - 40) + 'px';
 }
 
 export function hideEditBar(): void {
