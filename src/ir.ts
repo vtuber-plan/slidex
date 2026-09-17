@@ -1,21 +1,26 @@
-// ir.js — 语法树 → IR（中间表示）；属性 schema、默认值、主题解析、语义校验、元素工厂。
+// ir.ts — 语法树 → IR（中间表示）；属性 schema、默认值、主题解析、语义校验、元素工厂。
 // 属性 schema 是解析/序列化/检查器三端共用的单一事实来源。
 
 import { parseXML, escapeHtml, decodeEntities } from './parser.js';
+import type {
+  Animation, AttrSpec, AxisSpec, ChartSeries, Deck, DeckTheme, Diag, ElementSchema,
+  ElementType, Fill, ParseResult, Shadow, SlideContainer, SlideElement, StyleAttrs,
+  TableStyle, TableCell, ValidateOptions, XMLNode,
+} from './types.js';
 
 // ────────────────────────────── 属性 schema ──────────────────────────────
 // [name, kind, default]  kind: num|bool|str|color ；default===undefined 表示必填（几何除外，另有检查）
-const GEOM = [
+const GEOM: AttrSpec[] = [
   ['x', 'num', 0], ['y', 'num', 0], ['w', 'num', 0], ['h', 'num', 0],
   ['rotation', 'num', 0], ['opacity', 'num', 1], ['flip-h', 'bool', false], ['flip-v', 'bool', false],
 ];
-const TEXT_STYLE = [
+const TEXT_STYLE: AttrSpec[] = [
   ['color', 'color'], ['font-size', 'num'], ['font-family', 'str'], ['bold', 'bool'],
   ['italic', 'bool'], ['line-height', 'num'], ['line-height-px', 'num'], ['letter-spacing', 'num'],
   ['background-color', 'color'],
 ];
 
-export const ELEMENT_SCHEMA = {
+export const ELEMENT_SCHEMA: ElementSchema = {
   text: {
     label: '文本', attrs: [
       ...GEOM, ['style', 'str'], ['align', 'str', 'left top'], ['wrap', 'bool', true],
@@ -82,9 +87,9 @@ export const MONO_STACK_BASE = "'JetBrains Mono',Consolas,'Cascadia Code','Couri
 
 // ────────────────────────────── 主入口 ──────────────────────────────
 
-export function parseSlideX(xml) {
-  const errors = [];
-  const warnings = [];
+export function parseSlideX(xml: string): ParseResult {
+  const errors: Diag[] = [];
+  const warnings: Diag[] = [];
   const { root, errors: xmlErrors } = parseXML(xml);
   errors.push(...xmlErrors);
   if (!root) return { deck: emptyDeck(), errors, warnings };
@@ -98,11 +103,11 @@ export function parseSlideX(xml) {
   return { deck: v, errors, warnings };
 }
 
-function emptyDeck() {
+function emptyDeck(): Deck {
   return { version: '1', title: '', width: 960, height: 540, fonts: [], theme: defaultTheme(), masters: [], slides: [] };
 }
 
-export function defaultTheme() {
+export function defaultTheme(): DeckTheme {
   return {
     colors: { paper: '#FFFFFF', ink: '#1A1A1A', primary: '#2563EB', accent: '#F59E0B', muted: '#6B7280', tint: '#F1F5F9' },
     textStyles: {},
@@ -112,7 +117,7 @@ export function defaultTheme() {
 
 // ────────────────────────────── deck 构建 ──────────────────────────────
 
-function buildDeck(root, errors, warnings) {
+function buildDeck(root: XMLNode, errors: Diag[], warnings: Diag[]): Deck {
   const deck = emptyDeck();
   deck.theme = { colors: {}, textStyles: {}, tableStyles: {} }; // 正常解析从空主题开始（不写默认调色板进序列化）
   deck.version = root.attrs.version || '1';
@@ -143,7 +148,7 @@ function buildDeck(root, errors, warnings) {
   return deck;
 }
 
-function buildTheme(node, deck, errors, warnings) {
+function buildTheme(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[]): void {
   for (const c of node.children) {
     if (c.name === 'palette') {
       for (const k of c.children) {
@@ -157,7 +162,7 @@ function buildTheme(node, deck, errors, warnings) {
       for (const k of c.children) {
         if (k.name !== 'style') continue;
         if (!k.attrs.name) { errors.push({ code: 'E_XML', message: '<style> 缺少 name', line: k.line, col: k.col }); continue; }
-        const st = {};
+        const st: StyleAttrs = {};
         for (const a in k.attrs) if (a !== 'name') st[a] = k.attrs[a];
         deck.theme.textStyles[k.attrs.name] = st;
       }
@@ -165,7 +170,7 @@ function buildTheme(node, deck, errors, warnings) {
       for (const k of c.children) {
         if (k.name !== 'table-style') continue;
         if (!k.attrs.name) { errors.push({ code: 'E_XML', message: '<table-style> 缺少 name', line: k.line, col: k.col }); continue; }
-        const ts = { header: null, lastRow: null, firstCol: null, lastCol: null, body: [], cell: {}, rowOverCol: k.attrs['row-over-col'] !== 'false' };
+        const ts: TableStyle = { header: null, lastRow: null, firstCol: null, lastCol: null, body: [], cell: {}, rowOverCol: k.attrs['row-over-col'] !== 'false' };
         for (const b of k.children) {
           const cs = cellStyleFromAttrs(b.attrs);
           if (b.name === 'header') ts.header = cs;
@@ -182,16 +187,16 @@ function buildTheme(node, deck, errors, warnings) {
   }
 }
 
-function cellStyleFromAttrs(attrs) {
-  const cs = {};
+function cellStyleFromAttrs(attrs: Record<string, string | undefined>): StyleAttrs {
+  const cs: StyleAttrs = {};
   for (const a in attrs) cs[a] = attrs[a];
   return cs;
 }
 
 // ────────────────────────────── slide / element 构建 ──────────────────────────────
 
-function buildSlideContainer(node, deck, errors, warnings, isMaster) {
-  const container = {
+function buildSlideContainer(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[], isMaster: boolean): SlideContainer {
+  const container: SlideContainer = {
     id: node.attrs.id || '',
     type: isMaster ? 'master' : (node.attrs.type || 'content'),
     background: null,
@@ -205,7 +210,7 @@ function buildSlideContainer(node, deck, errors, warnings, isMaster) {
   for (const c of node.children) {
     if (c.name === 'background') container.background = fillFrom(c);
     else if (c.name === 'animation') {
-      const a = {
+      const a: Animation = {
         target: c.attrs.target || '',
         effect: c.attrs.effect || 'fade-in',
         trigger: c.attrs.trigger || 'onClick',
@@ -224,9 +229,9 @@ function buildSlideContainer(node, deck, errors, warnings, isMaster) {
   return container;
 }
 
-function buildElement(node, deck, errors, warnings) {
+function buildElement(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[]): SlideElement {
   const schema = ELEMENT_SCHEMA[node.name];
-  const el = { type: node.name, id: node.attrs.id || '', line: node.line, col: node.col, srcAttrs: { ...node.attrs } };
+  const el: SlideElement = { type: node.name as ElementType, id: node.attrs.id || '', line: node.line, col: node.col, srcAttrs: { ...node.attrs } }; // 调用方已用 ELEMENT_SCHEMA[名字] 把关
   const known = new Set(schema.attrs.map(a => a[0]));
 
   for (const [name, kind, def] of schema.attrs) {
@@ -260,7 +265,7 @@ function buildElement(node, deck, errors, warnings) {
   return el;
 }
 
-function buildElementChildren(el, node, deck, errors, warnings) {
+function buildElementChildren(el: SlideElement, node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[]): void {
   for (const c of node.children) {
     switch (el.type + '/' + c.name) {
       case 'shape/fill':
@@ -269,10 +274,10 @@ function buildElementChildren(el, node, deck, errors, warnings) {
       case 'table/cols': el.cols = numList(c.content || c.attrs.value || ''); break;
       case 'table/rows': el.rowsRatio = numList(c.content || c.attrs.value || ''); break;
       case 'table/tr': {
-        const tr = [];
+        const tr: TableCell[] = [];
         for (const td of c.children) {
           if (td.name !== 'td') { warn(warnings, td, 'W_UNKNOWN_TAG', `<tr> 内应为 <td>，实际 <${td.name}>`); continue; }
-          const cell = { text: td.content || '' };
+          const cell: TableCell = { text: td.content || '' };
           for (const a in td.attrs) if (a !== 'id') cell[a] = td.attrs[a];
           tr.push(cell);
         }
@@ -282,7 +287,7 @@ function buildElementChildren(el, node, deck, errors, warnings) {
       }
       case 'chart/data': {
         const cols = (c.attrs.cols || '').split(',').map(x => x.trim()).filter(Boolean);
-        const rows = [];
+        const rows: Array<Array<string | number | null>> = [];
         for (const r of c.children) {
           if (r.name !== 'row') continue;
           rows.push((r.content || '').split(',').map(x => {
@@ -297,7 +302,7 @@ function buildElementChildren(el, node, deck, errors, warnings) {
       }
       case 'chart/series': {
         el.seriesList = el.seriesList || [];
-        const se = { type: c.attrs.type || 'bar' };
+        const se: ChartSeries = { type: c.attrs.type || 'bar' };
         for (const a in c.attrs) if (a !== 'type') se[a] = c.attrs[a];
         se.line = c.line;
         el.seriesList.push(se);
@@ -322,7 +327,7 @@ function buildElementChildren(el, node, deck, errors, warnings) {
   }
 }
 
-function fillFrom(node) {
+function fillFrom(node: XMLNode): Fill {
   const t = node.attrs.type || 'solid';
   if (t === 'solid') return { type: 'solid', color: node.attrs.color || node.content?.trim() || '#FFFFFF' };
   if (t === 'gradient') {
@@ -332,21 +337,23 @@ function fillFrom(node) {
   if (t === 'image') return { type: 'image', src: node.attrs.src || '', fit: node.attrs.fit || 'cover', opacity: num(node.attrs.opacity, 1) };
   return { type: 'solid', color: '#FFFFFF' };
 }
-export function solidFill(color) { return { type: 'solid', color }; }
+export function solidFill(color: string): Fill { return { type: 'solid', color }; }
 
 // 属性名 → IR 键：kebab-case → camelCase
-function attrKey(name) { return name.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
+function attrKey(name: string): string { return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()); }
 // IR 键 → 属性名（serializer 用）
-export function irKeyToAttr(key) {
-  return key.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
+export function irKeyToAttr(key: string): string {
+  return key.replace(/[A-Z]/g, (c: string) => '-' + c.toLowerCase());
 }
 
 // ────────────────────────────── 校验 ──────────────────────────────
 
+type RefCheck = (val: unknown, ctx: string, node?: { line?: number; col?: number }) => void;
+
 // opts.katexOnline === false：调用方/环境声明当前为离线渲染（见 W_KATEX_OFFLINE）。
-export function validateDeck(deck, errors = [], warnings = [], opts = {}) {
+export function validateDeck(deck: Deck, errors: Diag[] = [], warnings: Diag[] = [], opts: ValidateOptions = {}): Deck {
   // palette 无循环（build 时已挡）；引用存在性
-  const refCheck = (val, ctx, node) => {
+  const refCheck: RefCheck = (val, ctx, node) => {
     if (typeof val === 'string' && val.startsWith('$')) {
       const nm = val.slice(1);
       if (!deck.theme.colors[nm]) errors.push({ code: 'E_THEME_REF', message: `${ctx} 引用了不存在的调色板颜色 ${val}`, line: node?.line, col: node?.col });
@@ -359,11 +366,11 @@ export function validateDeck(deck, errors = [], warnings = [], opts = {}) {
 
   const katexOffline = katexOfflineDeclared(opts);
   for (const master of deck.masters) {
-    const ids = new Set();
+    const ids = new Set<string>();
     for (const el of master.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
   }
   for (const slide of deck.slides) {
-    const ids = new Set(); // id 唯一性按页内校验
+    const ids = new Set<string>(); // id 唯一性按页内校验
     for (const el of slide.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
     if (slide.master && !deck.masters.some(m => m.id === slide.master)) {
       errors.push({ code: 'E_MASTER_REF', message: `<slide> 引用了不存在的母版 master="${slide.master}"`, line: slide.line });
@@ -381,7 +388,7 @@ export function validateDeck(deck, errors = [], warnings = [], opts = {}) {
   return deck;
 }
 
-function validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline = false) {
+function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings: Diag[], refCheck: RefCheck, ids: Set<string>, katexOffline = false): void {
   const at = `<${el.type} id=${el.id || '?'}>`;
   if (el.id) {
     if (ids.has(el.id)) errors.push({ code: 'E_DUP_ID', message: `页面内 id 重复：${el.id}`, line: el.line, col: el.col });
@@ -426,26 +433,26 @@ function validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline
   }
 }
 
-function validateChart(el, deck, errors, refCheck) {
-  const colsSet = new Set(el.chartData.cols);
+function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: RefCheck): void {
+  const colsSet = new Set(el.chartData!.cols); // chart 元素经 buildElementChildren 后必有 chartData/seriesList
   const at = `<chart id=${el.id || '?'}>`;
-  if (!el.seriesList.length) errors.push({ code: 'E_CHART_MIX', message: `${at} 至少需要一个 <series>`, line: el.line, col: el.col });
-  const hasPie = el.seriesList.some(s => s.type === 'pie');
-  if (hasPie && el.seriesList.length > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} pie 系列必须独占（不能与其他系列混用）`, line: el.line, col: el.col });
-  const stackVals = new Set(el.seriesList.filter(s => s.stack).map(s => s.stack));
+  if (!el.seriesList!.length) errors.push({ code: 'E_CHART_MIX', message: `${at} 至少需要一个 <series>`, line: el.line, col: el.col });
+  const hasPie = el.seriesList!.some(s => s.type === 'pie');
+  if (hasPie && el.seriesList!.length > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} pie 系列必须独占（不能与其他系列混用）`, line: el.line, col: el.col });
+  const stackVals = new Set(el.seriesList!.filter(s => s.stack).map(s => s.stack));
   if (stackVals.size > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} 所有 stack 系列必须使用相同的 stack 值`, line: el.line, col: el.col });
-  for (const se of el.seriesList) {
+  for (const se of el.seriesList!) {
     if (!CHART_TYPES.has(se.type)) errors.push({ code: 'E_CHART_MIX', message: `series type="${se.type}" 不受支持（v1: bar/line/area/pie/scatter）`, line: se.line });
-    for (const ch of ['x', 'y']) {
+    for (const ch of ['x', 'y'] as const) {
       if (!se[ch]) errors.push({ code: 'E_ENCODE_COL', message: `series 缺少 encode 列 ${ch}`, line: se.line });
-      else if (!colsSet.has(se[ch])) errors.push({ code: 'E_ENCODE_COL', message: `series 的 ${ch} 列 "${se[ch]}" 不在 data.cols 中`, line: se.line });
+      else if (!colsSet.has(se[ch]!)) errors.push({ code: 'E_ENCODE_COL', message: `series 的 ${ch} 列 "${se[ch]}" 不在 data.cols 中`, line: se.line });
     }
     // 数值列检查：y 恒为数值；scatter 的 x 也为数值
-    const numCols = se.type === 'scatter' ? ['x', 'y'] : ['y'];
+    const numCols = (se.type === 'scatter' ? ['x', 'y'] : ['y']) as Array<'x' | 'y'>;
     for (const ch of numCols) {
-      const ci = el.chartData.cols.indexOf(se[ch]);
+      const ci = el.chartData!.cols.indexOf(se[ch]!);
       if (ci < 0) continue;
-      for (const row of el.chartData.rows) {
+      for (const row of el.chartData!.rows) {
         if (typeof row[ci] === 'string' && row[ci] !== '') {
           errors.push({ code: 'E_NON_NUMERIC', message: `series "${se.name || se.y}" 的 ${ch} 列 "${se[ch]}" 含非数值 "${row[ci]}"`, line: se.line });
           break;
@@ -456,9 +463,9 @@ function validateChart(el, deck, errors, refCheck) {
 }
 
 // 表格行宽校验：模拟合并覆盖网格（被 row-span/col-span 覆盖的格在数组中省略）
-function tableRowWidthErrors(rowsData, ncols) {
-  const errs = [];
-  const covered = [];
+function tableRowWidthErrors(rowsData: TableCell[][], ncols: number): Array<{ row: number; width: number }> {
+  const errs: Array<{ row: number; width: number }> = [];
+  const covered: boolean[][] = [];
   for (let r = 0; r < rowsData.length; r++) {
     covered[r] = covered[r] || [];
     let c = 0, width = 0;
@@ -492,14 +499,16 @@ function tableRowWidthErrors(rowsData, ncols) {
 //     约束：examples/quickstart/deck.slx 必须保持 0 错误 0 警告（水位线 </>、span 缩放副标题等均按此校准）。
 const OVERFLOW_MARGIN = 1.15;
 const OVERFLOW_NARROW = new Set(['<', '>', '/', '\\', '|', '(', ')', '[', ']', '{', '}', '"', "'", '`', '.', ',', ';', ':', '!', '?', '-', '–', '—', '·', '…', '_', '*', '&']);
-function overflowCharEm(ch) {
-  const code = ch.codePointAt(0);
+function overflowCharEm(ch: string): number {
+  const code = ch.codePointAt(0)!; // for-of 产出的字符至少 1 个码元，必非 undefined
   if (code >= 0x2e80) return 1.0; // CJK 部首/汉字/假名/谚文/全角符号（≥ U+2E80 一律按全宽）
   return OVERFLOW_NARROW.has(ch) ? 0.34 : 0.55;
 }
 
 // 与 render.js resolveTextStyle 对齐的最小字号/行高解析（ir 层不能反向依赖 render 层，故此处复制规则）
-function textOverflowBase(el, deck) {
+interface TextOverflowBase { fontSize: number; lineHeight: number; lineHeightPx: number; letterSpacing: number; }
+
+function textOverflowBase(el: SlideElement, deck: Deck): TextOverflowBase {
   let fontSize = 18, lineHeight = 1.4, lineHeightPx = 0, letterSpacing = 0;
   const refName = typeof el.style === 'string' && el.style.startsWith('$') ? el.style.slice(1) : null;
   const ref = refName ? deck.theme.textStyles?.[refName] : null;
@@ -517,14 +526,17 @@ function textOverflowBase(el, deck) {
 }
 
 // text.content（parser 原文形，实体未解码）→ 段落列表 [{style, body, li}]
-function overflowParagraphs(content) {
+interface OverflowParagraph { style: string; body: string; li: boolean; }
+
+function overflowParagraphs(content: string): OverflowParagraph[] {
   let src = String(content || '');
   if (!src.trim()) return [];
   src = src.replace(/\\\([\s\S]+?\\\)/g, ' ');       // 行内公式不参与估算（留一个空白断行点）
   src = src.replace(/<\s*br\s*\/?>/gi, '\n');        // <br/> = 强制换行
-  const paras = [];
+  const paras: OverflowParagraph[] = [];
   const blockRe = /<\s*(p|li)\b([^>]*)>([\s\S]*?)<\s*\/\s*\1\s*>/gi;
-  let m, matched = false;
+  let m: RegExpExecArray | null;
+  let matched = false;
   while ((m = blockRe.exec(src))) {
     matched = true;
     paras.push({ style: m[2] || '', body: m[3] || '', li: m[1].toLowerCase() === 'li' });
@@ -539,14 +551,15 @@ function overflowParagraphs(content) {
 }
 
 // 估算单个段落：{ lines, height }（px）
-function measureOverflowParagraph(para, base, availW) {
+function measureOverflowParagraph(para: OverflowParagraph, base: TextOverflowBase, availW: number): { lines: number; height: number } {
   // 扫描标签流，跟踪 <span style="font-size:Npx"> 与 <sup>/<sub> 的字号覆盖
   let curFs = base.fontSize, maxFs = base.fontSize;
-  const fsStack = [];
-  const segs = [];
-  const pushText = (t, fs) => { if (t) segs.push({ text: decodeEntities(t), fs }); };
+  const fsStack: number[] = [];
+  const segs: Array<{ text: string; fs: number }> = [];
+  const pushText = (t: string, fs: number): void => { if (t) segs.push({ text: decodeEntities(t), fs }); };
   const tagRe = /<\s*(\/?)\s*([a-zA-Z0-9]+)((?:"[^"]*"|'[^']*'|[^>"])*)>/g;
-  let last = 0, m;
+  let last = 0;
+  let m: RegExpExecArray | null;
   while ((m = tagRe.exec(para.body))) {
     pushText(para.body.slice(last, m.index), curFs);
     const name = m[2].toLowerCase();
@@ -566,7 +579,7 @@ function measureOverflowParagraph(para, base, availW) {
   pushText(para.body.slice(last), curFs);
 
   // 强制换行（来自 <br/>）切分后，每行再做软折行（按空白分词，超长词不拆）
-  const hardLines = [[]];
+  const hardLines: Array<Array<{ w: number; space: boolean }>> = [[]];
   for (const seg of segs) {
     seg.text.split('\n').forEach((part, i) => {
       if (i > 0) hardLines.push([]);
@@ -596,7 +609,7 @@ function measureOverflowParagraph(para, base, availW) {
   return { lines, height: lines * lineH + (mtDecl ? Number(mtDecl[1]) : 0) };
 }
 
-function checkTextOverflow(el, deck, warnings, at) {
+function checkTextOverflow(el: SlideElement, deck: Deck, warnings: Diag[], at: string): void {
   if (el.wrap === false) return; // white-space:nowrap：不软折行，高度不随文本增长
   const base = textOverflowBase(el, deck);
   if (!(num(el.w, 0) > 0) || !(num(el.h, 0) > 0) || !(base.fontSize > 0)) return;
@@ -623,7 +636,7 @@ function checkTextOverflow(el, deck, warnings, at) {
 //   · validateDeck(deck, [], [], { katexOnline: false })，或
 //   · 环境变量 SLIDEX_OFFLINE=1（CLI/导出进程声明离线）。
 // 未声明时（默认）保持安静，避免对每个含公式的 deck 误报（在线时渲染完全正常）。
-function katexOfflineDeclared(opts) {
+function katexOfflineDeclared(opts: ValidateOptions): boolean {
   if (opts && opts.katexOnline === false) return true;
   try {
     if (typeof process !== 'undefined' && process?.env?.SLIDEX_OFFLINE === '1') return true;
@@ -632,7 +645,7 @@ function katexOfflineDeclared(opts) {
 }
 
 // 元素是否使用公式：formula 元素（tex 或内容）、text 行内 \(..\)、表格单元格行内 \(..\)
-function elementUsesMath(el) {
+function elementUsesMath(el: SlideElement): boolean {
   if (el.type === 'formula') return !!(el.tex || String(el.content || '').trim());
   if (el.type === 'text') return /\\\([\s\S]+?\\\)/.test(String(el.content || ''));
   if (el.type === 'table') {
@@ -643,32 +656,32 @@ function elementUsesMath(el) {
 
 // ────────────────────────────── 工具 ──────────────────────────────
 
-export function num(v, dflt) { const n = Number(v); return Number.isFinite(n) ? n : dflt; }
-export function numPair(v) {
+export function num(v: unknown, dflt: number): number { const n = Number(v); return Number.isFinite(n) ? n : dflt; }
+export function numPair(v: string | undefined): [number, number] | null {
   if (!v) return null;
   const m = /^\s*\[?\s*([\d.]+)\s*[,x× ]\s*([\d.]+)\s*\]?\s*$/.exec(v);
   return m ? [+m[1], +m[2]] : null;
 }
-export function numList(v) {
+export function numList(v: string): number[] {
   return v.split(/[\s,]+/).map(Number).filter(x => Number.isFinite(x));
 }
-export function parsePoints(str) {
+export function parsePoints(str: string): Array<[number, number]> {
   return (str || '').trim().split(/\s+/).filter(Boolean).map(pair => {
     const m = /^(-?[\d.]+),(-?[\d.]+)$/.exec(pair);
-    return m ? [+m[1], +m[2]] : null;
-  }).filter(Boolean);
+    return m ? [+m[1], +m[2]] as [number, number] : null;
+  }).filter(Boolean) as Array<[number, number]>; // filter(Boolean) 不收窄类型，断言与运行时语义一致
 }
-function warn(list, node, code, message) { list.push({ code, message, line: node?.line, col: node?.col }); }
+function warn(list: Diag[], node: XMLNode | undefined, code: string, message: string): void { list.push({ code, message, line: node?.line, col: node?.col }); }
 
 // 颜色解析：$ref 展开（一层）
-export function resolveColor(val, deck) {
+export function resolveColor(val: string | undefined, deck: Deck): string | undefined {
   if (typeof val !== 'string') return val;
   if (val.startsWith('$')) return deck.theme.colors[val.slice(1)] || '#FF00FF';
   return val;
 }
 
 // 阴影简写 "blur dx dy color" → css box-shadow / text-shadow
-export function parseShadow(str) {
+export function parseShadow(str: string | undefined): Shadow | null {
   if (!str) return null;
   const m = /^\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(#\w{4,8}|\$[\w-]+)\s*$/.exec(str);
   if (!m) return null;
@@ -678,9 +691,9 @@ export function parseShadow(str) {
 // ────────────────────────────── 元素工厂（编辑器插入用） ──────────────────────────────
 
 let factorySeq = 1;
-export function newElement(type, patch = {}) {
+export function newElement(type: ElementType, patch: Partial<SlideElement> = {}): SlideElement {
   const schema = ELEMENT_SCHEMA[type];
-  const el = { type, id: `e${factorySeq++}` };
+  const el: SlideElement = { type, id: `e${factorySeq++}` };
   for (const [name, kind, def] of schema.attrs) {
     const key = attrKey(name);
     if (def !== undefined) el[key] = def;
@@ -688,7 +701,7 @@ export function newElement(type, patch = {}) {
   Object.assign(el, defaultsFor(type), patch);
   return el;
 }
-function defaultsFor(type) {
+function defaultsFor(type: ElementType): Record<string, unknown> { // 注意：保留 kebab 键（与编辑器历史行为一致）
   switch (type) {
     case 'text': return { x: 80, y: 80, w: 400, h: 60, content: '<p>文本</p>', style: '', align: 'left top', wrap: true, opacity: 1 };
     case 'shape': return { x: 120, y: 120, w: 160, h: 120, name: 'roundRect', fill: '#2563EB', adj: '8', stroke: '', 'stroke-width': 1 };
@@ -707,7 +720,7 @@ function defaultsFor(type) {
   }
 }
 
-export function newSlide(type = 'content') {
+export function newSlide(type = 'content'): SlideContainer {
   return { id: '', type, background: null, notes: '', master: '', transition: 'none', animations: [], elements: [], line: 0 };
 }
 

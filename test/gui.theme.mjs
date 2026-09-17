@@ -1,5 +1,5 @@
 // gui.theme.mjs — 主题切换 / 跟随系统 / 持久化 验证
-import { startServer } from '../src/server.js';
+import { startServer } from '../dist/server.js';
 
 const s = await startServer('examples/quickstart/deck.slx', { port: 4897 });
 const base = 'http://127.0.0.1:4897';

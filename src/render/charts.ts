@@ -1,21 +1,31 @@
-// charts.js — 图表 IR → 纯 SVG（bar / line / area / pie / scatter；堆叠、横向、图例、数据标签）
+// charts.ts — 图表 IR → 纯 SVG（bar / line / area / pie / scatter；堆叠、横向、图例、数据标签）
 // 与预览/导出共用；无外部依赖。
 
 import { DEFAULT_CHART_COLORS, resolveColor } from '../ir.js';
+import type { ChartData, ChartSeries, Deck, SlideElement } from '../types.js';
 
 const INK = '#3A4453';
 const GRID = '#E4E8EE';
-const f = (v) => (Math.round(v * 100) / 100);
+const f = (v: number): number => (Math.round(v * 100) / 100);
 
-export function renderChart(el, deck) {
+interface Box { x: number; y: number; w: number; h: number; }
+interface LegendItem { label: string; color: string | undefined; shape: string; }
+interface PlotResult { svg: string; legendItems: LegendItem[]; }
+/** 每系列取数结果（dataOf）：cat=类目、xv=X 数值（scatter）、value=Y 数值。 */
+interface DataPoint { cat: string; xv: number; value: number; raw: Array<string | number | null | undefined>; }
+type ChartRow = Array<string | number | null | undefined>;
+/** x/y 轴配置：属性袋（源 XML 属性，值全为字符串）。 */
+type AxisCfg = Record<string, string | undefined>;
+
+export function renderChart(el: SlideElement, deck: Deck): string {
   const W = Math.max(10, el.w || 300), H = Math.max(10, el.h || 200);
-  const fs = el['font-size'] || 12;
+  const fs = (el['font-size'] as number) || 12;
   const series = el.seriesList || [];
-  const data = el.chartData || { cols: [], rows: [] };
-  const col = (name) => data.cols.indexOf(name);
-  const val = (row, name) => row[col(name)];
+  const data: ChartData = el.chartData || { cols: [], rows: [] };
+  const col = (name: string | undefined): number => data.cols.indexOf(name as string);
+  const val = (row: ChartRow, name: string | undefined): string | number | null | undefined => row[col(name)];
 
-  const parts = [];
+  const parts: string[] = [];
   parts.push(`<svg class="slx-chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-size="${fs}">`);
 
   const title = el.title || '';
@@ -27,7 +37,7 @@ export function renderChart(el, deck) {
   const legendT = legendPos === 'top' ? fs * 2 : 0;
 
   const hasPie = series.some(s => s.type === 'pie');
-  const style = hasPie
+  const style: PlotResult = hasPie
     ? piePlot(el, deck, { x: pad.l, y: pad.t + titleH + legendT, w: W - pad.l - pad.r - legendW, h: H - pad.t - pad.b - titleH - legendH - legendT })
     : cartesianPlot(el, deck, { x: pad.l, y: pad.t + titleH + legendT, w: W - pad.l - pad.r - legendW, h: H - pad.t - pad.b - titleH - legendH - legendT });
 
@@ -42,7 +52,7 @@ export function renderChart(el, deck) {
   parts.push('</svg>');
   return parts.join('');
 
-  function text(x, y, str, attrs = {}) {
+  function text(x: number, y: number, str: string | number, attrs: Record<string, string | number> = {}): string {
     const a = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
     return `<text x="${f(x)}" y="${f(y)}" ${a}>${escXml(String(str))}</text>`;
   }
@@ -50,16 +60,16 @@ export function renderChart(el, deck) {
 
 // ─────────────────────────── 直角坐标系 ───────────────────────────
 
-function cartesianPlot(el, deck, box) {
+function cartesianPlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
   const series = el.seriesList || [];
-  const data = el.chartData || { cols: [], rows: [] };
-  const fs = el['font-size'] || 12;
-  const xAxis = el.xAxis || {}, yAxis = el.yAxis || {};
+  const data: ChartData = el.chartData || { cols: [], rows: [] };
+  const fs = (el['font-size'] as number) || 12;
+  const xAxis = (el.xAxis || {}) as AxisCfg, yAxis = (el.yAxis || {}) as AxisCfg;
   const horizontal = (yAxis.type === 'category');
-  const col = (name) => data.cols.indexOf(name);
+  const col = (name: string | undefined): number => data.cols.indexOf(name as string);
   const rows = data.rows;
 
-  const cats = []; // 类目（去重保序）
+  const cats: string[] = []; // 类目（去重保序）
   const isScatter = series.every(s => s.type === 'scatter') && series.length > 0;
   const catCol = horizontal ? series[0]?.y : series[0]?.x;
   const catIsString = (() => {
@@ -76,7 +86,7 @@ function cartesianPlot(el, deck, box) {
   }
 
   // 每系列取数：{cat, value}
-  const dataOf = (s) => rows.map(r => ({
+  const dataOf = (s: ChartSeries): DataPoint[] => rows.map(r => ({
     cat: String(r[col(horizontal ? s.y : s.x)]),
     xv: Number(r[col(horizontal ? s.y : s.x)]),
     value: Number(r[col(horizontal ? s.x : s.y)]),
@@ -87,7 +97,7 @@ function cartesianPlot(el, deck, box) {
   let vmin = Infinity, vmax = -Infinity;
   const stackMode = series.find(s => s.stack)?.stack;
   if (stackMode) {
-    const totals = new Map();
+    const totals = new Map<string, number>();
     for (const s of series.filter(s => s.stack)) for (const d of dataOf(s)) totals.set(d.cat, (totals.get(d.cat) || 0) + Math.abs(d.value));
     for (const v of totals.values()) { vmin = Math.min(vmin, 0); vmax = Math.max(vmax, v); }
   } else {
@@ -109,7 +119,7 @@ function cartesianPlot(el, deck, box) {
   const fmt = valAxis.format || null;
 
   // X 数值域（scatter）
-  let xmin = 0, xmax = 1, xTicks = null;
+  let xmin = 0, xmax = 1, xTicks: number[] | null = null;
   if (isScatter) {
     xmin = Infinity; xmax = -Infinity;
     for (const s of series) for (const d of dataOf(s)) { if (Number.isFinite(d.xv)) { xmin = Math.min(xmin, d.xv); xmax = Math.max(xmax, d.xv); } }
@@ -136,15 +146,15 @@ function cartesianPlot(el, deck, box) {
   const pw = Math.max(10, box.w - m.l - m.r), ph = Math.max(10, box.h - m.t - m.b);
 
   const vMin = tk.lo, vMax = tk.hi;
-  const vToP = (v) => horizontal ? px + ((v - vMin) / (vMax - vMin)) * pw : py + ph - ((v - vMin) / (vMax - vMin)) * ph;
-  const cToP = (c) => {
-    if (isScatter) return px + ((c - xmin) / (xmax - xmin)) * pw;
+  const vToP = (v: number): number => horizontal ? px + ((v - vMin) / (vMax - vMin)) * pw : py + ph - ((v - vMin) / (vMax - vMin)) * ph;
+  const cToP = (c: string | number): number => {
+    if (isScatter) return px + ((c as number) - xmin) / (xmax - xmin) * pw;
     const i = cats.indexOf(String(c));
     const n = cats.length || 1;
     return horizontal ? py + ph - (i + 0.5) * (ph / n) : px + (i + 0.5) * (pw / n);
   };
 
-  const svg = [];
+  const svg: string[] = [];
   const axisColor = INK;
   // 网格 + 值轴刻度
   const gridOn = valAxis.grid !== 'false';
@@ -156,9 +166,9 @@ function cartesianPlot(el, deck, box) {
     else svg.push(txt(px - 6, p + fs * 0.32, label, { 'text-anchor': 'end', fill: axisColor, 'font-size': fs * 0.9 }));
   }
   // 类目轴 / x 数值轴刻度
-  const ticks = isScatter ? xTicks : cats;
+  const ticks = isScatter ? (xTicks as number[]) : cats;
   for (const c of ticks) {
-    const p = isScatter ? px + ((c - xmin) / (xmax - xmin)) * pw : cToP(c);
+    const p = isScatter ? px + ((c as number) - xmin) / (xmax - xmin) * pw : cToP(c);
     if (horizontal) svg.push(txt(px - 6, p + fs * 0.32, String(c), { 'text-anchor': 'end', fill: axisColor, 'font-size': fs * 0.9 }));
     else svg.push(txt(p, py + ph + fs, String(c), { 'text-anchor': 'middle', fill: axisColor, 'font-size': fs * 0.9 }));
   }
@@ -171,15 +181,15 @@ function cartesianPlot(el, deck, box) {
   }
 
   // 堆叠基线
-  const stackBase = new Map();
+  const stackBase = new Map<string, number>();
   const barTypes = series.filter(s => s.type === 'bar');
   const slot = (cats.length || 1);
   const groupW = (horizontal ? ph : pw) / slot;
   const barGroups = barTypes.filter(s => !s.stack).length + (stackMode ? 1 : 0);
   const barW = Math.min(groupW * 0.6 / Math.max(1, barGroups), groupW * 0.7);
 
-  const legendItems = [];
-  const seriesColor = (s, i) => {
+  const legendItems: LegendItem[] = [];
+  const seriesColor = (s: ChartSeries, i: number): string | undefined => {
     const c = s.fill ? resolveColor(s.fill, deck) : DEFAULT_CHART_COLORS[i % DEFAULT_CHART_COLORS.length];
     return c;
   };
@@ -188,7 +198,7 @@ function cartesianPlot(el, deck, box) {
   series.forEach((s, si) => {
     const color = seriesColor(s, si);
     const ds = dataOf(s);
-    const label = s.name || (horizontal ? s.x : s.y);
+    const label = (s.name || (horizontal ? s.x : s.y)) as string;
 
     if (s.type === 'bar') {
       legendItems.push({ label, color, shape: 'rect' });
@@ -203,7 +213,7 @@ function cartesianPlot(el, deck, box) {
           let val2 = v;
           if (mode === 'percent') {
             // percent 堆叠：先归一化（同 cat 全部 stack 系列和为 100）
-            const total = series.filter(x => x.stack).reduce((a, x) => a + Math.abs(Number(rows[di]?.[col(horizontal ? x.x : x.y)]) || 0), 0);
+            const total = series.filter(x => x.stack).reduce((a: number, x: ChartSeries) => a + Math.abs(Number(rows[di]?.[col(horizontal ? x.x : x.y)]) || 0), 0);
             val2 = total ? Math.abs(v) / total * 100 : 0;
           }
           stackBase.set(key, base + val2);
@@ -221,14 +231,14 @@ function cartesianPlot(el, deck, box) {
       if (s.type === 'area') {
         const areaColor = s.fill ? resolveColor(s.fill, deck) : withAlpha(stroke, '55');
         const base0 = horizontal ? px : py + ph;
-        let d0;
+        let d0: string;
         if (horizontal) d0 = `M${f(vToP(vMin))},${f(pts[0]?.[1] ?? py)} ` + pts.map(p => `L${f(p[0])},${f(p[1])}`).join(' ') + ` L${f(vToP(vMin))},${f(pts[pts.length - 1]?.[1] ?? py)} Z`;
         else d0 = `M${f(pts[0]?.[0] ?? px)},${f(py + ph)} ` + pts.map(p => `L${f(p[0])},${f(p[1])}`).join(' ') + ` L${f(pts[pts.length - 1]?.[0] ?? px)},${f(py + ph)} Z`;
         svg.push(`<path d="${d0}" fill="${areaColor}" stroke="none"${s.stack ? '' : ' opacity="0.85"'}/>`);
       }
       const dash = s.dash === 'dash' ? ' stroke-dasharray="6 4"' : s.dash === 'dot' ? ' stroke-dasharray="2 3"' : '';
       const pathD = s.smooth === 'true' || s.smooth === true ? smoothPath(pts) : 'M' + pts.map(p => f(p[0]) + ',' + f(p[1])).join(' L');
-      svg.push(`<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${s['stroke-width'] || 2}"${dash} stroke-linejoin="round" stroke-linecap="round"/>`);
+      svg.push(`<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${(s['stroke-width'] as number) || 2}"${dash} stroke-linejoin="round" stroke-linecap="round"/>`);
       const mk = s.marker;
       if (mk !== 'none') {
         for (const p of pts) svg.push(`<circle cx="${f(p[0])}" cy="${f(p[1])}" r="${f(fs * 0.28)}" fill="${stroke}" stroke="#fff" stroke-width="1"/>`);
@@ -260,8 +270,8 @@ function cartesianPlot(el, deck, box) {
     }
   });
 
-  function drawBar(out, cat, v0, v1, gi, color, s, d) {
-    let x0, y0, x1, y1;
+  function drawBar(out: string[], cat: string, v0: number, v1: number, gi: number, color: string | undefined, s: ChartSeries, d: DataPoint): void {
+    let x0: number, y0: number, x1: number, y1: number;
     const c = cToP(cat);
     if (horizontal) {
       const gsz = ph / slot;
@@ -278,7 +288,7 @@ function cartesianPlot(el, deck, box) {
     }
     out.push(`<rect x="${f(x0)}" y="${f(y0)}" width="${f(x1 - x0)}" height="${f(y1 - y0)}" fill="${color}" rx="${f(Math.min(2, (x1 - x0) / 4, (y1 - y0) / 4))}"/>`);
   }
-  function drawBarLabel(d, s, mode) {
+  function drawBarLabel(d: DataPoint, s: ChartSeries, mode: string): void {
     const v = d.value;
     const str = mode === 'percent' ? tickText(v, '0%') : tickText(v, fmt);
     const c = cToP(d.cat), vp = vToP(v);
@@ -288,7 +298,7 @@ function cartesianPlot(el, deck, box) {
 
   return { svg: svg.join(''), legendItems };
 
-  function txt(x, y, str, attrs) {
+  function txt(x: number, y: number, str: string | number, attrs: Record<string, string | number>): string {
     const a = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
     return `<text x="${f(x)}" y="${f(y)}" ${a}>${escXml(String(str))}</text>`;
   }
@@ -296,20 +306,20 @@ function cartesianPlot(el, deck, box) {
 
 // ─────────────────────────── 饼图 ───────────────────────────
 
-function piePlot(el, deck, box) {
-  const s = (el.seriesList || [])[0] || {};
-  const data = el.chartData || { cols: [], rows: [] };
-  const fs = el['font-size'] || 12;
-  const ci = Math.max(0, data.cols.indexOf(s.x)), vi = Math.max(0, data.cols.indexOf(s.y));
+function piePlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
+  const s: ChartSeries = (el.seriesList || [])[0] || {} as ChartSeries;
+  const data: ChartData = el.chartData || { cols: [], rows: [] };
+  const fs = (el['font-size'] as number) || 12;
+  const ci = Math.max(0, data.cols.indexOf(s.x as string)), vi = Math.max(0, data.cols.indexOf(s.y as string));
   const slices = data.rows.map(r => ({ name: String(r[ci]), value: Number(r[vi]) })).filter(d => Number.isFinite(d.value) && d.value > 0);
-  const total = slices.reduce((a, d) => a + d.value, 0) || 1;
+  const total = slices.reduce((a: number, d) => a + d.value, 0) || 1;
 
   const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
   const R = Math.max(4, Math.min(box.w, box.h) / 2 - fs * 1.4);
   const inner = Math.max(0, Math.min(0.95, Number(s['inner-radius'] || 0))) * R;
 
   const fills = String(s.fill || '').trim().split(/\s+/).filter(Boolean);
-  const svg = [], legendItems = [];
+  const svg: string[] = [], legendItems: LegendItem[] = [];
   let ang = -Math.PI / 2;
   slices.forEach((d, i) => {
     const a0 = ang, a1 = ang + (d.value / total) * Math.PI * 2;
@@ -318,7 +328,7 @@ function piePlot(el, deck, box) {
     legendItems.push({ label: d.name, color, shape: 'rect' });
     const large = a1 - a0 > Math.PI ? 1 : 0;
     const p0 = polar(cx, cy, R, a0), p1 = polar(cx, cy, R, a1);
-    let d0;
+    let d0: string;
     if (inner > 0) {
       const q0 = polar(cx, cy, inner, a1), q1 = polar(cx, cy, inner, a0);
       d0 = `M${f(p0.x)},${f(p0.y)} A${f(R)},${f(R)} 0 ${large} 1 ${f(p1.x)},${f(p1.y)} L${f(q0.x)},${f(q0.y)} A${f(inner)},${f(inner)} 0 ${large} 0 ${f(q1.x)},${f(q1.y)} Z`;
@@ -337,8 +347,8 @@ function piePlot(el, deck, box) {
   return { svg: svg.join(''), legendItems };
 }
 
-function renderLegend(items, pos, { W, H, fs, titleH }) {
-  const svg = [];
+function renderLegend(items: LegendItem[], pos: string, { W, H, fs, titleH }: { W: number; H: number; fs: number; titleH: number }): string {
+  const svg: string[] = [];
   const yBase = pos === 'top' ? fs * 1.15 : H - fs * 0.7;
   const lineH = fs * 1.6;
   if (pos === 'right' || pos === 'left') {
@@ -354,9 +364,9 @@ function renderLegend(items, pos, { W, H, fs, titleH }) {
   // 单行水平排布（top/bottom），放不下时自动截断
   const chip = fs * 0.9 + fs * 0.5;
   const texts = items.map(it => ({ ...it, w: it.label.length * fs * 0.62 + chip + fs }));
-  const totalW = texts.reduce((a, t) => a + t.w, 0);
+  const totalW = texts.reduce((a: number, t) => a + t.w, 0);
   if (totalW > W - 8) texts.slice(0, Math.max(1, Math.floor((W - 8) / (totalW / texts.length))));
-  let x = (W - texts.reduce((a, t) => a + t.w, 0)) / 2;
+  let x = (W - texts.reduce((a: number, t) => a + t.w, 0)) / 2;
   for (const it of texts) {
     svg.push(`<rect x="${f(x)}" y="${f(yBase - fs * 0.5)}" width="${f(fs * 0.75)}" height="${f(fs * 0.75)}" rx="2" fill="${it.color}"/>`);
     svg.push(`<text x="${f(x + fs * 1.05)}" y="${f(yBase + fs * 0.25)}" fill="${INK}" font-size="${f(fs * 0.9)}">${escXml(it.label)}</text>`);
@@ -367,9 +377,9 @@ function renderLegend(items, pos, { W, H, fs, titleH }) {
 
 // ─────────────────────────── 工具 ───────────────────────────
 
-function polar(cx, cy, r, ang) { return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) }; }
-function line2(x1, y1, x2, y2, color, w) { return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${color}" stroke-width="${w}"/>`; }
-function smoothPath(pts) {
+function polar(cx: number, cy: number, r: number, ang: number): { x: number; y: number } { return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) }; }
+function line2(x1: number, y1: number, x2: number, y2: number, color: string, w: number): string { return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${color}" stroke-width="${w}"/>`; }
+function smoothPath(pts: number[][]): string {
   if (pts.length < 3) return 'M' + pts.map(p => f(p[0]) + ',' + f(p[1])).join(' L');
   let d = `M${f(pts[0][0])},${f(pts[0][1])}`;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -380,18 +390,18 @@ function smoothPath(pts) {
   }
   return d;
 }
-export function niceTicks(min, max, n = 5) {
+export function niceTicks(min: number, max: number, n = 5): { ticks: number[]; lo: number; hi: number } {
   const span = max - min || 1;
   const step0 = span / n;
   const mag = Math.pow(10, Math.floor(Math.log10(step0)));
   const norm = step0 / mag;
   const step = (norm >= 7.5 ? 10 : norm >= 3.5 ? 5 : norm >= 1.5 ? 2 : 1) * mag;
   const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
-  const ticks = [];
+  const ticks: number[] = [];
   for (let v = lo; v <= hi + step * 1e-6; v += step) ticks.push(Math.round(v / step) * step === 0 ? 0 : Math.round(v * 1e10) / 1e10);
   return { ticks, lo, hi };
 }
-export function tickText(v, fmt) {
+export function tickText(v: number, fmt: string | null): string {
   if (fmt === '0%') return Math.round(v * 100) + '%';
   if (fmt === '0.0%') return (Math.round(v * 1000) / 10) + '%';
   if (typeof v !== 'number' || !Number.isFinite(v)) return String(v ?? '');
@@ -403,10 +413,10 @@ export function tickText(v, fmt) {
   if (Number.isInteger(v)) return String(v);
   return String(Math.round(v * 100) / 100);
 }
-function withAlpha(hex, alpha) {
+function withAlpha(hex: string | undefined, alpha: string): string | undefined {
   if (typeof hex !== 'string') return hex;
   if (hex.length === 7) return hex + alpha;
   if (hex.length === 9) return hex.slice(0, 7) + alpha;
   return hex;
 }
-function escXml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function escXml(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

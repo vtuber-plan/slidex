@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseSlideX, validateDeck } from '../src/ir.js';
+import { parseSlideX, validateDeck } from '../dist/ir.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;

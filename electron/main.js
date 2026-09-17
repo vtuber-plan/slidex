@@ -4,7 +4,7 @@ import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { templateDeck } from '../src/template.js';
+import { templateDeck } from '../dist/template.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let win = null;
@@ -194,7 +194,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   const argDeck = process.argv.slice(1).find(a => a.toLowerCase().endsWith('.slx') && !a.startsWith('--'));
   deckFile = await ensureDeck(argDeck);
-  const { startServer } = await import('../src/server.js');
+  const { startServer } = await import('../dist/server.js');
   server = await startServer(deckFile, { port: 0 });
   baseUrl = `http://127.0.0.1:${server.port}`;
   createWindow();

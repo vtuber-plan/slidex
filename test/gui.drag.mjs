@@ -1,5 +1,5 @@
 // gui.drag.mjs — 拖动/缩放实时视觉反馈回归测试
-import { startServer } from '../src/server.js';
+import { startServer } from '../dist/server.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

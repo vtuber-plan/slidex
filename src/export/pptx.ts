@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 
-const CRC_TABLE = (() => {
+const CRC_TABLE: Int32Array = (() => {
   const t = new Int32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
@@ -13,16 +13,16 @@ const CRC_TABLE = (() => {
   }
   return t;
 })();
-function crc32(buf) {
+function crc32(buf: Buffer): number {
   let c = -1;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
   return (c ^ -1) >>> 0;
 }
 
-export function zip(entries) {
+export function zip(entries: Array<{ name: string; data: Buffer | string }>): Buffer {
   // entries: [{name, data:Buffer}]
-  const chunks = [];
-  const central = [];
+  const chunks: Buffer[] = [];
+  const central: Buffer[] = [];
   let offset = 0;
   for (const e of entries) {
     const nameBuf = Buffer.from(e.name, 'utf8');
@@ -66,13 +66,19 @@ export function zip(entries) {
 
 // ─────────────────────── OOXML ───────────────────────
 
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc = (s: unknown): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function buildPptx({ pngFiles, width, height, title = '', notes = [] }) {
+export function buildPptx({ pngFiles, width, height, title = '', notes = [] }: {
+  pngFiles: string[];
+  width: number;
+  height: number;
+  title?: string;
+  notes?: string[];
+}): Buffer {
   const N = pngFiles.length;
-  const emu = (px) => Math.round(px * 12700); // 1px = 1pt = 12700 EMU
-  const entries = [];
-  const add = (name, strOrBuf) => entries.push({ name, data: Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'utf8') });
+  const emu = (px: number): number => Math.round(px * 12700); // 1px = 1pt = 12700 EMU
+  const entries: Array<{ name: string; data: Buffer | string }> = [];
+  const add = (name: string, strOrBuf: string | Buffer) => entries.push({ name, data: Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'utf8') });
 
   // content types
   let ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -162,7 +168,7 @@ ${sldRels}
   return zip(entries);
 }
 
-export function slideXml(cx, cy, idx) {
+export function slideXml(cx: number, cy: number, idx: number): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -178,7 +184,7 @@ export function slideXml(cx, cy, idx) {
 </p:sld>`;
 }
 
-export function notesSlideXml(idx, text) {
+export function notesSlideXml(idx: number, text: string): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -194,7 +200,7 @@ export function notesSlideXml(idx, text) {
 </p:notes>`;
 }
 
-export function themeXml() {
+export function themeXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="SlideX">
 <a:themeElements>
@@ -210,7 +216,7 @@ export function themeXml() {
 </a:theme>`;
 }
 
-export function slideMasterXml(cx, cy) {
+export function slideMasterXml(cx: number, cy: number): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
@@ -222,7 +228,7 @@ export function slideMasterXml(cx, cy) {
 </p:sldMaster>`;
 }
 
-export function slideLayoutXml(cx, cy) {
+export function slideLayoutXml(cx: number, cy: number): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">
 <p:cSld name="Blank"><p:spTree>
@@ -233,7 +239,7 @@ export function slideLayoutXml(cx, cy) {
 </p:sldLayout>`;
 }
 
-export function notesMasterXml() {
+export function notesMasterXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:notesMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>

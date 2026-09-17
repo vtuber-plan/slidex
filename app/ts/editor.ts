@@ -5,7 +5,7 @@ import { renderSlide } from '/src/render/render.js';
 import { startInlineEdit, finishInlineEdit, isEditing, initEditBar, showEditBar, hideEditBar } from './inline-edit.js';
 import { t, applyI18n, getLang, setLang, type Lang } from './i18n.js';
 import { initTheme, initThemeSelector } from './theme.js';
-import type { ChartSeries, Deck, Diag, SlideContainer, SlideElement } from '../types/slidex';
+import type { ChartSeries, Deck, Diag, ElementType, SlideContainer, SlideElement } from '../types/slidex';
 
 declare global {
   interface Window {
@@ -226,10 +226,10 @@ function renderOverlay(): void {
     const box = document.createElement('div');
     box.className = 'selbox';
     box.dataset.id = id;
-    box.style.left = el.x * zoom + 'px';
-    box.style.top = el.y * zoom + 'px';
-    box.style.width = el.w * zoom + 'px';
-    box.style.height = el.h * zoom + 'px';
+    box.style.left = (el.x ?? 0) * zoom + 'px';
+    box.style.top = (el.y ?? 0) * zoom + 'px';
+    box.style.width = (el.w ?? 0) * zoom + 'px';
+    box.style.height = (el.h ?? 0) * zoom + 'px';
     if (el.rotation) { box.style.transform = `rotate(${el.rotation}deg)`; box.style.transformOrigin = '50% 50%'; }
     for (const d of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
       const h = document.createElement('div');
@@ -239,7 +239,7 @@ function renderOverlay(): void {
     }
     const tag = document.createElement('div');
     tag.className = 'size-tag';
-    tag.textContent = `${Math.round(el.w)} × ${Math.round(el.h)}`;
+    tag.textContent = `${Math.round(el.w ?? 0)} × ${Math.round(el.h ?? 0)}`;
     box.appendChild(tag);
     ov.appendChild(box);
   }
@@ -251,7 +251,7 @@ interface DragOrig { e: SlideElement; x: number; y: number }
 function startDrag(ev: PointerEvent, els: SlideElement[]): void {
   if (!els.length) return;
   const start = { x: ev.clientX, y: ev.clientY };
-  const orig: DragOrig[] = els.map(e => ({ e, x: e.x, y: e.y }));
+  const orig: DragOrig[] = els.map(e => ({ e, x: e.x ?? 0, y: e.y ?? 0 }));
   // 拖动期间的实时视觉反馈：直接写元素 DOM（廉价），松手才做整页重渲染
   const host = $('canvasHost');
   const nodes = new Map<string, HTMLElement | null>(orig.map(o => [o.e.id, host.querySelector<HTMLElement>(`.slx-el[data-id="${CSS.escape(o.e.id)}"]`)]));
@@ -265,8 +265,8 @@ function startDrag(ev: PointerEvent, els: SlideElement[]): void {
     for (const o of orig) {
       let nx = o.x + dx, ny = o.y + dy;
       if (!ev2.altKey) {
-        nx = snap(nx, [0, (deck.width - o.e.w) / 2, deck.width - o.e.w, o.e.x]);
-        ny = snap(ny, [0, (deck.height - o.e.h) / 2, deck.height - o.e.h, o.e.y]);
+        nx = snap(nx, [0, (deck.width - (o.e.w ?? 0)) / 2, deck.width - (o.e.w ?? 0), o.e.x ?? 0]);
+        ny = snap(ny, [0, (deck.height - (o.e.h ?? 0)) / 2, deck.height - (o.e.h ?? 0), o.e.y ?? 0]);
       }
       o.e.x = Math.round(nx * 2) / 2;
       o.e.y = Math.round(ny * 2) / 2;
@@ -287,7 +287,7 @@ function startDrag(ev: PointerEvent, els: SlideElement[]): void {
 
 function startResize(ev: PointerEvent, el: SlideElement, dir: string): void {
   const start = { x: ev.clientX, y: ev.clientY };
-  const orig = { x: el.x, y: el.y, w: el.w, h: el.h };
+  const orig = { x: el.x ?? 0, y: el.y ?? 0, w: el.w ?? 0, h: el.h ?? 0 };
   const ratio = orig.w / (orig.h || 1);
   const node = $('canvasHost').querySelector<HTMLElement>(`.slx-el[data-id="${CSS.escape(el.id)}"]`);
   let moved = false;
@@ -628,7 +628,7 @@ function bindSlidePanel(box: HTMLElement): void {
   }));
   const add = box.querySelector<HTMLButtonElement>('#animAdd');
   add?.addEventListener('click', () => {
-    s.animations.push({ target: slide().elements[0]?.id ?? '', effect: 'fade-in', trigger: 'onClick', direction: 'up', duration: 500, delay: 0 });
+    s.animations.push({ target: slide().elements[0]?.id ?? '', effect: 'fade-in', trigger: 'onClick', direction: 'up', duration: 500, delay: 0, line: s.line });
     snapshot();
     renderInspector();
   });
@@ -651,7 +651,7 @@ function duplicateSelected(): void {
     if (!el) continue;
     const copy = JSON.parse(JSON.stringify(el)) as SlideElement;
     copy.id = uniqueId(copy.type);
-    copy.x += 16; copy.y += 16;
+    copy.x = (copy.x ?? 0) + 16; copy.y = (copy.y ?? 0) + 16;
     copies.push(copy);
   }
   if (!copies.length) return;
@@ -680,30 +680,30 @@ function alignSelection(mode: string): void {
   const els = [...sel].map(byId).filter((e): e is SlideElement => !!e);
   if (!els.length) return;
   snapshot();
-  const L = Math.min(...els.map(e => e.x)), R = Math.max(...els.map(e => e.x + e.w));
-  const T = Math.min(...els.map(e => e.y)), B = Math.max(...els.map(e => e.y + e.h));
+  const L = Math.min(...els.map(e => e.x ?? 0)), R = Math.max(...els.map(e => (e.x ?? 0) + (e.w ?? 0)));
+  const T = Math.min(...els.map(e => e.y ?? 0)), B = Math.max(...els.map(e => (e.y ?? 0) + (e.h ?? 0)));
   for (const e of els) {
     if (mode === 'left') e.x = els.length > 1 ? L : 0;
-    if (mode === 'right') e.x = (els.length > 1 ? R : deck.width) - e.w;
-    if (mode === 'center') e.x = ((els.length > 1 ? L + R : deck.width) / 2) - e.w / 2;
+    if (mode === 'right') e.x = (els.length > 1 ? R : deck.width) - (e.w ?? 0);
+    if (mode === 'center') e.x = ((els.length > 1 ? L + R : deck.width) / 2) - (e.w ?? 0) / 2;
     if (mode === 'top') e.y = els.length > 1 ? T : 0;
-    if (mode === 'bottom') e.y = (els.length > 1 ? B : deck.height) - e.h;
-    if (mode === 'middle') e.y = ((els.length > 1 ? T + B : deck.height) / 2) - e.h / 2;
+    if (mode === 'bottom') e.y = (els.length > 1 ? B : deck.height) - (e.h ?? 0);
+    if (mode === 'middle') e.y = ((els.length > 1 ? T + B : deck.height) / 2) - (e.h ?? 0) / 2;
   }
   renderAll();
 }
 
 function insertElement(spec: string): void {
   const [type, variant] = spec.split(':');
-  const el = newElement(type);
+  const el = newElement(type as ElementType);
   if (variant && type === 'shape') el.name = variant;
   if (type === 'image') {
     const src = prompt(t('insp.none'), 'media/');
     if (src === null) return;
     el.src = src;
   }
-  el.x = Math.round(deck.width / 2 - el.w / 2);
-  el.y = Math.round(deck.height / 2 - el.h / 2);
+  el.x = Math.round(deck.width / 2 - (el.w ?? 0) / 2);
+  el.y = Math.round(deck.height / 2 - (el.h ?? 0) / 2);
   el.id = uniqueId(type);
   snapshot();
   slide().elements.push(el);
@@ -1000,10 +1000,10 @@ function onKey(e: KeyboardEvent): void {
   if (e.key.startsWith('Arrow') && els.length) {
     openBurst();
     for (const el of els) {
-      if (e.key === 'ArrowLeft') el.x -= step;
-      if (e.key === 'ArrowRight') el.x += step;
-      if (e.key === 'ArrowUp') el.y -= step;
-      if (e.key === 'ArrowDown') el.y += step;
+      if (e.key === 'ArrowLeft') el.x = (el.x ?? 0) - step;
+      if (e.key === 'ArrowRight') el.x = (el.x ?? 0) + step;
+      if (e.key === 'ArrowUp') el.y = (el.y ?? 0) - step;
+      if (e.key === 'ArrowDown') el.y = (el.y ?? 0) + step;
     }
     renderCanvas(); renderOverlay();
     e.preventDefault();

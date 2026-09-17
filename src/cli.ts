@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-// cli.js — slidex 命令行：init / serve / present / validate / export
+// cli.ts — slidex 命令行：init / serve / present / validate / export
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { execSync } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import type { SlideElement } from './types.js';
 import { templateDeck } from './template.js';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json');
+const pkg = require('../package.json') as { version: string };
 const args = process.argv.slice(2);
 const cmd = args[0] || 'help';
 
-function openBrowser(url) {
+function openBrowser(url: string) {
   try {
     if (process.platform === 'win32') execSync(`start "" "${url}"`, { shell: 'cmd.exe', stdio: 'ignore' });
     else if (process.platform === 'darwin') execSync(`open "${url}"`, { stdio: 'ignore' });
@@ -22,11 +22,11 @@ function openBrowser(url) {
   } catch { /* 无图形环境时忽略 */ }
 }
 
-const flag = (name, dflt) => {
+const flag = (name: string, dflt?: string): string | undefined => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : dflt;
 };
-const hasFlag = (name) => args.includes(name);
+const hasFlag = (name: string): boolean => args.includes(name);
 
 async function main() {
   switch (cmd) {
@@ -50,7 +50,7 @@ async function main() {
         execSync('npx tsc -p app', { cwd: rootDir, stdio: 'inherit' });
       }
       const { startServer } = await import('./server.js');
-      const port = Number(flag('--port', 4870));
+      const port = Number(flag('--port', '4870'));
       const s = await startServer(path.resolve(file), { port });
       const url = `http://127.0.0.1:${s.port}`;
       console.log(`SlideX 编辑器已启动：${url}\n  deck: ${s.deckFile}  (Ctrl+C 退出)`);
@@ -61,7 +61,7 @@ async function main() {
       const file = args[1];
       if (!file) die('用法: slidex present <deck.slx> [--port 4871]');
       const { startServer } = await import('./server.js');
-      const s = await startServer(path.resolve(file), { port: Number(flag('--port', 4871)) });
+      const s = await startServer(path.resolve(file), { port: Number(flag('--port', '4871')) });
       const url = `http://127.0.0.1:${s.port}/present`;
       console.log(`放映模式：${url}`);
       openBrowser(url);
@@ -74,10 +74,10 @@ async function main() {
       const r = parseSlideX(fs.readFileSync(path.resolve(file), 'utf8'));
       for (const e of r.errors) console.log(`  ✗ L${e.line || '?'}:${e.col || '?'} ${e.code}  ${e.message}`);
       for (const w of r.warnings) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
-      const extra = [];
+      const extra: Array<{ code: string; message: string; line?: number }> = [];
       // 本地媒体存在性（W_MEDIA_MISSING）
       const deckDir = path.dirname(path.resolve(file));
-      const checkMedia = (el) => {
+      const checkMedia = (el: SlideElement) => {
         if (el.type === 'image' && el.src && !/^(https?:|data:)/i.test(el.src)) {
           if (!fs.existsSync(path.resolve(deckDir, el.src))) extra.push({ code: 'W_MEDIA_MISSING', message: `图片不存在：${el.src}`, line: el.line });
         }
@@ -92,8 +92,8 @@ async function main() {
     case 'export': {
       const file = args[1];
       if (!file) die('用法: slidex export <deck.slx> [-f png|pdf|pptx|html] [--editable] [--scale 2]');
-      const format = flag('-f', flag('--format', 'png'));
-      const scale = Number(flag('--scale', 2));
+      const format = flag('-f', flag('--format', 'png'))!;
+      const scale = Number(flag('--scale', '2'));
       const editable = hasFlag('--editable') || hasFlag('-e');
       const { exportDeck } = await import('./export/export.js');
       console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
@@ -105,8 +105,8 @@ async function main() {
     }
     case 'app': {
       const file = args[1] ? path.resolve(args[1]) : null;
-      let electronPath;
-      try { electronPath = require('electron'); } catch { die('未安装 electron，请先运行 npm install'); }
+      let electronPath: string;
+      try { electronPath = require('electron') as string; } catch { die('未安装 electron，请先运行 npm install'); return; }
       const mainJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../electron/main.js');
       const child = spawn(electronPath, [mainJs, ...(file ? [file] : [])], { stdio: 'inherit' });
       child.on('exit', (code) => process.exit(code ?? 0));
@@ -132,7 +132,7 @@ async function main() {
   }
 }
 
-function die(msg) { console.error(msg); process.exit(1); }
+function die(msg: string): never { console.error(msg); process.exit(1); }
 
 
-main().catch(e => { console.error(e && e.stack || e); process.exit(1); });
+main().catch(e => { console.error(e && (e as Error).stack || e); process.exit(1); });

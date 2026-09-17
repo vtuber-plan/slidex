@@ -1,5 +1,5 @@
 // pdf-vs-pptx.mjs — PDF 与 PNG(=PPTX 页面内容) 的像素级一致性比对
-import { startServer } from '../src/server.js';
+import { startServer } from '../dist/server.js';
 
 const s = await startServer('examples/quickstart/deck.slx', { port: 4893 });
 const base = 'http://127.0.0.1:4893';

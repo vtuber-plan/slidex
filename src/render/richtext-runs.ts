@@ -1,25 +1,72 @@
-// richtext-runs.js — 富文本（转义形 content）→ 结构化段落/run 模型（PPTX 原生导出用）
-// 与 richtext.js 的白名单保持一致；含行内公式时 hasMath=true（调用方降级为裁图）。
+// richtext-runs.ts — 富文本（转义形 content）→ 结构化段落/run 模型（PPTX 原生导出用）
+// 与 richtext.ts 的白名单保持一致；含行内公式时 hasMath=true（调用方降级为裁图）。
 
-const decodeEnt = (s) => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all, g) => {
-  const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+/** run/栈帧样式：可选字段 = 未设置（运行时可为 undefined）。 */
+interface RunStyle {
+  bold?: boolean | null;
+  italic?: boolean | null;
+  u?: boolean | null;
+  strike?: boolean | null;
+  sup?: boolean | null;
+  sub?: boolean | null;
+  color?: string | null;
+  fontSize?: number | null;
+  fontFamily?: string | null;
+  bgColor?: string | null;
+  href?: string | null;
+  tag?: string;
+}
+
+/** 段落内的文本 run。 */
+interface Run extends RunStyle {
+  text: string;
+}
+
+/** 段落（无块级标签输入时仅含 runs，其余字段缺省）。 */
+interface Paragraph {
+  align?: string | null;
+  lineHeight?: number | null;
+  lineHeightPx?: number | null;
+  marginTop?: number | null;
+  marL?: number;
+  bullet?: 'ul' | 'ol' | null;
+  runs: Run[];
+}
+
+/** richToRuns 返回模型。 */
+interface RichRunsResult {
+  hasMath: boolean;
+  paragraphs: Paragraph[];
+}
+
+/** 元素解析样式（resolveTextStyle 输出的子集），作为 run 默认值。 */
+interface RunBaseStyle {
+  color?: string | null;
+  fontSize?: number | null;
+  fontFamily?: string | null;
+  bold?: boolean | null;
+  italic?: boolean | null;
+}
+
+const decodeEnt = (s: string): string => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all: string, g: string): string => {
+  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
   if (named[g]) return named[g];
   const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
   return Number.isFinite(code) ? String.fromCodePoint(code) : all;
 });
-const pxNum = (v) => { const m = /^(-?\d+(?:\.\d+)?)px$/i.exec(String(v || '').trim()); return m ? Number(m[1]) : null; };
+const pxNum = (v: unknown): number | null => { const m = /^(-?\d+(?:\.\d+)?)px$/i.exec(String(v || '').trim()); return m ? Number(m[1]) : null; };
 const INLINE = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'sup', 'sub', 'a', 'br']);
 const BLOCK = new Set(['p', 'li', 'ul', 'ol']);
 
-function parseAttrs(raw) {
-  const attrs = {};
+function parseAttrs(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
   const re = /([a-zA-Z-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(raw))) attrs[m[1].toLowerCase()] = m[3] ?? m[4] ?? '';
   return attrs;
 }
-function parseStyle(style) {
-  const out = {};
+function parseStyle(style: string): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const decl of String(style).split(';')) {
     const i = decl.indexOf(':');
     if (i <= 0) continue;
@@ -27,35 +74,33 @@ function parseStyle(style) {
   }
   return out;
 }
-const sameStyle = (a, b) => ['bold', 'italic', 'u', 'strike', 'sup', 'sub', 'color', 'fontSize', 'fontFamily', 'bgColor', 'href']
-  .every(k => a[k] === b[k]);
+const sameStyle = (a: RunStyle, b: RunStyle): boolean => (['bold', 'italic', 'u', 'strike', 'sup', 'sub', 'color', 'fontSize', 'fontFamily', 'bgColor', 'href'] as const).every(k => a[k] === b[k]);
 
 /**
- * @returns {{hasMath: boolean, paragraphs: Array<{align?:string, lineHeight?:number, lineHeightPx?:number, marginTop?:number, marL?:number, bullet?:'ul'|'ol', runs: Array<object>}>}}
  * baseStyle: {color, fontSize, fontFamily, bold, italic}（元素解析样式，作为 run 默认）
  */
-export function richToRuns(content, baseStyle = {}) {
-  const result = { hasMath: false, paragraphs: [] };
+export function richToRuns(content: unknown, baseStyle: RunBaseStyle = {}): RichRunsResult {
+  const result: RichRunsResult = { hasMath: false, paragraphs: [] };
   let src = String(content || '');
   if (src.includes('\\(')) { result.hasMath = true; return result; }
 
-  const base = { bold: !!baseStyle.bold, italic: !!baseStyle.italic, u: false, strike: false, sup: false, sub: false, color: baseStyle.color, fontSize: baseStyle.fontSize, fontFamily: baseStyle.fontFamily, bgColor: null, href: null };
+  const base: RunStyle = { bold: !!baseStyle.bold, italic: !!baseStyle.italic, u: false, strike: false, sup: false, sub: false, color: baseStyle.color, fontSize: baseStyle.fontSize, fontFamily: baseStyle.fontFamily, bgColor: null, href: null };
 
-  const mkPara = (bullet = null) => ({ align: null, lineHeight: null, lineHeightPx: null, marginTop: null, marL: 0, bullet, runs: [] });
+  const mkPara = (bullet: 'ul' | 'ol' | null = null): Paragraph => ({ align: null, lineHeight: null, lineHeightPx: null, marginTop: null, marL: 0, bullet, runs: [] });
   const paragraphs = result.paragraphs;
-  let para = null;
-  let listTag = null;
+  let para: Paragraph | null = null;
+  let listTag: 'ul' | 'ol' | null = null;
   let lastEnd = 0;
-  const stack = [{ ...base, tag: 'root' }];
-  const pushPara = () => { if (para && (para.runs.length || para.bullet)) paragraphs.push(para); para = null; };
-  const cur = () => stack[stack.length - 1];
-  const addText = (raw) => {
+  const stack: RunStyle[] = [{ ...base, tag: 'root' }];
+  const pushPara = (): void => { if (para && (para.runs.length || para.bullet)) paragraphs.push(para); para = null; };
+  const cur = (): RunStyle => stack[stack.length - 1];
+  const addText = (raw: string): void => {
     const t = decodeEnt(raw);
     if (!t || t === '\n' && (!para || !para.runs.length)) { if (t === '\n') { /* 段首软换行忽略 */ } if (!t) return; }
     if (!t) return;
     if (!para) para = mkPara(listTag);
     const st = cur();
-    const run = { text: t, bold: !!st.bold, italic: !!st.italic, u: !!st.u, strike: !!st.strike, sup: !!st.sup, sub: !!st.sub, color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bgColor: st.bgColor, href: st.href };
+    const run: Run = { text: t, bold: !!st.bold, italic: !!st.italic, u: !!st.u, strike: !!st.strike, sup: !!st.sup, sub: !!st.sub, color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bgColor: st.bgColor, href: st.href };
     const last = para.runs[para.runs.length - 1];
     if (last && sameStyle(last, run)) last.text += t;
     else para.runs.push(run);
@@ -70,7 +115,7 @@ export function richToRuns(content, baseStyle = {}) {
   }
 
   const tagRe = /<\s*(\/?)\s*([a-zA-Z0-9]+)((?:"[^"]*"|'[^']*'|[^>"]*)*)>/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = tagRe.exec(src))) {
     const [full, slash, rawName, rawAttrs] = m;
     const name = rawName.toLowerCase();
@@ -106,7 +151,7 @@ export function richToRuns(content, baseStyle = {}) {
     if (name === 'ul' || name === 'ol') { listTag = name; continue; }
     if (name === 'br') { continue; }
     // 行内
-    const next = { ...cur(), tag: name };
+    const next: RunStyle = { ...cur(), tag: name };
     if (name === 'strong' || name === 'b') next.bold = true;
     if (name === 'em' || name === 'i') next.italic = true;
     if (name === 'u') next.u = true;

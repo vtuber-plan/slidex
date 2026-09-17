@@ -1,7 +1,7 @@
-// code.js — 轻量语法高亮（内置常见语言，未知语言等宽原样）
+// code.ts — 轻量语法高亮（内置常见语言，未知语言等宽原样）
 // 输入为"HTML 转义形"内容（parser 规范），先解码再高亮，输出安全 HTML。
 
-const KW = {
+const KW: Record<string, string> = {
   js: 'const let var function return if else for while do switch case break continue new class extends super import export from default try catch finally throw async await yield typeof instanceof in of delete void this null undefined true false static get set',
   ts: 'const let var function return if else for while do switch case break continue new class extends implements interface type enum namespace super import export from default try catch finally throw async await yield typeof instanceof in of keyof as readonly public private protected abstract static this null undefined true false never unknown any string number boolean',
   python: 'def return if elif else for while break continue class import from as pass raise try except finally with lambda yield global nonlocal assert del in is not and or None True False self match case async await print',
@@ -20,29 +20,29 @@ const KW = {
 KW.ts += ' ' + KW.js;
 KW.java = KW.java;
 KW.c = KW.c;
-const LANG_ALIAS = { javascript: 'js', typescript: 'ts', py: 'python', 'c++': 'cpp', 'c#': 'cpp', golang: 'go', sh: 'bash', shell: 'bash', zsh: 'bash', hs: 'haskell', rkt: 'scheme', lisp: 'scheme', yml: 'yaml' };
+const LANG_ALIAS: Record<string, string> = { javascript: 'js', typescript: 'ts', py: 'python', 'c++': 'cpp', 'c#': 'cpp', golang: 'go', sh: 'bash', shell: 'bash', zsh: 'bash', hs: 'haskell', rkt: 'scheme', lisp: 'scheme', yml: 'yaml' };
 
-function langOf(l) { l = (l || '').toLowerCase().trim(); return LANG_ALIAS[l] || (KW[l] ? l : null); }
+function langOf(l: string | undefined): string | null { l = (l || '').toLowerCase().trim(); return LANG_ALIAS[l] || (KW[l] ? l : null); }
 
-const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const DECODE = (s) => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all, g) => {
-  const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const DECODE = (s: string): string => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all: string, g: string): string => {
+  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
   if (named[g]) return named[g];
   const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
   return Number.isFinite(code) ? String.fromCodePoint(code) : all;
 });
 
-export function decodeContent(content) { return DECODE(String(content || '')); }
+export function decodeContent(content: unknown): string { return DECODE(String(content || '')); }
 
 // 按 |comment| > |string| > |number| > |keyword| 顺序的高亮器
-export function highlight(escapedContent, lang) {
+export function highlight(escapedContent: string, lang: string | undefined): string {
   const src = decodeContent(escapedContent);
   const L = langOf(lang);
   if (!L) return escapeHtml(src);
   const kws = KW[L].split(/\s+/);
   const kwRe = kws.sort((a, b) => b.length - a.length).map(reEsc).join('|');
 
-  let commentRe, stringRe;
+  let commentRe: string, stringRe: string;
   switch (L) {
     case 'python': case 'bash': case 'yaml':
       commentRe = String.raw`(#[^\n]*)`;
@@ -72,11 +72,11 @@ export function highlight(escapedContent, lang) {
   if (kwRe) parts.push(`\\b(?:${kwRe})\\b`);
   const re = new RegExp(parts.join('|'), 'g');
 
-  let out = '', last = 0, m;
+  let out = '', last = 0, m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     out += escapeHtml(src.slice(last, m.index));
     const t = m[0];
-    let cls;
+    let cls: string;
     if (t.startsWith('//') || t.startsWith('/*') || t.startsWith('#') || t.startsWith('--') || t.startsWith(';') || t.startsWith('<!--')) cls = 'tk-c';
     else if (t.startsWith("'") || t.startsWith('"') || t.startsWith('`')) cls = 'tk-s';
     else if (/^<\/?[a-zA-Z]/.test(t)) cls = 'tk-k';
@@ -89,4 +89,4 @@ export function highlight(escapedContent, lang) {
   out += escapeHtml(src.slice(last));
   return out;
 }
-const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const reEsc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

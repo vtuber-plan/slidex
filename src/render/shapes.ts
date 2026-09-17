@@ -1,16 +1,24 @@
-// shapes.js — 内置形状 → SVG path（坐标单位 = px，viewBox 0 0 w h）
+// shapes.ts — 内置形状 → SVG path（坐标单位 = px，viewBox 0 0 w h）
 // custom：解析 path 并从 view-box 线性缩放到 bounds
 
-const num = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+import type { SlideElement } from '../types.js';
 
-export function shapeSvg(el) {
+const num = (v: unknown, d: number): number => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+
+interface Geom {
+  d: string;
+  viewBox?: string;
+  fillRule?: string;
+}
+
+export function shapeSvg(el: SlideElement): { d: string; viewBox: string; fillRule: string } {
   const w = Math.max(0.01, el.w || 0), h = Math.max(0.01, el.h || 0);
   const adj = String(el.adj ?? '').trim().split(/[\s,]+/).filter(Boolean).map(Number).filter(Number.isFinite);
   const g = geomFor(el.name || 'rect', w, h, adj, el);
   return { d: g.d, viewBox: g.viewBox || `0 0 ${w} ${h}`, fillRule: g.fillRule || 'nonzero' };
 }
 
-function geomFor(name, w, h, adj, el) {
+function geomFor(name: string, w: number, h: number, adj: number[], el: SlideElement): Geom {
   switch (name) {
     case 'rect': return { d: `M0,0 H${w} V${h} H0 Z` };
     case 'roundRect': {
@@ -43,7 +51,7 @@ function geomFor(name, w, h, adj, el) {
     }
     case 'star5': {
       const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2, r = R * 0.382;
-      const pts = [];
+      const pts: string[] = [];
       for (let k = 0; k < 10; k++) {
         const ang = -Math.PI / 2 + k * Math.PI / 5;
         const rr = k % 2 === 0 ? R : r;
@@ -60,21 +68,21 @@ function geomFor(name, w, h, adj, el) {
   }
 }
 
-function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+function clamp(v: number, a: number, b: number): number { return Math.min(b, Math.max(a, v)); }
 
 // 线性缩放 SVG path（x *= sx, y *= sy；A 命令只缩放端点，弧半径按 sx 近似）
-export function scalePath(pathStr, sx, sy) {
+export function scalePath(pathStr: string, sx: number, sy: number): string {
   if (!pathStr) return '';
   const segRe = /([MLHVQCASTZmlhvqcastz])((?:[^MLHVQCASTZmlhvqcastz]*)?)/g;
   let out = '';
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = segRe.exec(pathStr))) {
     const cmd = m[1];
     const rawArgs = m[2].trim();
     const nums = rawArgs ? rawArgs.split(/[\s,]+/).map(Number) : [];
     switch (cmd.toUpperCase()) {
       case 'M': case 'L': case 'T': case 'C': case 'S': case 'Q': {
-        const p = [];
+        const p: number[] = [];
         for (let k = 0; k + 1 < nums.length; k += 2) { p.push(nums[k] * sx, nums[k + 1] * sy); }
         out += cmd + p.map(f3).join(' ');
         break;
@@ -82,7 +90,7 @@ export function scalePath(pathStr, sx, sy) {
       case 'H': out += cmd + nums.map(v => v * sx).map(f3).join(' '); break;
       case 'V': out += cmd + nums.map(v => v * sy).map(f3).join(' '); break;
       case 'A': {
-        const p = [];
+        const p: number[] = [];
         for (let k = 0; k + 7 <= nums.length; k += 7) {
           p.push(nums[k] * ((sx + sy) / 2), nums[k + 1] * ((sx + sy) / 2), nums[k + 2], nums[k + 3], nums[k + 4], nums[k + 5] * sx, nums[k + 6] * sy);
         }
@@ -97,4 +105,4 @@ export function scalePath(pathStr, sx, sy) {
   return out.trim();
 }
 
-const f3 = (v) => Math.round(v * 100) / 100;
+const f3 = (v: number): number => Math.round(v * 100) / 100;

@@ -1,18 +1,20 @@
-// parser.js — 受控 XML 子集解析器（规范 §2）
+// parser.ts — 受控 XML 子集解析器（规范 §2）
 // 产出通用语法树；元素标签的"富文本内容"按原文捕获（CDATA 解包并转义）。
-// 不做任何语义解释 —— 那是 ir.js 的工作。
+// 不做任何语义解释 —— 那是 ir.ts 的工作。
+
+import type { Diag, ParseXMLOptions, XMLNode, XMLParseResult } from './types.js';
 
 const RAW_OK = new Set(['text', 'td', 'code', 'formula']);
 // 值标签：内容为纯文本值（实体解码后存入 content）
 const VALUE_TAGS = new Set(['cols', 'rows', 'row']);
 
-export function parseXML(xml, opts = {}) {
-  const errors = [];
+export function parseXML(xml: string, opts: ParseXMLOptions = {}): XMLParseResult {
+  const errors: Diag[] = [];
   const rawTags = new Set([...RAW_OK, ...(opts.rawContentTags || [])]);
   const s = xml;
   const n = s.length;
   const lineStarts = computeLineStarts(s);
-  const posOf = (i) => {
+  const posOf = (i: number): { line: number; col: number } => {
     let lo = 0, hi = lineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -20,7 +22,7 @@ export function parseXML(xml, opts = {}) {
     }
     return { line: lo + 1, col: i - lineStarts[lo] + 1 };
   };
-  const err = (i, code, message) => {
+  const err = (i: number, code: string, message: string): void => {
     const p = posOf(Math.min(i, n));
     errors.push({ code, message, line: p.line, col: p.col });
   };
@@ -35,14 +37,14 @@ export function parseXML(xml, opts = {}) {
   }
   return { root, errors };
 
-  function computeLineStarts(str) {
+  function computeLineStarts(str: string): number[] {
     const arr = [0];
     for (let k = 0; k < str.length; k++) if (str.charCodeAt(k) === 10) arr.push(k + 1);
     return arr;
   }
 
   // 跳过空白/注释/PI/doctype；返回下一个有效位置；遇 doctype 报错并跳过
-  function skipMisc(from) {
+  function skipMisc(from: number): number {
     let p = from;
     for (;;) {
       p = skipWs(p);
@@ -52,8 +54,8 @@ export function parseXML(xml, opts = {}) {
       return p;
     }
   }
-  function skipWs(p) { while (p < n && (s[p] === ' ' || s[p] === '\t' || s[p] === '\r' || s[p] === '\n')) p++; return p; }
-  function skipProlog() {
+  function skipWs(p: number): number { while (p < n && (s[p] === ' ' || s[p] === '\t' || s[p] === '\r' || s[p] === '\n')) p++; return p; }
+  function skipProlog(): number {
     const p = skipMisc(0);
     if (p >= n) { err(n - 1, 'E_XML', '文件为空或只有空白/注释'); return -1; }
     if (s[p] !== '<') { err(p, 'E_XML', `期望 '<' 开始根元素，实际是 ${JSON.stringify(s[p])}`); return -1; }
@@ -61,7 +63,7 @@ export function parseXML(xml, opts = {}) {
   }
 
   // 解析一个完整元素（开标签 → 内容 → 闭标签）。失败返回 null。
-  function parseElement(depth = 0) {
+  function parseElement(depth = 0): XMLNode | null {
     if (depth > 200) { err(i, 'E_XML', '嵌套过深（>200）'); return null; }
     const start = i;
     if (s[i] !== '<') { err(i, 'E_XML', `期望标签，实际是 ${JSON.stringify(s.slice(i, i + 10))}`); return null; }
@@ -72,7 +74,7 @@ export function parseXML(xml, opts = {}) {
     const name = m[0];
     p += name.length;
 
-    const attrs = {};
+    const attrs: Record<string, string | undefined> = {};
     for (;;) {
       p = skipWs(p);
       if (s.startsWith('/>', p)) { p += 2; i = p; return node(name, attrs, '', start, true); }
@@ -100,7 +102,7 @@ export function parseXML(xml, opts = {}) {
       i = close.end;
       return node(name, attrs, VALUE_TAGS.has(name) ? inner.trim() : dedentBlock(inner), start, false);
     }
-    const children = [];
+    const children: XMLNode[] = [];
     for (;;) {
       p = skipMisc(p);
       if (p >= n) { err(start, 'E_XML', `标签 <${name}> 缺少闭标签（文件提前结束）`); i = n; return { name, attrs, children, content: '', line: posOf(start).line, col: posOf(start).col, selfClose: false }; }
@@ -122,11 +124,11 @@ export function parseXML(xml, opts = {}) {
       const nx = s.indexOf('<', p); p = nx < 0 ? n : nx;
     }
 
-    function node(nm, at, content, st, sc) {
+    function node(nm: string, at: Record<string, string | undefined>, content: string, st: number, sc: boolean): XMLNode {
       return { name: nm, attrs: at, children: [], content, line: posOf(st).line, col: posOf(st).col, selfClose: sc };
     }
     // 属性出错后的恢复：吞到 '>' 为止，返回已有部分（尽力渲染）
-    function recoverFromBadTag(p2, nm, st, at) {
+    function recoverFromBadTag(p2: number, nm: string, st: number, at: Record<string, string | undefined>): XMLNode {
       const gt = s.indexOf('>', p2);
       i = gt < 0 ? n : gt + 1;
       return { name: nm, attrs: at, children: [], content: '', line: posOf(st).line, col: posOf(st).col, selfClose: false, recovered: true };
@@ -134,7 +136,7 @@ export function parseXML(xml, opts = {}) {
   }
 
   // 找匹配闭标签（raw 内容模式）：同名开标签计数；CDATA 段整体跳过
-  function findMatchingClose(from, name) {
+  function findMatchingClose(from: number, name: string): { start: number; end: number } {
     let p = from, depth = 1;
     while (p < n) {
       if (s.startsWith('<![CDATA[', p)) { const e = s.indexOf(']]>', p); p = e < 0 ? n : e + 3; continue; }
@@ -163,7 +165,7 @@ export function parseXML(xml, opts = {}) {
     return { start: n, end: n };
   }
 
-  function unwrapCdata(str, decode) {
+  function unwrapCdata(str: string, decode: boolean): string {
     const unescape = decode ? decodeEntities : escapeHtml;
     if (!str.includes('<![CDATA[')) return decode ? str : str;
     let out = '', p = 0;
@@ -180,14 +182,14 @@ export function parseXML(xml, opts = {}) {
   }
 
   // 去公共缩进（YAML block scalar 语义）：保留代码相对缩进；去掉首尾空行
-  function dedentBlock(str) {
+  function dedentBlock(str: string): string {
     const lines = str.replace(/\r\n/g, '\n').split('\n');
     while (lines.length && !lines[0].trim()) lines.shift();
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
     let min = Infinity;
     for (const l of lines) {
       if (!l.trim()) continue;
-      const m = /^[ \t]*/.exec(l)[0].length;
+      const m = /^[ \t]*/.exec(l)![0].length; // 行首空白正则零宽必匹配，exec 不为 null
       if (m < min) min = m;
     }
     if (!Number.isFinite(min)) min = 0;
@@ -195,12 +197,12 @@ export function parseXML(xml, opts = {}) {
   }
 }
 
-export function decodeEntities(str) {
+export function decodeEntities(str: string): string {
   if (!str.includes('&')) return str;
-  return str.replace(/&(lt|gt|amp|quot|apos|#x?[0-9a-fA-F]+);/g, (all, g1) => {
-    const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+  return str.replace(/&(lt|gt|amp|quot|apos|#x?[0-9a-fA-F]+);/g, (all: string, g1: string): string => {
+    const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
     if (named[g1]) return named[g1];
-    let code;
+    let code: number;
     if (g1[1] === 'x' || g1[1] === 'X') code = parseInt(g1.slice(2), 16);
     else code = parseInt(g1.slice(1), 10);
     if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return all;
@@ -208,6 +210,6 @@ export function decodeEntities(str) {
   });
 }
 
-export function escapeHtml(str) {
+export function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

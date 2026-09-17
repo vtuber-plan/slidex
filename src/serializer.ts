@@ -1,12 +1,13 @@
-// serializer.js — IR → 规范形 XML（spec §18）
+// serializer.ts — IR → 规范形 XML（spec §18）
 // 打开 → 保存 → 再打开，IR 不变（幂等）。编辑器所有保存都走这里。
 
 import { ELEMENT_SCHEMA } from './ir.js';
 import { decodeEntities } from './parser.js';
+import type { AxisSpec, Deck, DeckTheme, Fill, SlideContainer, SlideElement, StyleAttrs } from './types.js';
 
 const IND = '  ';
 
-export function serializeDeck(deck) {
+export function serializeDeck(deck: Deck): string {
   const out = ['<?xml version="1.0" encoding="UTF-8"?>'];
   const attrs = [`version="${esc(deck.version || '1')}"`];
   if (deck.title) attrs.push(`title="${esc(deck.title)}"`);
@@ -17,7 +18,7 @@ export function serializeDeck(deck) {
     for (const f of deck.fonts) out.push(`${IND}${IND}<font family="${esc(f.family)}" src="${esc(f.src)}"/>`);
     out.push(`${IND}</fonts>`);
   }
-  const th = deck.theme || {};
+  const th = (deck.theme || {}) as DeckTheme;
   if (Object.keys(th.colors || {}).length || Object.keys(th.textStyles || {}).length || Object.keys(th.tableStyles || {}).length) {
     out.push(serializeTheme(th, IND));
   }
@@ -27,7 +28,7 @@ export function serializeDeck(deck) {
   return out.join('\n') + '\n';
 }
 
-function serializeTheme(theme, pad) {
+function serializeTheme(theme: DeckTheme, pad: string): string {
   const t = theme || { colors: {}, textStyles: {}, tableStyles: {} };
   const lines = [`${pad}<theme>`];
   const colorNames = Object.keys(t.colors || {});
@@ -55,7 +56,7 @@ function serializeTheme(theme, pad) {
     for (const nm of tableNames) {
       const ts = t.tableStyles[nm];
       lines.push(`${pad}${IND}${IND}<table-style name="${esc(nm)}"${ts.rowOverCol === false ? ' row-over-col="false"' : ''}>`);
-      for (const [tag, style] of [['header', ts.header], ['last-row', ts.lastRow], ['first-col', ts.firstCol], ['last-col', ts.lastCol]]) {
+      for (const [tag, style] of [['header', ts.header], ['last-row', ts.lastRow], ['first-col', ts.firstCol], ['last-col', ts.lastCol]] as Array<[string, StyleAttrs | null]>) {
         if (style) lines.push(`${pad}${IND}${IND}${IND}<${tag}${styleAttrs(style, cellOrder)}/>`);
       }
       for (const b of ts.body || []) lines.push(`${pad}${IND}${IND}${IND}<body${styleAttrs(b, cellOrder)}/>`);
@@ -68,14 +69,14 @@ function serializeTheme(theme, pad) {
   return lines.join('\n');
 }
 
-function styleAttrs(style, order) {
-  const a = [];
+function styleAttrs(style: StyleAttrs, order: string[]): string {
+  const a: string[] = [];
   for (const k of order) if (style[k] !== undefined && style[k] !== '') a.push(`${k}="${esc(String(style[k]))}"`);
   return a.length ? ' ' + a.join(' ') : '';
 }
 
-function serializeContainer(c, pad, isMaster) {
-  const attrs = [];
+function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): string {
+  const attrs: string[] = [];
   if (c.id) attrs.push(`id="${esc(c.id)}"`);
   if (isMaster) {
     // master 只有 id + background
@@ -110,11 +111,11 @@ const GEOM_ATTRS = ['id', 'x', 'y', 'w', 'h', 'rotation', 'opacity', 'flip-h', '
 const CELL_ATTR_ORDER = ['fill', 'color', 'font-size', 'bold', 'italic', 'font-family', 'line-height', 'align', 'valign', 'border-bottom', 'border-top', 'border-left', 'border-right', 'row-span', 'col-span', 'style'];
 const SERIES_ATTR_ORDER = ['x', 'y', 'name', 'fill', 'stroke', 'stroke-width', 'stack', 'smooth', 'marker', 'dash', 'inner-radius', 'data-labels'];
 
-export function serializeElement(el, pad = IND) {
+export function serializeElement(el: SlideElement, pad: string = IND): string {
   const schema = ELEMENT_SCHEMA[el.type];
-  const parts = [];
+  const parts: string[] = [];
 
-  const push = (name, value) => {
+  const push = (name: string, value: unknown): void => {
     if (value === undefined || value === null || value === '') return;
     const dflt = schema.attrs.find(a => a[0] === name)?.[2];
     if (typeof value === 'boolean') {
@@ -133,18 +134,18 @@ export function serializeElement(el, pad = IND) {
 
   if (el.id) parts.push(`id="${esc(el.id)}"`);
   for (const name of ['x', 'y', 'w', 'h', 'rotation', 'opacity', 'flip-h', 'flip-v']) {
-    const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const key = name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     push(name, el[key]);
   }
   for (const [name] of schema.attrs) {
     if (GEOM_ATTRS.includes(name)) continue;
-    const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const key = name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     if (name === 'fill' && el.fillObj) continue; // 渐变/图片走子元素
     push(name, el[key]);
   }
 
   const open = `<${el.type}${parts.length ? ' ' + parts.join(' ') : ''}`;
-  const children = [];
+  const children: string[] = [];
 
   if (el.fillObj) children.push(fillChild(el.fillObj, pad + IND));
 
@@ -161,7 +162,7 @@ export function serializeElement(el, pad = IND) {
       if (el.rowsRatio?.length) children.push(`${pad}${IND}<rows>${el.rowsRatio.map(fmt).join(' ')}</rows>`);
       for (const row of el.rowsData || []) {
         const tds = row.map(c => {
-          const a = [];
+          const a: string[] = [];
           for (const k of CELL_ATTR_ORDER) if (c[k] !== undefined && c[k] !== '' && c[k] !== false) a.push(`${k}="${esc(String(c[k]))}"`);
           const inner = c.text || '';
           if (!inner.trim()) return `${pad}${IND}${IND}<td${a.length ? ' ' + a.join(' ') : ''}/>`;
@@ -181,7 +182,7 @@ export function serializeElement(el, pad = IND) {
         for (const k of SERIES_ATTR_ORDER) if (se[k] !== undefined && se[k] !== '' && se[k] !== false) a.push(`${k}="${esc(String(se[k]))}"`);
         children.push(`${pad}${IND}<series ${a.join(' ')}/>`);
       }
-      for (const [tag, ax] of [['x-axis', el.xAxis], ['y-axis', el.yAxis]]) {
+      for (const [tag, ax] of [['x-axis', el.xAxis], ['y-axis', el.yAxis]] as Array<[string, AxisSpec | undefined]>) {
         if (!ax) continue;
         const { line: _l, ...rest } = ax;
         const a = Object.keys(rest).filter(k => rest[k] !== '' && rest[k] !== undefined).map(k => `${k}="${esc(String(rest[k]))}"`);
@@ -195,7 +196,7 @@ export function serializeElement(el, pad = IND) {
   return `${pad}${open}>\n${children.join('\n')}\n${pad}</${el.type}>`;
 }
 
-function fillChild(fill, pad) {
+function fillChild(fill: Fill, pad: string): string {
   if (fill.type === 'gradient') {
     const stops = fill.stops.map(s => `${pad}${IND}<stop pos="${fmt(s.pos)}" color="${esc(s.color)}"/>`).join('\n');
     return `${pad}<fill type="gradient" angle="${fmt(fill.angle || 0)}">\n${stops}\n${pad}</fill>`;
@@ -206,13 +207,13 @@ function fillChild(fill, pad) {
   return `${pad}<fill type="solid" color="${esc(fill.color)}"/>`;
 }
 
-function withRichContent(open, content, pad) {
+function withRichContent(open: string, content: string | undefined, pad: string): string {
   const c = (content || '').replace(/^\n+|\n+$/g, '');
   if (!c.trim()) return `${pad}${open}/>`;
   return `${pad}${open}>\n${indentRich(c, pad + IND)}\n${pad}</text>`;
 }
 
-function withCodeContent(open, code, pad) {
+function withCodeContent(open: string, code: string | undefined, pad: string): string {
   const c = decodeEntities((code || '')).replace(/^\n+|\n+$/g, '');
   const tagName = open.slice(1).split(/[\s>]/)[0];
   if (!c) return `${pad}${open}/>`;
@@ -223,16 +224,16 @@ function withCodeContent(open, code, pad) {
   return `${pad}${open}>\n${c.split('\n').map(l => `${pad}${IND}${l}`).join('\n')}\n${pad}</${tagName}>`;
 }
 
-function indentRich(text, pad) {
+function indentRich(text: string, pad: string): string {
   return text.split('\n').map(l => l.trim() ? pad + l : l).join('\n');
 }
 
-export function fmt(v) {
+export function fmt(v: unknown): string {
   if (typeof v !== 'number') return String(v);
   const r = Math.round(v * 1000) / 1000;
   return String(r);
 }
 
-export function esc(s) {
+export function esc(s: unknown): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

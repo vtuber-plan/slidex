@@ -17,7 +17,7 @@ fs.mkdirSync(path.dirname(servedCopy), { recursive: true });
 fs.copyFileSync(fixture, servedCopy);
 
 const child = spawn(process.execPath, [
-  path.join(ROOT, 'src', 'cli.js'), 'serve', servedCopy,
+  path.join(ROOT, 'dist', 'cli.js'), 'serve', servedCopy,
   '--port', String(PORT), '--no-open',
 ], { stdio: ['ignore', 'pipe', 'pipe'], cwd: ROOT });
 let serverLog = '';

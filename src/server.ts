@@ -1,17 +1,18 @@
-// server.js — 本地编辑服务器：静态 app + deck API + 媒体挂载 + 渲染页 + 导出触发
+// server.ts — 本地编辑服务器：静态 app + deck API + 媒体挂载 + 渲染页 + 导出触发
 
-import http from 'node:http';
+import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSlideX } from './ir.js';
+import type { Deck } from './types.js';
 import { slidePageHtml, renderSlide, slideCss, cdnLinks, runtimeJs } from './render/render.js';
 import { exportDeck } from './export/export.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'app');
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon',
@@ -19,7 +20,24 @@ const MIME = {
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
-export function startServer(deckPath, opts = {}) {
+interface ApiBody {
+  xml?: string;
+  path?: string;
+  format?: string;
+  scale?: number;
+  editable?: boolean;
+  [k: string]: unknown;
+}
+
+export interface ServerHandle {
+  server: http.Server;
+  port: number;
+  deckFile: string;
+  deckDir: string;
+  close: () => void;
+}
+
+export function startServer(deckPath: string, opts: { port?: number; host?: string } = {}): Promise<ServerHandle> {
   let deckFile = path.resolve(deckPath);
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
@@ -28,24 +46,24 @@ export function startServer(deckPath, opts = {}) {
     try {
       await route(req, res);
     } catch (e) {
-      send(res, 500, { error: String(e && e.message || e) });
+      send(res, 500, { error: String(e && (e as Error).message || e) });
     }
   });
 
-  function send(res, code, body, headers = {}) {
+  function send(res: ServerResponse, code: number, body: unknown, headers: Record<string, string> = {}) {
     res.writeHead(code, { 'Cache-Control': 'no-store', ...headers });
     res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
   }
 
-  function readBody(req) {
+  function readBody(req: IncomingMessage): Promise<ApiBody> {
     return new Promise((ok) => {
       let buf = '';
-      req.on('data', (c) => { buf += c; });
+      req.on('data', (c: Buffer | string) => { buf += c; });
       req.on('end', () => { try { ok(JSON.parse(buf || '{}')); } catch { ok({}); } });
     });
   }
 
-  function serveFile(res, file, download) {
+  function serveFile(res: ServerResponse, file: string, download?: boolean) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { send(res, 404, { error: 'not found: ' + file }); return; }
     const ext = path.extname(file).toLowerCase();
     res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store', ...(download ? { 'Content-Disposition': `attachment; filename="${path.basename(file)}"` } : {}) });
@@ -53,13 +71,13 @@ export function startServer(deckPath, opts = {}) {
   }
 
   // 路径安全：不允许 ..，限定在 base 内
-  const safeJoin = (base, rel) => {
+  const safeJoin = (base: string, rel: string): string | null => {
     const p = path.resolve(base, '.' + path.sep + rel.replace(/\\/g, '/'));
     return p.startsWith(path.resolve(base)) ? p : null;
   };
 
-  async function route(req, res) {
-    const u = new URL(req.url, 'http://x');
+  async function route(req: IncomingMessage, res: ServerResponse) {
+    const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
 
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) { serveFile(res, path.join(APP, 'index.html')); return; }
@@ -69,7 +87,8 @@ export function startServer(deckPath, opts = {}) {
     if (req.method === 'GET' && p === '/runtime.js') { send(res, 200, runtimeJs(), { 'Content-Type': MIME['.js'] }); return; }
     if (req.method === 'GET' && p === '/runtime.css') { send(res, 200, slideCss(), { 'Content-Type': MIME['.css'] }); return; }
     if (req.method === 'GET' && p.startsWith('/app/')) { const f = safeJoin(APP, p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
-    if (req.method === 'GET' && p.startsWith('/src/')) { const f = safeJoin(path.join(ROOT, 'src'), p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
+    // URL /src/* 是 app 前端的稳定模块路径；源码已迁 TypeScript，实际文件在编译产物 dist/
+    if (req.method === 'GET' && p.startsWith('/src/')) { const f = safeJoin(path.join(ROOT, 'dist'), p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
     if (req.method === 'GET' && p.startsWith('/f/')) {
       const f = safeJoin(deckDir, decodeURIComponent(p.slice(3)));
       if (!f) { send(res, 403, {}); return; }
@@ -110,7 +129,7 @@ export function startServer(deckPath, opts = {}) {
     }
     if (req.method === 'POST' && p === '/api/open') {
       const { path: newPath } = await readBody(req);
-      const abs2 = path.resolve(newPath);
+      const abs2 = path.resolve(newPath || '');
       if (!fs.existsSync(abs2) || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
       deckFile = abs2;
       deckDir = path.dirname(abs2);
@@ -118,8 +137,8 @@ export function startServer(deckPath, opts = {}) {
       return;
     }
     if (req.method === 'POST' && p === '/api/save') {
-      const { xml } = await readBody(req);
-      const r = parseSlideX(xml || '');
+      const { xml = '' } = await readBody(req);
+      const r = parseSlideX(xml);
       if (r.errors.some(e => e.code.startsWith('E_XML'))) {
         send(res, 200, { ok: false, errors: r.errors });
         return;
@@ -136,7 +155,7 @@ export function startServer(deckPath, opts = {}) {
         const result = await exportDeck(deckFile, { format, scale, editable });
         send(res, 200, { ok: true, ...result });
       } catch (e) {
-        send(res, 200, { ok: false, error: String(e && e.message || e) });
+        send(res, 200, { ok: false, error: String(e && (e as Error).message || e) });
       }
       return;
     }
@@ -145,12 +164,12 @@ export function startServer(deckPath, opts = {}) {
 
   return new Promise((resolve) => {
     server.listen(opts.port || 0, opts.host || '127.0.0.1', () => {
-      resolve({ server, port: server.address().port, deckFile, deckDir, close: () => server.close() });
+      resolve({ server, port: (server.address() as { port: number }).port, deckFile, deckDir, close: () => server.close() });
     });
   });
 }
 
-function printHtml(deck) {
+function printHtml(deck: Deck): string {
   const cdn = cdnLinks();
   const pages = deck.slides.map((s) => {
     const html = renderSlide(deck, s, { mediaBase: '/f/' });

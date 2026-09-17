@@ -8,11 +8,17 @@ import { capturePngs, capturePdf, withBrowser } from './capture.js';
 import { buildPptx } from './pptx.js';
 import { buildStandaloneHtml } from './html.js';
 import { planSlide, buildPptxEditable } from './pptx-native.js';
+import type { PlanItem } from './pptx-native.js';
+import type { Deck, ParseResult } from '../types.js';
 
-export async function exportDeck(deckFile, { format = 'png', scale = 2, editable = false } = {}) {
+export async function exportDeck(
+  deckFile: string,
+  { format = 'png', scale = 2, editable = false }: { format?: string; scale?: number; editable?: boolean } = {},
+): Promise<{ files: string[]; outDir: string }> {
   const abs = path.resolve(deckFile);
   const xml = fs.readFileSync(abs, 'utf8');
-  const { deck, errors } = parseSlideX(xml);
+  // ir.js 暂为 JS（推断类型过宽），在边界收敛到共享 ParseResult；ir 转 .ts 后为恒等断言
+  const { deck, errors } = parseSlideX(xml) as ParseResult;
   const blockers = errors.filter(e => e.code !== 'W_');
   if (blockers.length && (format === 'pptx')) {
     throw new Error(`deck 存在 ${blockers.length} 个错误，请先修复（slidex validate）:\n` + blockers.slice(0, 5).map(e => `  L${e.line || '?'} ${e.code}: ${e.message}`).join('\n'));
@@ -63,29 +69,37 @@ export async function exportDeck(deckFile, { format = 'png', scale = 2, editable
 }
 
 // 可编辑混合导出：原生元素映射 + 复杂元素裁图
-async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale }) {
+async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale }: {
+  deck: Deck;
+  deckDir: string;
+  baseUrl: string;
+  outDir: string;
+  base: string;
+  scale: number;
+}): Promise<string> {
   const plans = deck.slides.map(s => planSlide(deck, s));
-  const cropBuffers = new Map(); // "slideIdx:key" -> PNG Buffer
+  const cropBuffers = new Map<string, Buffer>(); // "slideIdx:key" -> PNG Buffer
   await withBrowser(async (browser) => {
     const page = await browser.newPage();
     await page.setViewport({ width: Math.round(deck.width), height: Math.round(deck.height), deviceScaleFactor: Math.max(2, scale) });
     for (let i = 0; i < deck.slides.length; i++) {
       const plan = plans[i];
-      const crops = plan.items.filter(it => it.kind === 'crop');
+      const crops = plan.items.filter((it): it is Extract<PlanItem, { kind: 'crop' }> => it.kind === 'crop');
       if (!crops.length) continue;
       await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
       const t0 = Date.now();
       for (;;) {
-        const ok = await page.evaluate(() => window.__SLX_READY__ === true).catch(() => false);
+        // __SLX_READY__ 为渲染页注入的全局标记，DOM 类型上不存在 → 窄化 any
+        const ok = await page.evaluate(() => (window as any).__SLX_READY__ === true).catch(() => false);
         if (ok || Date.now() - t0 > 10000) break;
         await new Promise(r => setTimeout(r, 120));
       }
       // 隐藏原生映射元素，让裁图只含“裁图内容 + 背景”
-      const nativeIds = plan.items.filter(it => it.kind !== 'crop' && it.el && it.el.id).map(it => it.el.id);
-      await page.evaluate((ids) => {
+      const nativeIds = plan.items.filter(it => it.kind !== 'crop' && it.el && it.el.id).map(it => it.el!.id);
+      await page.evaluate((ids: string[]) => {
         for (const id of ids) {
           const el = document.querySelector(`.slx-el[data-id="${CSS.escape(id)}"]`);
-          if (el) el.style.visibility = 'hidden';
+          if (el) (el as HTMLElement).style.visibility = 'hidden';
         }
       }, nativeIds);
       for (const crop of crops) {

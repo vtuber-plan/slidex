@@ -1,4 +1,4 @@
-// index.js — SlideX 公共 API
+// index.ts — SlideX 公共 API
 export { parseSlideX, newElement, newSlide, validateDeck, resolveColor, ELEMENT_SCHEMA, SHAPE_NAMES, DEFAULT_CHART_COLORS } from './ir.js';
 export { serializeDeck } from './serializer.js';
 export { parseXML } from './parser.js';

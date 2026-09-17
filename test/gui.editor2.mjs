@@ -1,5 +1,5 @@
 // 编辑器新功能测试：内联编辑/右键/剪贴板/格式刷/页面面板
-import { startServer } from '../src/server.js';
+import { startServer } from '../dist/server.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

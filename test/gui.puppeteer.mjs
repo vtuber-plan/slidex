@@ -1,5 +1,5 @@
 // 真实浏览器交互冒烟测试：选中、拖动、键盘、检查器、保存持久化
-import { startServer } from '../src/server.js';
+import { startServer } from '../dist/server.js';
 import fs from 'node:fs';
 import path from 'node:path';
 

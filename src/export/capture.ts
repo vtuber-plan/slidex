@@ -2,8 +2,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Browser, Page } from 'puppeteer-core';
 
-export function findBrowserPath() {
+/** 动态 import 的 default 即 CJS module.exports（PuppeteerNode 实例）；TS 的 NodeNext 视图与此不一致，按实际用到的最小形状描述 */
+interface PuppeteerLauncher { launch(options: { executablePath: string; args: string[] }): Promise<Browser> }
+
+export function findBrowserPath(): string | null {
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   const home = process.env.USERPROFILE || process.env.HOME || '';
   const candidates = process.platform === 'win32' ? [
@@ -26,16 +30,16 @@ export function findBrowserPath() {
   return null;
 }
 
-let puppeteerMod = null;
-async function getPuppeteer() {
+let puppeteerMod: { default: unknown } | null = null;
+async function getPuppeteer(): Promise<PuppeteerLauncher> {
   if (!puppeteerMod) {
     try { puppeteerMod = await import('puppeteer-core'); }
     catch { throw new Error('缺少依赖 puppeteer-core，请先 npm install（导出功能需要它，编辑器不需要）'); }
   }
-  return puppeteerMod.default;
+  return puppeteerMod!.default as PuppeteerLauncher;
 }
 
-export async function withBrowser(fn) {
+export async function withBrowser<T>(fn: (browser: Browser) => T | Promise<T>): Promise<T> {
   const exe = findBrowserPath();
   if (!exe) throw new Error('未找到 Chrome/Edge/Chromium。请安装 Chrome，或设置环境变量 CHROME_PATH 指向浏览器可执行文件。');
   const puppeteer = await getPuppeteer();
@@ -50,18 +54,23 @@ export async function withBrowser(fn) {
   }
 }
 
-async function waitReady(page, timeoutMs = 10000) {
+async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
   const t0 = Date.now();
   for (;;) {
-    const ok = await page.evaluate(() => window.__SLX_READY__ === true).catch(() => false);
+    // __SLX_READY__ 为渲染页注入的全局标记，DOM 类型上不存在 → 窄化 any
+    const ok = await page.evaluate(() => (window as any).__SLX_READY__ === true).catch(() => false);
     if (ok || Date.now() - t0 > timeoutMs) return;
     await new Promise(r => setTimeout(r, 120));
   }
 }
 
-export async function capturePngs(baseUrl, slideCount, { scale = 2, outDir, deckW, deckH, base = 'slide' }) {
+export async function capturePngs(
+  baseUrl: string,
+  slideCount: number,
+  { scale = 2, outDir, deckW, deckH, base = 'slide' }: { scale?: number; outDir: string; deckW: number; deckH: number; base?: string },
+): Promise<string[]> {
   fs.mkdirSync(outDir, { recursive: true });
-  const files = [];
+  const files: string[] = [];
   await withBrowser(async (browser) => {
     const page = await browser.newPage();
     await page.setViewport({ width: Math.round(deckW), height: Math.round(deckH), deviceScaleFactor: scale });
@@ -77,7 +86,7 @@ export async function capturePngs(baseUrl, slideCount, { scale = 2, outDir, deck
   return files;
 }
 
-export async function capturePdf(url, outFile) {
+export async function capturePdf(url: string, outFile: string): Promise<string> {
   await withBrowser(async (browser) => {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});

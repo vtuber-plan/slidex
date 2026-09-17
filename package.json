@@ -4,13 +4,14 @@
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "type": "module",
   "bin": {
-    "slidex": "src/cli.js"
+    "slidex": "dist/cli.js"
   },
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node src/cli.js serve examples/quickstart/deck.slx",
-    "app": "electron electron/main.js",
-    "test": "node test/run.mjs"
+    "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json",
+    "start": "npm run build && node dist/cli.js serve examples/quickstart/deck.slx",
+    "app": "npm run build && electron electron/main.js",
+    "test": "npm run build && node test/run.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -30,6 +31,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^44.4.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@types/node": "^24.13.5"
   }
 }

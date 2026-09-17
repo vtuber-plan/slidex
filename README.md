@@ -40,7 +40,7 @@
 - **富文本 + LaTeX 公式**：`<p>/<strong>/<span style>` 富文本子集，行内 `\( ... \)` KaTeX 公式，独立 `<formula>` 块级公式。
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
 - **桌面应用**：Electron 封装，原生菜单 + 文件对话框。
-- **编辑器 TypeScript 化**：`app/ts/*.ts` strict 模式编译，`src/` 保持零构建 JS（附类型声明）；**i18n**：界面文案 zh-CN / en 可切换（localStorage 持久化，默认跟随浏览器语言）。
+- **全仓 TypeScript 化**：`app/ts/*.ts` 与 `src/*.ts` 均 strict 模式（`npm run build` 产出 `dist/`），类型单一来源 `src/types.ts`；**i18n**：界面文案 zh-CN / en 可切换（localStorage 持久化，默认跟随浏览器语言）。
 
 ## 快速开始
 
@@ -51,7 +51,7 @@ npm start            # 浏览器打开示例编辑器 http://127.0.0.1:4870（�
 npm run app          # 以 Electron 桌面应用打开
 ```
 
-常用命令（`node src/cli.js <cmd>`，或 `npm link` 后直接 `slidex`）：
+常用命令（`npm run build` 后 `node dist/cli.js <cmd>`，或 `npm link` 后直接 `slidex`）：
 
 ```bash
 slidex init mydeck                        # 新建项目脚手架

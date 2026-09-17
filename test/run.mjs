@@ -5,13 +5,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { parseSlideX, newElement, SHAPE_NAMES } from '../src/ir.js';
-import { serializeDeck } from '../src/serializer.js';
-import { renderSlide, slidePageHtml } from '../src/render/render.js';
-import { renderChart } from '../src/render/charts.js';
-import { shapeSvg } from '../src/render/shapes.js';
-import { highlight } from '../src/render/code.js';
-import { renderRichText } from '../src/render/richtext.js';
+import { parseSlideX, newElement, SHAPE_NAMES } from '../dist/ir.js';
+import { serializeDeck } from '../dist/serializer.js';
+import { renderSlide, slidePageHtml } from '../dist/render/render.js';
+import { renderChart } from '../dist/render/charts.js';
+import { shapeSvg } from '../dist/render/shapes.js';
+import { highlight } from '../dist/render/code.js';
+import { renderRichText } from '../dist/render/richtext.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
@@ -120,13 +120,13 @@ sec('4. 动画 / 母版 / runs');
 
 sec('5. richtext-runs 与可编辑导出规划');
 {
-  const { richToRuns } = await import('../src/render/richtext-runs.js');
+  const { richToRuns } = await import('../dist/render/richtext-runs.js');
   const r = richToRuns('<p>纯 <span style="color:#FF0000">红</span></p><p style="text-align:center">居中</p><ul><li>项</li></ul>', { color: '#111111', fontSize: 18 });
   t('行内样式 run', r.paragraphs[0].runs[1].color === '#FF0000');
   t('段落对齐', r.paragraphs[1].align === 'center');
   t('列表 bullet', r.paragraphs[2].bullet === 'ul');
   t('行内公式 hasMath', richToRuns('<p>a \\(x^2\\) b</p>', {}).hasMath === true);
-  const { planSlide } = await import('../src/export/pptx-native.js');
+  const { planSlide } = await import('../dist/export/pptx-native.js');
   const rr = parseSlideX(`<deck version='1'><master id='m'><text id='logo' x='1' y='1' w='2' h='2'><p>L</p></text></master>
     <slide master='m'>
       <text id='t' x='1' y='1' w='2' h='2'><p>文</p></text>
@@ -168,7 +168,7 @@ sec('6. PPTX 结构');
     t('备注页存在', names.some(n => n.startsWith('ppt/notesSlides/notesSlide')));
     t('媒体图片存在', names.filter(n => n.startsWith('ppt/media/image')).length >= 1);
   } else {
-    t('PPTX 已生成（跳过：先运行 node src/cli.js export examples/quickstart/deck.slx -f pptx）', false);
+    t('PPTX 已生成（跳过：先运行 node dist/cli.js export examples/quickstart/deck.slx -f pptx）', false);
   }
 }
 

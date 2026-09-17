@@ -5,16 +5,19 @@
     "moduleResolution": "bundler",
     "paths": {
       "/src/ir.js": [
-        "./types/src/ir.d.ts"
+        "../dist/ir.d.ts"
       ],
       "/src/serializer.js": [
-        "./types/src/serializer.d.ts"
+        "../dist/serializer.d.ts"
       ],
       "/src/render/render.js": [
-        "./types/src/render.d.ts"
+        "../dist/render/render.d.ts"
       ],
       "/src/render/richtext.js": [
-        "./types/src/richtext.d.ts"
+        "../dist/render/richtext.d.ts"
+      ],
+      "/src/types.js": [
+        "../dist/types.d.ts"
       ]
     },
     "lib": [

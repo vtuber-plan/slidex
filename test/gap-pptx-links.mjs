@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { parseSlideX } from '../src/ir.js';
-import { planSlide, slideNativeXml, relsXml, buildPptxEditable } from '../src/export/pptx-native.js';
+import { parseSlideX } from '../dist/ir.js';
+import { planSlide, slideNativeXml, relsXml, buildPptxEditable } from '../dist/export/pptx-native.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = path.join(ROOT, 'test', '.tmp-gap');

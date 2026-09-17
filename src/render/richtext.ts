@@ -1,5 +1,12 @@
-// richtext.js — 富文本子集（spec §8.3）→ 安全 HTML；行内 \(..\) → KaTeX 占位 span
+// richtext.ts — 富文本子集（spec §8.3）→ 安全 HTML；行内 \(..\) → KaTeX 占位 span
 // 输入为 parser 规范的"转义形"内容；输出可直接 innerHTML。
+
+import type { Deck } from '../types.js';
+
+/** 渲染上下文：$ref 颜色展开所需的最小 deck 引用。 */
+interface RichTextCtx {
+  deck?: Deck;
+}
 
 const INLINE = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'sup', 'sub', 'a', 'br']);
 const BLOCK = new Set(['p', 'li', 'ul', 'ol']);
@@ -7,22 +14,22 @@ const BLOCK = new Set(['p', 'li', 'ul', 'ol']);
 const P_STYLE_PROPS = ['text-align', 'line-height', 'margin-top', 'margin-left', 'margin-right', 'text-indent'];
 const SPAN_STYLE_PROPS = ['color', 'font-size', 'font-family', 'background-color', 'font-weight', 'font-style'];
 
-const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const escapeAttr = (s) => escapeHtml(s).replace(/"/g, '&quot;');
-const decodeEnt = (s) => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all, g) => {
-  const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeAttr = (s: string): string => escapeHtml(s).replace(/"/g, '&quot;');
+const decodeEnt = (s: string): string => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all: string, g: string): string => {
+  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
   if (named[g]) return named[g];
   const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
   return Number.isFinite(code) ? String.fromCodePoint(code) : all;
 });
 
-export function renderRichText(content, ctx = {}) {
+export function renderRichText(content: unknown, ctx: RichTextCtx = {}): string {
   let src = String(content || '');
   if (!src.trim()) return '';
 
   // 1) 抽出行内公式 → 占位
-  const maths = [];
-  src = src.replace(/\\\(([\s\S]+?)\\\)/g, (_, tex) => {
+  const maths: string[] = [];
+  src = src.replace(/\\\(([\s\S]+?)\\\)/g, (_all: string, tex: string): string => {
     maths.push(tex);
     return `\x00${maths.length - 1}\x00`;
   });
@@ -35,9 +42,9 @@ export function renderRichText(content, ctx = {}) {
 
   // 3) 标签流重建（白名单）
   const tagRe = /<\s*(\/?)\s*([a-zA-Z0-9]+)((?:"[^"]*"|'[^']*'|[^>"]*)*)>/g;
-  const openStack = [];
-  let out = '', last = 0, m;
-  const closeAll = () => { while (openStack.length) out += `</${openStack.pop()}>`; };
+  const openStack: string[] = [];
+  let out = '', last = 0, m: RegExpExecArray | null;
+  const closeAll = (): void => { while (openStack.length) out += `</${openStack.pop()}>`; };
 
   while ((m = tagRe.exec(src))) {
     const [full, slash, rawName, rawAttrs] = m;
@@ -69,26 +76,26 @@ export function renderRichText(content, ctx = {}) {
   closeAll();
 
   // 4) 公式占位还原；清掉未还原的占位残留
-  out = out.replace(/\x00(\d+)\x00/g, (_, i) => {
+  out = out.replace(/\x00(\d+)\x00/g, (_all: string, i: string): string => {
     const tex = maths[+i] ?? '';
     return `<span class="slx-math" data-tex="${escapeAttr(tex)}">${escapeHtml(tex)}</span>`;
   }).replace(/\x00\d*\x00/g, '');
   return out;
 
-  function escapeText(t) {
+  function escapeText(t: string): string {
     return escapeHtml(decodeEnt(t)); // \x00 占位符保留到还原阶段
   }
 }
 
-function parseAttrs(raw) {
-  const attrs = {};
+function parseAttrs(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
   const re = /([a-zA-Z-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(raw))) attrs[m[1].toLowerCase()] = m[3] ?? m[4] ?? '';
   return attrs;
 }
 
-function buildSafeAttr(name, attrs, ctx) {
+function buildSafeAttr(name: string, attrs: Record<string, string>, ctx: RichTextCtx): string {
   if (name === 'a') {
     const href = attrs.href || '';
     if (/^(https?:|mailto:)/i.test(href)) return ` href="${escapeAttr(href)}" class="slx-link"`;
@@ -97,7 +104,7 @@ function buildSafeAttr(name, attrs, ctx) {
   const style = attrs.style;
   if (!style) return '';
   const allowed = name === 'span' ? SPAN_STYLE_PROPS : P_STYLE_PROPS;
-  const keep = [];
+  const keep: string[] = [];
   for (const decl of style.split(';')) {
     const k = decl.slice(0, decl.indexOf(':'));
     const v = decl.slice(decl.indexOf(':') + 1);
@@ -123,7 +130,7 @@ function buildSafeAttr(name, attrs, ctx) {
   return keep.length ? ` style="${escapeAttr(keep.join(';'))}"` : '';
 }
 
-function resolveColorRef(v, ctx) {
+function resolveColorRef(v: string, ctx: RichTextCtx): string {
   if (v.startsWith('$') && ctx.deck) {
     const c = ctx.deck.theme?.colors?.[v.slice(1)];
     if (c) return c;

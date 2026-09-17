@@ -9,92 +9,129 @@ import { zip, themeXml, slideMasterXml, slideLayoutXml, notesMasterXml, notesSli
 import { resolveColor, parsePoints, parseShadow } from '../ir.js';
 import { resolveTextStyle } from '../render/render.js';
 import { richToRuns } from '../render/richtext-runs.js';
+import type { Deck, SlideContainer, SlideElement } from '../types.js';
 
 const EMU = 12700; // 1px(=1pt) = 12700 EMU
-const emu = (px) => Math.round((px || 0) * EMU);
-const hex6 = (c) => {
+const emu = (px?: number | null): number => Math.round((px || 0) * EMU);
+const hex6 = (c: unknown): string => {
   if (typeof c !== 'string') return '000000';
   let h = c.replace('#', '');
   if (h.length === 3) h = h.split('').map(x => x + x).join('');
   return h.slice(0, 6).toUpperCase();
 };
-const alphaOf = (c) => {
+const alphaOf = (c: unknown): number | null => {
   if (typeof c === 'string' && c.length === 9) return Math.round(parseInt(c.slice(7, 9), 16) / 255 * 100000);
   return null;
 };
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc = (s: unknown): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // content 里的属性值（如 href="a=1&amp;b=2"）保持源码转义形态；写 rels 目标前先解码，esc 会重新转义
-const decodeEnt = (s) => String(s).replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all, g) => {
-  const named = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+const decodeEnt = (s: string): string => String(s).replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all: string, g: string): string => {
+  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
   if (named[g]) return named[g];
   const code = (g[1] === 'x' || g[1] === 'X') ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
   return Number.isFinite(code) ? String.fromCodePoint(code) : all;
 });
 const NATIVE_SHAPES = new Set(['rect', 'roundRect', 'ellipse', 'triangle', 'diamond', 'rightArrow', 'chevron', 'donut', 'star5']);
-const OOXML_SHAPE = { rect: 'rect', roundRect: 'roundRect', ellipse: 'ellipse', triangle: 'triangle', diamond: 'diamond', rightArrow: 'rightArrow', chevron: 'chevron', donut: 'donut', star5: 'star5' };
+const OOXML_SHAPE: Record<string, string> = { rect: 'rect', roundRect: 'roundRect', ellipse: 'ellipse', triangle: 'triangle', diamond: 'diamond', rightArrow: 'rightArrow', chevron: 'chevron', donut: 'donut', star5: 'star5' };
 
 // ─────────── 布局规划：决定每元素原生 or 裁图 ───────────
 
-export function planSlide(deck, slide) {
-  const items = [];
-  const bg = slide.background || ((deck.masters || []).find(m => m.id === slide.master) || {}).background || null;
+/** planSlide 产物：单页「原生 / 裁图」规划（types.ts 未覆盖，本地形状） */
+export interface CropPlanItem { kind: 'crop'; el: SlideElement | null; key: string; x: number; y: number; w: number; h: number }
+export type PlanItem =
+  | CropPlanItem
+  | { kind: 'text'; el: SlideElement }
+  | { kind: 'shape'; el: SlideElement }
+  | { kind: 'line'; el: SlideElement }
+  | { kind: 'pic'; el: SlideElement };
+export interface SlidePlan { bg: { color: string | undefined } | null; items: PlanItem[] }
+
+/** richToRuns 的段落/run 模型（richtext-runs 尚为 JS/JSDoc 宽松类型时的本地形状） */
+interface RichRun {
+  text: string;
+  bold?: boolean | null;
+  italic?: boolean | null;
+  u?: boolean | null;
+  strike?: boolean | null;
+  sup?: boolean | null;
+  sub?: boolean | null;
+  color?: string | null;
+  fontSize?: number | null;
+  fontFamily?: string | null;
+  bgColor?: string | null;
+  href?: string | null;
+}
+interface RichParagraph {
+  align?: string | null;
+  lineHeight?: number | null;
+  lineHeightPx?: number | null;
+  marginTop?: number | null;
+  marL?: number | null;
+  bullet?: string | null;
+  runs: RichRun[];
+}
+interface RichModel { hasMath: boolean; paragraphs: RichParagraph[] }
+
+export function planSlide(deck: Deck, slide: SlideContainer): SlidePlan {
+  const items: PlanItem[] = [];
+  const bg = slide.background || ((deck.masters || []).find(m => m.id === slide.master) || ({} as Partial<SlideContainer>)).background || null;
   const hasMaster = !!(slide.master && (deck.masters || []).some(m => m.id === slide.master));
   if (hasMaster) {
     const master = (deck.masters || []).find(m => m.id === slide.master);
-    for (const el of master.elements) planElement(el, items, 'm');
+    for (const el of master!.elements) planElement(el, items, 'm');
   }
   if (bg && bg.type !== 'solid') items.push({ kind: 'crop', el: null, key: 'bg', x: 0, y: 0, w: deck.width, h: deck.height });
   for (const el of slide.elements) planElement(el, items);
   return { bg: bg && bg.type === 'solid' ? { color: resolveColor(bg.color, deck) } : null, items };
 }
-function planElement(el, items, prefix = '') {
+function planElement(el: SlideElement, items: PlanItem[], prefix = ''): void {
   switch (el.type) {
     case 'text': {
       const st = { color: el.color, fontSize: el['font-size'] ?? el.fontSize, fontFamily: el['font-family'] ?? el.fontFamily };
       // 公式降级为裁图（在 plan 时快速判定）
-      if (String(el.content || '').includes('\\(')) { items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x, y: el.y, w: el.w, h: el.h }); return; }
+      if (String(el.content || '').includes('\\(')) { items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x!, y: el.y!, w: el.w!, h: el.h! }); return; }
       items.push({ kind: 'text', el });
       return;
     }
     case 'shape':
-      if (NATIVE_SHAPES.has(el.name)) items.push({ kind: 'shape', el });
-      else items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x, y: el.y, w: el.w, h: el.h });
+      if (NATIVE_SHAPES.has(el.name as string)) items.push({ kind: 'shape', el });
+      else items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x!, y: el.y!, w: el.w!, h: el.h! });
       return;
     case 'line': {
       const pts = parsePoints(el.points || '');
       if (pts.length === 2) items.push({ kind: 'line', el });
-      else items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x, y: el.y, w: el.w, h: el.h });
+      else items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x!, y: el.y!, w: el.w!, h: el.h! });
       return;
     }
     case 'image':
       items.push({ kind: 'pic', el });
       return;
     default:
-      items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x, y: el.y, w: el.w, h: el.h });
+      items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x!, y: el.y!, w: el.w!, h: el.h! });
   }
 }
 
 // ─────────── XML 片段构造 ───────────
 
-function fillXml(color, deck) {
+function fillXml(color: string | undefined, deck: Deck): string {
   const c = resolveColor(color, deck);
   const a = alphaOf(c);
   const alpha = a !== null ? `<a:alpha val="${a}"/>` : '';
   return `<a:solidFill><a:srgbClr val="${hex6(c)}">${alpha}</a:srgbClr></a:solidFill>`;
 }
-function gradFillXml(fill, deck) {
+function gradFillXml(fill: { angle?: number; stops?: Array<{ pos?: number; color?: string }> }, deck: Deck): string {
   const ang = Math.round(((fill.angle || 0) % 360) * 60000);
   const stops = (fill.stops || []).map(s => `<a:gs pos="${Math.round((s.pos || 0) * 100000)}"><a:srgbClr val="${hex6(resolveColor(s.color, deck))}"/></a:gs>`).join('');
   return `<a:gradFill><a:gsLst>${stops}</a:gsLst><a:lin ang="${ang}" scaled="1"/></a:gradFill>`;
 }
-function linePropsXml(el, deck) {
+function linePropsXml(el: SlideElement, deck: Deck): string {
   const color = el.stroke ? resolveColor(el.stroke, deck) : null;
-  const w = emu(el['stroke-width'] ?? el.strokeWidth ?? 1);
+  const w = emu((el['stroke-width'] ?? el.strokeWidth ?? 1) as number);
   if (!color) return '';
   const dash = el['stroke-dash'] === 'dash' ? '<a:prstDash val="dash"/>' : el['stroke-dash'] === 'dot' ? '<a:prstDash val="sysDot"/>' : '';
   return `<a:ln w="${w}">${fillXml(color, deck)}${dash}</a:ln>`;
 }
-function effectXml(el, deck) {
+function effectXml(el: SlideElement, deck: Deck): string {
   const sh = el.shadow;
   if (!sh) return '';
   const m = /^\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(#\w{4,8})\s*$/.exec(sh);
@@ -106,7 +143,7 @@ function effectXml(el, deck) {
 }
 // 文本阴影：rPr 级 effectLst。DSL "blur dx dy color"（parseShadow）→ blurRad/dist/dir；
 // 无法解析（格式不符）则省略，不产出非法 XML。
-function textShadowXml(el, deck) {
+function textShadowXml(el: SlideElement, deck: Deck): string {
   const sh = parseShadow(el.shadow);
   if (!sh) return '';
   const blur = emu(sh.blur);
@@ -117,19 +154,19 @@ function textShadowXml(el, deck) {
   const alpha = a !== null ? `<a:alpha val="${a}"/>` : '';
   return `<a:effectLst><a:outerShdw blurRad="${blur}" dist="${dist}" dir="${dir}" rotWithShape="0"><a:srgbClr val="${hex6(color)}">${alpha}</a:srgbClr></a:outerShdw></a:effectLst>`;
 }
-function xfrmXml(el) {
+function xfrmXml(el: SlideElement): string {
   const rot = el.rotation ? ` rot="${Math.round(el.rotation * 60000)}"` : '';
   const flip = `${el['flip-h'] || el.flipH ? ' flipH="1"' : ''}${el['flip-v'] || el.flipV ? ' flipV="1"' : ''}`;
   return `<a:xfrm${rot}${flip}><a:off x="${emu(el.x)}" y="${emu(el.y)}"/><a:ext cx="${emu(el.w)}" cy="${emu(el.h)}"/></a:xfrm>`;
 }
-function adjXml(el) {
+function adjXml(el: SlideElement): string {
   const adj = String(el.adj ?? '').trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
-  const clamp01 = (v) => Math.max(0, Math.min(100000, Math.round(v * 100000)));
-  const gds = [];
+  const clamp01 = (v: number): number => Math.max(0, Math.min(100000, Math.round(v * 100000)));
+  const gds: Array<[string, number]> = [];
   switch (el.name) {
     case 'roundRect': {
       const r = adj[0] ?? 8;
-      gds.push(['adj', Math.max(0, Math.min(50000, Math.round(r / Math.max(1, Math.min(el.w, el.h)) * 100000)))]);
+      gds.push(['adj', Math.max(0, Math.min(50000, Math.round(r / Math.max(1, Math.min(el.w!, el.h!)) * 100000)))]);
       break;
     }
     case 'triangle': gds.push(['adj', clamp01(adj[0] ?? 0.5)]); break;
@@ -142,9 +179,9 @@ function adjXml(el) {
   return `<a:avLst>${gds.map(([n, v]) => `<a:gd name="${n}" fmla="val ${v}"/>`).join('')}</a:avLst>`;
 }
 
-function textBodyXml(el, deck, linkIds) {
+function textBodyXml(el: SlideElement, deck: Deck, linkIds?: Map<string, string> | null): string {
   const st = resolveTextStyle(el, deck);
-  const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic });
+  const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic }) as RichModel;
   const [, va = 'top'] = String(st.align || 'left top').split(/\s+/);
   const anchor = va === 'middle' || va === 'center' ? 'ctr' : va === 'bottom' ? 'b' : 't';
   const wrap = el.wrap === false ? ' wrap="none"' : ' wrap="square"';
@@ -184,8 +221,8 @@ function textBodyXml(el, deck, linkIds) {
 
 // ─────────── 元素级 XML ───────────
 
-function shapeSpXml(el, deck, idNum) {
-  const prst = OOXML_SHAPE[el.name] || 'rect';
+function shapeSpXml(el: SlideElement, deck: Deck, idNum: number): string {
+  const prst = OOXML_SHAPE[el.name as string] || 'rect';
   const fill = el.fillObj
     ? (el.fillObj.type === 'gradient' ? gradFillXml(el.fillObj, deck) : el.fillObj.type === 'image' ? '' : fillXml(el.fillObj.color, deck))
     : el.fill ? fillXml(el.fill, deck) : '<a:noFill/>';
@@ -197,7 +234,7 @@ function shapeSpXml(el, deck, idNum) {
 </p:sp>`;
 }
 
-function textSpXml(el, deck, idNum, linkIds) {
+function textSpXml(el: SlideElement, deck: Deck, idNum: number, linkIds?: Map<string, string> | null): string {
   const st = resolveTextStyle(el, deck);
   const color = st.backgroundColor ? fillXml(st.backgroundColor, deck) : '<a:noFill/>';
   return `<p:sp>
@@ -207,17 +244,17 @@ ${textBodyXml(el, deck, linkIds)}
 </p:sp>`;
 }
 
-function lineSpXml(el, deck, idNum) {
+function lineSpXml(el: SlideElement, deck: Deck, idNum: number): string {
   const pts = parsePoints(el.points || '');
   const [p0, p1] = pts;
   let flip = '';
   if (p1[0] < p0[0]) flip += ' flipH="1"';
   if (p1[1] < p0[1]) flip += ' flipV="1"';
-  const w = Math.abs(p1[0] - p0[0]) || Math.abs(el.w) || 0;
+  const w = Math.abs(p1[0] - p0[0]) || Math.abs(el.w!) || 0;
   const h = Math.abs(p1[1] - p0[1]) || 0;
-  const xfrm = `<a:xfrm${flip}><a:off x="${emu(el.x + Math.min(p0[0], p1[0]))}" y="${emu(el.y + Math.min(p0[1], p1[1]))}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm>`;
+  const xfrm = `<a:xfrm${flip}><a:off x="${emu(el.x! + Math.min(p0[0], p1[0]))}" y="${emu(el.y! + Math.min(p0[1], p1[1]))}"/><a:ext cx="${emu(w)}" cy="${emu(h)}"/></a:xfrm>`;
   const color = resolveColor(el.stroke || '#4A5560', deck);
-  const sw = emu(el['stroke-width'] ?? el.strokeWidth ?? 2);
+  const sw = emu((el['stroke-width'] ?? el.strokeWidth ?? 2) as number);
   const dash = el['stroke-dash'] === 'dash' ? '<a:prstDash val="dash"/>' : el['stroke-dash'] === 'dot' ? '<a:prstDash val="sysDot"/>' : '';
   const arrows = `<a:headEnd type="" length="med" width="med"/>`.replace('type=""', el.arrowStart && el.arrowStart !== 'none' ? `type="${arrowOoxml(el.arrowStart)}"` : '')
     + (el.arrowEnd && el.arrowEnd !== 'none' ? `<a:tailEnd type="${arrowOoxml(el.arrowEnd)}" length="med" width="med"/>` : '');
@@ -227,12 +264,12 @@ function lineSpXml(el, deck, idNum) {
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="zh-CN"/></a:p></p:txBody>
 </p:sp>`;
 }
-function arrowOoxml(t) { return t === 'stealth' ? 'stealth' : t === 'diamond' ? 'diamond' : t === 'oval' ? 'oval' : 'triangle'; }
+function arrowOoxml(t: string): string { return t === 'stealth' ? 'stealth' : t === 'diamond' ? 'diamond' : t === 'oval' ? 'oval' : 'triangle'; }
 
-function picXml(el, deck, idNum, relId) {
+function picXml(el: SlideElement, deck: Deck, idNum: number, relId: string | undefined): string {
   const crop = parseCrop(el.crop);
   const srcRect = crop ? `<a:srcRect l="${Math.round(crop.l * 100000)}" t="${Math.round(crop.t * 100000)}" r="${Math.round(crop.r * 100000)}" b="${Math.round(crop.b * 100000)}"/>` : '';
-  const geom = el.radius ? `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${Math.min(50000, Math.round(el.radius / Math.max(1, Math.min(el.w, el.h)) * 100000))}"/></a:avLst></a:prstGeom>` : '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>';
+  const geom = el.radius ? `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${Math.min(50000, Math.round(el.radius / Math.max(1, Math.min(el.w!, el.h!)) * 100000))}"/></a:avLst></a:prstGeom>` : '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>';
   const alpha = el.opacity !== undefined && el.opacity !== 1 ? `<a:alphaModFix amt="${Math.round(el.opacity * 100000)}"/>` : '';
   const ln = el.stroke ? linePropsXml(el, deck) : '';
   const m = /^\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(#\w{4,8})\s*$/.exec(el.shadow || '');
@@ -243,13 +280,14 @@ function picXml(el, deck, idNum, relId) {
 <p:spPr>${xfrmXml(el)}${geom}${ln}${effect}</p:spPr>
 </p:pic>`;
 }
-function parseCrop(str) {
+interface CropRect { l: number; t: number; r: number; b: number }
+function parseCrop(str: string | undefined): CropRect | null {
   if (!str) return null;
   const p = String(str).split(/[\s,]+/).map(Number);
   if (p.length !== 4 || p.some(v => !Number.isFinite(v)) || p.every(v => v === 0)) return null;
   return { l: p[0], t: p[1], r: p[2], b: p[3] };
 }
-function cropPicXml(crop, relId, idNum) {
+function cropPicXml(crop: CropPlanItem, relId: string | undefined, idNum: number): string {
   const xfrm = `<a:xfrm><a:off x="${emu(crop.x)}" y="${emu(crop.y)}"/><a:ext cx="${emu(crop.w)}" cy="${emu(crop.h)}"/></a:xfrm>`;
   return `<p:pic>
 <p:nvPicPr><p:cNvPr id="${idNum}" name="render ${esc(crop.key)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
@@ -260,11 +298,11 @@ function cropPicXml(crop, relId, idNum) {
 
 // ─────────── 页面与包组装 ───────────
 
-export function slideNativeXml(deck, slide, plan, relIds, linkIds) {
+export function slideNativeXml(deck: Deck, slide: SlideContainer, plan: SlidePlan, relIds: Map<string, string>, linkIds?: Map<string, string>): string {
   // relIds: Map(key -> rId)；图片元素 key = el.id
   // linkIds: Map(href -> rId)；文本 run 超链接（可省略，向后兼容）
   let idNum = 10;
-  const parts = [];
+  const parts: string[] = [];
   if (plan.bg) {
     parts.push(`<p:bg><p:bgPr>${fillXml(plan.bg.color, deck)}<a:effectLst/></p:bgPr></p:bg>`);
   }
@@ -289,7 +327,9 @@ ${parts.join('\n')}
 </p:sld>`;
 }
 
-export function relsXml(rels) {
+/** rels 条目（relsXml 输入；TargetMode 仅外部链接使用） */
+export interface RelEntry { id: string; type: string; target: string; targetMode?: string }
+export function relsXml(rels: RelEntry[]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${rels.map(r => `<Relationship Id="${r.id}" Type="${r.type}" Target="${esc(r.target)}"${r.targetMode ? ` TargetMode="${r.targetMode}"` : ''}/>`).join('\n')}
@@ -302,14 +342,14 @@ const R_HLINK = 'http://schemas.openxmlformats.org/officeDocument/2006/relations
 
 // 收集一页文本 run 中的外部超链接（http/https/mailto），按出现顺序去重。
 // 与 textBodyXml 用同一 run 模型（richToRuns），保证 href 集合与 run.href 完全一致。
-function slideHyperlinks(plan, deck) {
-  const out = [];
-  const seen = new Set();
+function slideHyperlinks(plan: SlidePlan, deck: Deck): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
   for (const item of plan.items) {
     if (item.kind !== 'text') continue;
     const el = item.el;
     const st = resolveTextStyle(el, deck);
-    const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic });
+    const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic }) as RichModel;
     for (const p of model.paragraphs) {
       for (const r of p.runs) {
         const href = String(r.href || '');
@@ -323,10 +363,18 @@ function slideHyperlinks(plan, deck) {
 }
 
 // 组装完整 pptx（editable）
-export async function buildPptxEditable({ deck, deckDir, plans, cropBuffers, width, height, title = '' }) {
+export async function buildPptxEditable({ deck, deckDir, plans, cropBuffers, width, height, title = '' }: {
+  deck: Deck;
+  deckDir: string;
+  plans: SlidePlan[];
+  cropBuffers: Map<string, Buffer>;
+  width: number;
+  height: number;
+  title?: string;
+}): Promise<Buffer> {
   const N = deck.slides.length;
-  const entries = [];
-  const add = (name, data) => entries.push({ name, data: Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8') });
+  const entries: Array<{ name: string; data: Buffer | string }> = [];
+  const add = (name: string, data: string | Buffer) => entries.push({ name, data: Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8') });
 
   let ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -391,15 +439,15 @@ ${sldRels}
   let mediaIdx = 0;
   for (let i = 0; i < N; i++) {
     const plan = plans[i];
-    const rels = [];
-    const relIds = new Map();
+    const rels: RelEntry[] = [];
+    const relIds = new Map<string, string>();
     // 图片元素
     for (const item of plan.items) {
       if (item.kind !== 'pic') continue;
       mediaIdx++;
       const relId = `rId${rels.length + 1}`;
-      const ext = (path.extname(item.el.src) || '.png').slice(1).toLowerCase();
-      const buf = await loadImageBuffer(item.el.src, deckDir);
+      const ext = (path.extname(item.el.src as string) || '.png').slice(1).toLowerCase();
+      const buf = await loadImageBuffer(item.el.src as string, deckDir);
       add(`ppt/media/image${mediaIdx}.${ext || 'png'}`, buf || Buffer.alloc(0));
       rels.push({ id: relId, type: R_IMAGE, target: `../media/image${mediaIdx}.${ext || 'png'}` });
       relIds.set(item.el.id, relId);
@@ -414,7 +462,7 @@ ${sldRels}
       relIds.set(item.key, relId);
     }
     // 文本超链接（外部目标，接在图片 rId 之后，保证不冲突）；href 按源码转义形态匹配，写 rels 前解码
-    const linkIds = new Map();
+    const linkIds = new Map<string, string>();
     for (const href of slideHyperlinks(plan, deck)) {
       const relId = `rId${rels.length + 1}`;
       rels.push({ id: relId, type: R_HLINK, target: decodeEnt(href), targetMode: 'External' });
@@ -432,7 +480,7 @@ ${sldRels}
   return zip(entries);
 }
 
-async function loadImageBuffer(src, deckDir) {
+async function loadImageBuffer(src: string, deckDir: string): Promise<Buffer | null> {
   if (/^https?:/i.test(src)) {
     try { const r = await fetch(src); if (r.ok) return Buffer.from(await r.arrayBuffer()); } catch { return null; }
   }

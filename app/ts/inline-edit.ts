@@ -101,8 +101,8 @@ export function showEditBar(el: SlideElement, zoom: number): void {
   const bar = document.getElementById('editBar');
   if (!bar) return;
   bar.classList.remove('hidden');
-  bar.style.left = Math.max(4, el.x * zoom) + 'px';
-  bar.style.top = Math.max(34, el.y * zoom - 40) + 'px';
+  bar.style.left = Math.max(4, (el.x ?? 0) * zoom) + 'px';
+  bar.style.top = Math.max(34, (el.y ?? 0) * zoom - 40) + 'px';
 }
 
 export function hideEditBar(): void {

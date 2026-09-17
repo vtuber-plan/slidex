@@ -3,12 +3,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderSlide, slideCss, cdnLinks, runtimeJs } from '../render/render.js';
+import type { Deck } from '../types.js';
 
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 
-export function buildStandaloneHtml(deck, deckDir) {
+export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
   const cdn = cdnLinks();
-  const media = (src) => {
+  const media = (src: string): string => {
     if (!src || /^(https?:|data:)/i.test(src)) return src;
     const file = path.resolve(deckDir, src);
     try {

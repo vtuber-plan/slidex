@@ -1,5 +1,5 @@
-// template.js — 新项目脚手架模板（CLI init 与 Electron 新建共用）
-export function templateDeck(name) {
+// template.ts — 新项目脚手架模板（CLI init 与 Electron 新建共用）
+export function templateDeck(name: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <deck version="1" title="${name}" width="960" height="540">
   <theme>

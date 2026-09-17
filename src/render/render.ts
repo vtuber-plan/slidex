@@ -1,18 +1,68 @@
-// render.js — slide IR → HTML 字符串（编辑器画布/缩略图/放映/导出共用，规范 §19 单一渲染路径）
+// render.ts — slide IR → HTML 字符串（编辑器画布/缩略图/放映/导出共用，规范 §19 单一渲染路径）
 
 import { resolveColor, parseShadow, parsePoints, FONT_STACK_BASE, MONO_STACK_BASE } from '../ir.js';
 import { renderRichText } from './richtext.js';
 import { shapeSvg } from './shapes.js';
 import { renderChart } from './charts.js';
 import { highlight, decodeContent } from './code.js';
+import type { Deck, Fill, SlideContainer, SlideElement, StyleAttrs, TableStyle, TableCell } from '../types.js';
 
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const f = (v) => Math.round(v * 100) / 100;
+const esc = (s: string): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const f = (v: number): number => Math.round(v * 100) / 100;
 let gradSeq = 1;
 
 const MONO_HINT = /mono|consol|courier|menlo|cascadia/i;
 
-export function fontStack(family) {
+/** renderSlide / slidePageHtml 的可选项。 */
+interface RenderSlideOpts { mediaBase?: string; }
+interface SlidePageOpts { mediaBase?: string; background?: string; }
+
+/** resolveTextStyle 的输出。color/backgroundColor 经 resolveColor（ir 签名返回 string | undefined）。 */
+interface TextStyle {
+  color: string | undefined;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  lineHeight: number;
+  lineHeightPx: number;
+  letterSpacing: number;
+  backgroundColor: string | undefined;
+  align: string;
+}
+
+type GradFill = Extract<Fill, { type: 'gradient' }>;
+
+/** 默认表格样式（仅含出现的键；其余键与 TableStyle 取并集为可选）。 */
+interface DefaultTableStyle {
+  cell: StyleAttrs;
+  header: StyleAttrs;
+  body: StyleAttrs[];
+  lastRow?: StyleAttrs | null;
+  firstCol?: StyleAttrs | null;
+  lastCol?: StyleAttrs | null;
+  rowOverCol?: boolean;
+}
+type AnyTableStyle = TableStyle | DefaultTableStyle;
+
+type Side = 'top' | 'right' | 'bottom' | 'left';
+/** parseB 解析出的边框描述（"width style color" 简写）。 */
+interface BorderSpec { width: number; style: string; color: string | undefined; }
+/** 单元格边框（css 为完整 shorthand；color 从未写入——保留原读取行为）。 */
+interface CellBorder { css: string; color?: string; }
+interface CellStyleOut {
+  fill: string | undefined;
+  color: string | undefined;
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  lineHeight: string;
+  ha: string;
+  va: string;
+  borders: Partial<Record<Side, CellBorder>>;
+}
+
+export function fontStack(family: string | undefined): string {
   if (!family) return FONT_STACK_BASE;
   const names = family.split(',').map(x => x.trim().replace(/['"]/g, '')).filter(Boolean);
   const quoted = names.map(n => `'${n}'`).join(',');
@@ -24,7 +74,7 @@ export function fontStack(family) {
 }
 
 // ─────────────────────────── 幻灯片 CSS（所有渲染场景共用） ───────────────────────────
-export function slideCss() {
+export function slideCss(): string {
   return `
 .slx-slide{position:relative;overflow:hidden;background:#fff;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .slx-el{position:absolute;box-sizing:border-box;transform-origin:50% 50%}
@@ -46,7 +96,7 @@ export function slideCss() {
 }
 
 // ─────────────────────────── KaTeX / 就绪 运行时（编辑器与导出页共用） ───────────────────────────
-export function runtimeJs() {
+export function runtimeJs(): string {
   return `
 window.slxRenderMath = function (root) {
   root = root || document;
@@ -90,10 +140,10 @@ window.slxRenderMath = function (root) {
 
 // ─────────────────────────── 幻灯片渲染 ───────────────────────────
 
-export function renderSlide(deck, slide, opts = {}) {
+export function renderSlide(deck: Deck, slide: SlideContainer, opts: RenderSlideOpts = {}): string {
   const media = opts.mediaBase ?? '';
   const master = slide.master ? (deck.masters || []).find(m => m.id === slide.master) : null;
-  let bgCss = '#FFFFFF';
+  let bgCss: string | undefined = '#FFFFFF';
   let bgInner = '';
   const bg = slide.background || (master && master.background) || null;
   if (bg) {
@@ -106,9 +156,9 @@ export function renderSlide(deck, slide, opts = {}) {
   return `<div class="slx-slide" style="width:${f(deck.width)}px;height:${f(deck.height)}px;background:${bgCss};${bgInner ? `background-image:${bgInner};` : ''}">\n${bgInner}${masterEls ? masterEls + '\n' : ''}${els}\n</div>`;
 }
 
-function renderElement(el, deck, media, isMaster) {
+function renderElement(el: SlideElement, deck: Deck, media: string, isMaster?: string): string {
   const idAttr = el.id ? ` data-id="${esc(el.id)}"${isMaster ? ' data-master="1"' : ''}` : (isMaster ? ' data-master="1"' : '');
-  const tf = [];
+  const tf: string[] = [];
   if (el.rotation) tf.push(`rotate(${el.rotation}deg)`);
   if (el.flipH) tf.push('scaleX(-1)');
   if (el.flipV) tf.push('scaleY(-1)');
@@ -131,27 +181,28 @@ function renderElement(el, deck, media, isMaster) {
       default: inner = `<div class="slx-placeholder">未知元素 ${esc(el.type)}</div>`;
     }
   } catch (e) {
-    inner = `<div class="slx-placeholder" title="${esc(e.message)}">渲染错误：${esc(el.type)}#${esc(el.id || '')}</div>`;
+    inner = `<div class="slx-placeholder" title="${esc((e as Error).message)}">渲染错误：${esc(el.type)}#${esc(el.id || '')}</div>`;
   }
   return `  <div class="slx-el"${idAttr} style="${style}">${inner}</div>`;
 }
 
 // ── 文本 ──
-export function resolveTextStyle(el, deck) {
-  const out = { color: '#1A1A1A', fontSize: 18, fontFamily: '', bold: false, italic: false, lineHeight: 1.4, lineHeightPx: 0, letterSpacing: 0, backgroundColor: '', align: el.align || 'left top' };
+export function resolveTextStyle(el: SlideElement, deck: Deck): TextStyle {
+  const out: TextStyle = { color: '#1A1A1A', fontSize: 18, fontFamily: '', bold: false, italic: false, lineHeight: 1.4, lineHeightPx: 0, letterSpacing: 0, backgroundColor: '', align: el.align || 'left top' };
   const refName = typeof el.style === 'string' && el.style.startsWith('$') ? el.style.slice(1) : null;
-  const ref = refName ? deck.theme.textStyles[refName] : null;
-  const take = (obj, kebab, camel) => {
-    const v = camel ? obj?.[camel] : undefined;
+  const ref: StyleAttrs | null = refName ? deck.theme.textStyles[refName] : null;
+  const take = (obj: StyleAttrs | null | undefined, kebab: string, camel?: string): unknown => {
+    const v: unknown = camel ? obj?.[camel] : undefined;
     if (v !== undefined && v !== '' && v !== false) return v;
     return obj?.[kebab];
   };
   if (ref) {
+    const refBold: unknown = ref.bold, refItalic: unknown = ref.italic; // 兼容历史布尔值（现解析产物恒为字符串）
     if (ref['font-size']) out.fontSize = Number(ref['font-size']) || out.fontSize;
     if (ref.color) out.color = ref.color;
     if (ref['font-family']) out.fontFamily = ref['font-family'];
-    if (ref.bold === 'true' || ref.bold === true) out.bold = true;
-    if (ref.italic === 'true' || ref.italic === true) out.italic = true;
+    if (ref.bold === 'true' || refBold === true) out.bold = true;
+    if (ref.italic === 'true' || refItalic === true) out.italic = true;
     if (ref['line-height']) out.lineHeight = Number(ref['line-height']) || out.lineHeight;
     if (ref['line-height-px']) out.lineHeightPx = Number(ref['line-height-px']);
     if (ref['letter-spacing']) out.letterSpacing = Number(ref['letter-spacing']);
@@ -172,7 +223,7 @@ export function resolveTextStyle(el, deck) {
   return out;
 }
 
-function renderText(el, deck) {
+function renderText(el: SlideElement, deck: Deck): string {
   const st = resolveTextStyle(el, deck);
   const [ha, va] = String(st.align || 'left top').split(/\s+/);
   const shadow = parseShadow(el.shadow);
@@ -198,10 +249,10 @@ function renderText(el, deck) {
 }
 
 // ── 形状 ──
-function renderShape(el, deck) {
+function renderShape(el: SlideElement, deck: Deck): string {
   const { d, viewBox, fillRule } = shapeSvg(el);
-  const fill = el.fillObj || (el.fill ? { type: 'solid', color: el.fill } : null);
-  let defs = '', fillRef = 'none';
+  const fill: Fill | null = el.fillObj || (el.fill ? { type: 'solid', color: el.fill } : null);
+  let defs = '', fillRef: string | undefined = 'none';
   if (fill) {
     if (fill.type === 'solid') fillRef = resolveColor(fill.color, deck);
     else if (fill.type === 'gradient') { const g = gradientDef(fill, deck); defs = g.defs; fillRef = `url(#${g.id})`; }
@@ -218,27 +269,27 @@ function renderShape(el, deck) {
   return `<svg width="100%" height="100%" viewBox="${viewBox}" preserveAspectRatio="none" style="display:block;${shadow ? `filter:drop-shadow(${f(shadow.dx)}px ${f(shadow.dy)}px ${f(shadow.blur)}px ${resolveColor(shadow.color, deck)})` : ''}">${defs}<path d="${d}" fill="${fillRef}"${fillRule !== 'nonzero' ? ` fill-rule="${fillRule}"` : ''} stroke="${stroke}" stroke-width="${f(sw)}"${dash}/></svg>`;
 }
 
-function gradientDef(fill, deck) {
+function gradientDef(fill: GradFill, deck: Deck): { id: string; defs: string } {
   const id = `slxg${gradSeq++}`;
   const ang = ((fill.angle || 0) % 360) * Math.PI / 180;
   const x1 = f(0.5 - Math.cos(ang) / 2), y1 = f(0.5 - Math.sin(ang) / 2), x2 = f(0.5 + Math.cos(ang) / 2), y2 = f(0.5 + Math.sin(ang) / 2);
   const stops = (fill.stops || []).map(s => `<stop offset="${f((s.pos || 0) * 100)}%" stop-color="${resolveColor(s.color, deck)}"/>`).join('');
   return { id, defs: `<defs><linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient></defs>` };
 }
-function gradientCss(fill, deck) {
-  const dir = { 0: 'to right', 90: 'to bottom', 180: 'to left', 270: 'to top' }[Math.round(((fill.angle || 0) % 360 + 360) % 360)] || `linear-gradient(${fill.angle}deg)`;
+function gradientCss(fill: GradFill, deck: Deck): string {
+  const dir = ({ 0: 'to right', 90: 'to bottom', 180: 'to left', 270: 'to top' } as Record<number, string>)[Math.round(((fill.angle || 0) % 360 + 360) % 360)] || `linear-gradient(${fill.angle}deg)`;
   const stops = (fill.stops || []).map(s => `${resolveColor(s.color, deck)} ${f((s.pos || 0) * 100)}%`).join(', ');
   return `linear-gradient(${dir.startsWith('to') ? dir : 'to right'}, ${stops})`;
 }
 
 // ── 线条 ──
-const ARROWS = {
+const ARROWS: Record<string, { d: string; w: number; h: number; refX: number; refY: number }> = {
   arrow: { d: 'M0,0 L10,4.2 L2.6,5 L10,5.8 L0,10 L3.4,5 Z', w: 10, h: 10, refX: 9, refY: 5 },
   stealth: { d: 'M0,0 L10,5 L0,10 L5,5 Z', w: 10, h: 10, refX: 9.5, refY: 5 },
   diamond: { d: 'M0,5 L5.2,0 L10.4,5 L5.2,10 Z', w: 10.4, h: 10, refX: 9.5, refY: 5 },
   oval: { d: 'M5,0 A5,5 0 1 1 4.99,0 Z M5,1 A4,4 0 1 0 4.99,1 Z', w: 10, h: 10, refX: 9, refY: 5 },
 };
-function renderLine(el, deck) {
+function renderLine(el: SlideElement, deck: Deck): string {
   const w = Math.max(0.01, el.w || 1), h = Math.max(0.01, el.h || 1);
   const pts = parsePoints(el.points || '');
   if (pts.length < 2) return `<div class="slx-placeholder">line points 无效</div>`;
@@ -267,7 +318,7 @@ function renderLine(el, deck) {
   const a0 = el.arrowStart && ARROWS[el.arrowStart] ? el.arrowStart : null;
   const a1 = el.arrowEnd && ARROWS[el.arrowEnd] ? el.arrowEnd : null;
   if (a0 || a1) {
-    const mk = (t, pos) => {
+    const mk = (t: string, pos: string): string => {
       const A = ARROWS[t], id = `slxa${gradSeq++}`;
       defs += `<marker id="${id}" markerWidth="${A.w}" markerHeight="${A.h}" refX="${A.refX}" refY="${A.refY}" orient="auto" markerUnits="userSpaceOnUse"><path d="${A.d}" fill="${color}"/></marker>`;
       return `url(#${id})`;
@@ -280,12 +331,12 @@ function renderLine(el, deck) {
 }
 
 // ── 图片 ──
-function mediaSrc(src, mediaBase) {
+function mediaSrc(src: string | undefined, mediaBase: string): string {
   if (!src) return '';
   if (/^(https?:|data:)/i.test(src)) return src;
   return mediaBase + src.replace(/^\.?\//, '');
 }
-function renderImage(el, deck, mediaBase) {
+function renderImage(el: SlideElement, deck: Deck, mediaBase: string): string {
   const shadow = parseShadow(el.shadow);
   const wrapCss = [
     'width:100%', 'height:100%', 'overflow:hidden', 'position:relative', 'box-sizing:border-box',
@@ -304,7 +355,7 @@ function renderImage(el, deck, mediaBase) {
   }
   return `<div style="${wrapCss}"><img src="${esc(src)}" draggable="false" style="width:100%;height:100%;object-fit:${el.fit === 'contain' ? 'contain' : el.fit === 'fill' ? 'fill' : 'cover'};display:block" onerror="this.style.display='none';this.parentElement.classList.add('slx-img-missing')"/></div>`;
 }
-function parseCrop(str) {
+function parseCrop(str: string | undefined): { l: number; t: number; r: number; b: number } | null {
   if (!str) return null;
   const p = String(str).split(/[\s,]+/).map(Number);
   if (p.length !== 4 || p.some(v => !Number.isFinite(v))) return null;
@@ -313,33 +364,34 @@ function parseCrop(str) {
 }
 
 // ── 图标 ──
-function renderIcon(el, deck) {
+function renderIcon(el: SlideElement, deck: Deck): string {
   const name = String(el.name || 'fas:star');
   const [pfxRaw, ...rest] = name.split(':');
   const pfx = rest.length ? pfxRaw : 'fas';
   const cls = rest.length ? rest.join(':') : pfxRaw;
-  const faClass = { fas: 'fa-solid', far: 'fa-regular', fab: 'fa-brands' }[pfx] || 'fa-solid';
+  const faClass = ({ fas: 'fa-solid', far: 'fa-regular', fab: 'fa-brands' } as Record<string, string>)[pfx] || 'fa-solid';
   const size = Math.min(el.w || 48, el.h || 48);
   return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:${resolveColor(el.fill || '#1A1A1A', deck)}"><i class="${faClass} ${cls}" style="font-size:${f(size)}px;line-height:1" aria-hidden="true"></i></div>`;
 }
 
 // ── 表格 ──
-const DEFAULT_TABLE_STYLE = {
+const DEFAULT_TABLE_STYLE: DefaultTableStyle = {
   cell: { 'font-size': '', color: '', 'line-height': '1.35', 'border-bottom': '1 solid #E2E8F0', align: 'left middle' },
   header: { fill: '#E8EDF2', bold: 'true', color: '' },
   body: [{ fill: '#FFFFFF' }, { fill: '#F6F8FA' }],
 };
-function renderTable(el, deck) {
+function renderTable(el: SlideElement, deck: Deck): string {
   const theme = el.style && el.style.startsWith('$') ? deck.theme.tableStyles[el.style.slice(1)] : null;
-  const ts = theme || DEFAULT_TABLE_STYLE;
-  const ncols = el.cols?.length || Math.max(1, ...((el.rowsData || []).map(r => r.reduce((a, c) => a + Number(c['col-span'] || 1), 0)), 1));
-  const colW = (el.cols?.length === ncols) ? el.cols : Array(ncols).fill(1 / ncols);
-  const rowH = el.rowsRatio?.length === (el.rowsData || []).length ? el.rowsRatio : null;
+  const ts: AnyTableStyle = theme || DEFAULT_TABLE_STYLE;
+  // 注：原式第二个实参是逗号表达式（spread 的是数字 1 而非数组，无 cols 时会原样抛错）——按原行为保留
+  const ncols = el.cols?.length || Math.max(1, ...(((el.rowsData || []).map(r => r.reduce((a: number, c: TableCell) => a + Number(c['col-span'] || 1), 0)), 1) as unknown as number[]));
+  const colW: number[] = (el.cols?.length === ncols) ? (el.cols ?? []) : Array(ncols).fill(1 / ncols);
+  const rowH: number[] | null = el.rowsRatio?.length === (el.rowsData || []).length ? el.rowsRatio ?? null : null;
 
   // 覆盖网格（合并）
-  const covered = [];
-  const cellPos = []; // 每行每格 → [row, col, rs, cs]
-  (el.rowsData || []).forEach((row, r) => {
+  const covered: boolean[][] = [];
+  const cellPos: number[][][] = []; // 每行每格 → [row, col, rs, cs]
+  (el.rowsData || []).forEach((row: TableCell[], r: number) => {
     covered[r] = covered[r] || [];
     let c = 0;
     cellPos[r] = [];
@@ -357,10 +409,10 @@ function renderTable(el, deck) {
   const nrows = el.rowsData?.length || 0;
   const lastDataIdx = Math.max(0, nrows - 1);
 
-  const rowsHtml = [];
-  (el.rowsData || []).forEach((row, r) => {
-    const tds = [];
-    row.forEach((cell, i) => {
+  const rowsHtml: string[] = [];
+  (el.rowsData || []).forEach((row: TableCell[], r: number) => {
+    const tds: string[] = [];
+    row.forEach((cell: TableCell, i: number) => {
       const [gr, gc, rs, cs] = cellPos[r][i];
       const st = cellStyle(cell, gr, gc, cs, ts, nrows, ncols, deck);
       const html = renderRichText(cell.text || '', { deck });
@@ -375,7 +427,7 @@ function renderTable(el, deck) {
         `text-align:${st.ha}`, `vertical-align:${st.va === 'middle' ? 'middle' : st.va === 'bottom' ? 'bottom' : 'top'}`,
         st.borders.top || st.borders.right || st.borders.bottom || st.borders.left ? `border-color:${st.borders.bottom?.color || st.borders.top?.color || '#E2E8F0'}` : '',
       ].filter(Boolean).join(';');
-      const bcss = ['top', 'right', 'bottom', 'left'].map(side => st.borders[side] ? `border-${side}:${st.borders[side].css}` : '').filter(Boolean).join(';');
+      const bcss = (['top', 'right', 'bottom', 'left'] as const).map(side => st.borders[side] ? `border-${side}:${st.borders[side]?.css}` : '').filter(Boolean).join(';');
       tds.push(`<td style="${[attrs, bcss].filter(Boolean).join(';')};padding:6px 9px;overflow:hidden">${html || '&nbsp;'}</td>`);
     });
     const hAttr = rowH ? ` style="height:${f(rowH[r] * 100)}%"` : '';
@@ -390,16 +442,16 @@ function renderTable(el, deck) {
   return `<table style="${outer}"><colgroup>${colgroup}</colgroup>${rowsHtml.join('')}</table>`;
 }
 
-function cellStyle(cell, r, c, cs, ts, nrows, ncols, deck) {
-  const get = (style, key) => style?.[key] ?? '';
-  const out = { fill: '', color: '', fontSize: 0, bold: false, italic: false, lineHeight: '', ha: 'left', va: 'middle', borders: {} };
+function cellStyle(cell: TableCell, r: number, c: number, cs: number, ts: AnyTableStyle, nrows: number, ncols: number, deck: Deck): CellStyleOut {
+  const get = (style: StyleAttrs | null | undefined, key: string): string => style?.[key] ?? '';
+  const out: CellStyleOut = { fill: '', color: '', fontSize: 0, bold: false, italic: false, lineHeight: '', ha: 'left', va: 'middle', borders: {} };
   const isHeader = r === 0 && ts.header;
   const isLast = r === nrows - 1 && r > 0 && ts.lastRow;
   const dataIdx = r - (ts.header ? 1 : 0);
   const bodyStyles = ts.body?.length ? ts.body : DEFAULT_TABLE_STYLE.body;
   const body = dataIdx >= 0 ? bodyStyles[dataIdx % bodyStyles.length] : null;
   const firstCol = c === 0 && ts.firstCol, lastCol = c + cs - 1 >= ncols - 1 && ts.lastCol;
-  const layersOrdered = [];
+  const layersOrdered: Array<StyleAttrs | null | undefined | false> = [];
   layersOrdered.push(ts.cell || {});
   const rowLayers = [isHeader ? ts.header : null, body, isLast ? ts.lastRow : null].filter(Boolean);
   const colLayers = [firstCol, lastCol].filter(Boolean);
@@ -417,23 +469,23 @@ function cellStyle(cell, r, c, cs, ts, nrows, ncols, deck) {
     if (get(layer, 'valign')) out.va = get(layer, 'valign');
   }
   // 单元格内联
-  if (cell.fill) out.fill = resolveColor(cell.fill, deck);
-  if (cell.color) out.color = resolveColor(cell.color, deck);
+  if (cell.fill) out.fill = resolveColor(cell.fill as string, deck);
+  if (cell.color) out.color = resolveColor(cell.color as string, deck);
   if (cell['font-size']) out.fontSize = Number(cell['font-size']) || out.fontSize;
   if (cell.bold === 'true' || cell.bold === true) out.bold = true;
   if (cell.italic === 'true' || cell.italic === true) out.italic = true;
-  if (cell['line-height']) out.lineHeight = cell['line-height'];
+  if (cell['line-height']) out.lineHeight = cell['line-height'] as string;
   if (cell.align) { const p = String(cell.align).split(/\s+/); out.ha = p[0] || out.ha; out.va = p[1] || out.va; }
-  if (cell.valign) out.va = cell.valign;
+  if (cell.valign) out.va = cell.valign as string;
   // 边框
-  const parseB = (v) => {
+  const parseB = (v: unknown): BorderSpec | null => {
     if (!v || v === 'none' || v === 'false') return null;
     const p = String(v).trim().split(/\s+/);
     if (p.length >= 3) return { width: Number(p[0]) || 1, style: p[1], color: resolveColor(p[2], deck) };
     return { width: 1, style: 'solid', color: resolveColor(p[0], deck) };
   };
   const cellB = { top: parseB(cell['border-top']), right: parseB(cell['border-right']), bottom: parseB(cell['border-bottom']), left: parseB(cell['border-left']) };
-  for (const side of ['top', 'right', 'bottom', 'left']) {
+  for (const side of ['top', 'right', 'bottom', 'left'] as const) {
     const b = cellB[side] ?? parseB(get(ts.cell, `border-${side}`));
     if (b) out.borders[side] = { css: `${f(b.width)}px ${b.style === 'dash' ? 'dashed' : b.style === 'dot' ? 'dotted' : 'solid'} ${b.color}` };
   }
@@ -441,7 +493,7 @@ function cellStyle(cell, r, c, cs, ts, nrows, ncols, deck) {
 }
 
 // ── 代码 / 公式 ──
-function renderCode(el, deck) {
+function renderCode(el: SlideElement, deck: Deck): string {
   const code = decodeContent(el.content || '');
   const lines = code.split('\n');
   const hl = highlight(el.content || '', el.lang);
@@ -449,7 +501,7 @@ function renderCode(el, deck) {
   return `<div class="slx-codebox" style="background:${resolveColor(el.fill || '#F6F6F4', deck)};color:${resolveColor(el.color || '#333842', deck)};border-radius:${f(el.radius || 6)}px;font-family:${fontStack(el.fontFamily || 'JetBrains Mono')};font-size:${f(el.fontSize || 13)}px;padding:10px 12px">${lnHtml}<pre>${hl}</pre></div>`;
 }
 
-function renderFormula(el, deck) {
+function renderFormula(el: SlideElement, deck: Deck): string {
   const tex = el.tex || decodeContent(el.content || '').trim();
   if (!tex) return `<div class="slx-placeholder">公式（空）</div>`;
   return `<div class="slx-formula slx-math" data-tex="${esc(tex)}" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:${f(el.fontSize || 20)}px;color:${resolveColor(el.color || '#1A1A1A', deck)}">${esc(tex)}</div>`;
@@ -457,7 +509,7 @@ function renderFormula(el, deck) {
 
 // ─────────────────────────── 完整独立页面（导出/放映） ───────────────────────────
 
-export function cdnLinks() {
+export function cdnLinks(): { katexCss: string; katexJs: string; faCss: string } {
   return {
     katexCss: 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css',
     katexJs: 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
@@ -465,7 +517,7 @@ export function cdnLinks() {
   };
 }
 
-export function slidePageHtml(deck, slideIndex, opts = {}) {
+export function slidePageHtml(deck: Deck, slideIndex: number, opts: SlidePageOpts = {}): string {
   const cdn = cdnLinks();
   const media = opts.mediaBase ?? '';
   const slide = deck.slides[slideIndex];

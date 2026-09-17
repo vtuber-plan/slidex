@@ -26,7 +26,7 @@
 1. **单一渲染路径**：编辑器画布、缩略图、放映、PNG/PDF/PPTX 导出全部复用同一个 `renderSlide(ir, opts) → html` 纯函数。不存在第二套排版逻辑，因此「所见 = 所得」由构造保证。
 2. **IR 是唯一事实**：编辑器所有操作（拖拽、改属性、源码编辑）都收敛为「修改 IR」，再由 IR 派生画布、缩略图、源码文本。源码视图 Apply = 字符串 → parse → 替换 IR。
 3. **字符串渲染而非 DOM 构建**：`renderSlide` 返回 HTML 字符串，浏览器用 `innerHTML` 挂载，Node 导出端也能直接内嵌 HTML——同一份代码跑在两端。
-4. **零构建前端**：编辑器是原生 ES Modules 的静态页面，无打包器；唯一 npm 依赖 `puppeteer-core`（导出时探测本机 Chrome/Edge）。
+4. **无打包器前端**：编辑器是原生 ES Modules 的静态页面（无 webpack/vite）；构建仅两步 `tsc`（`src/` → `dist/`、`app/ts/` → `app/dist/`，`npm run build`）。
 5. **错误尽力渲染**：解析/校验错误不白屏——坏元素渲染为红色占位框 + 错误浮层，其余照常。这对 AI 迭代（生成→打开→修正）至关重要。
 
 ## 2. 模块清单（`src/`）
@@ -42,7 +42,7 @@
 | `render/charts.js` | 图表 IR → 纯 SVG（轴/图例/标签/网格手绘） | `renderChart(el) → svg` |
 | `render/code.js` | 轻量语法高亮（白名单语言） | `highlight(code, lang) → html` |
 | `export/capture.js` | puppeteer-core：探测浏览器 → 打开渲染页 → 截图/打印 | `capturePngs`, `capturePdf` |
-| `export/pptx.js` | PNG ×N → pptx（OOXML zip，zlib deflate，零依赖手写） | `buildPptx(pngs, deck) → Buffer` |
+| `export/pptx.ts` | PNG ×N → pptx（OOXML zip，zlib deflate，零依赖手写） | `buildPptx(pngs, deck) → Buffer` |
 | `export/html.js` | 单文件自包含放映包（媒体 base64 内联） | `buildStandaloneHtml(deck) → string` |
 | `server.js` | 本地 HTTP：静态 app + deck API + 媒体挂载 + 导出触发 | `startServer(deckPath, opts)` |
 | `cli.js` | `init / serve / present / validate / export` 子命令 | — |
@@ -75,8 +75,9 @@
 
 ### 3.3 TypeScript 与 i18n
 
-- 编辑器前端为 **TypeScript strict**（`app/ts/*.ts` → `tsc` 编译到 `app/dist/`，页面只引用 dist）；IR 数据模型（Deck / SlideContainer / SlideElement / Animation）在 `app/types/slidex.d.ts` 中强类型化——编辑器大量动态属性读写正是历史 bug 高发区，strict 模式在编译期拦截。
-- `src/` 保持**零构建 JavaScript**（CLI / 导出 / Node 端共用），通过 d.ts shim + tsconfig `paths` 给前端提供类型，运行时零依赖关系不变。
+- 编辑器前端为 **TypeScript strict**（`app/ts/*.ts` → `tsc` 编译到 `app/dist/`，页面只引用 dist）。
+- `src/` 语言核心同样是 **TypeScript strict**（`src/*.ts` → 根 `tsconfig.json` 编译到 `dist/`，`declaration: true`）。类型单一事实来源是 `src/types.ts`：编译产出 `dist/*.d.ts`，app 侧通过 tsconfig `paths`（`/src/*.js` → `../dist/*.d.ts`）与 `app/types/slidex.d.ts` 的 re-export 直接消费真实声明，手写垫片已删除。
+- 浏览器 URL `/src/*` 保持不变（app 前端的稳定模块路径），server 将其映射到磁盘 `dist/`；CLI 入口为 `dist/cli.js`（`npm run build` 或各脚本自动构建）。
 - **i18n**：`app/ts/i18n.ts` 集中管理全部界面文案（zh-CN / en）。静态 HTML 用 `data-i18n` / `data-i18n-title` 标记，动态文案一律 `t(key, params)`；语言选择器持久化到 localStorage，默认跟随浏览器语言。
 - **主题**：`app/theme.css` 定义亮/暗两套 CSS 变量，`app/ts/theme.ts` 维护 auto/light/dark 偏好（localStorage + `prefers-color-scheme` 监听），`<head>` 预解析脚本保证刷新无闪色。
 
