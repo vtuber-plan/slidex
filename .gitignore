@@ -8,3 +8,5 @@ Thumbs.db
 release/
 dist-electron/
 .cache/
+dist-pkg/
+handle64.exe

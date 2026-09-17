@@ -129,6 +129,8 @@ function renderThumbs(): void {
     window.slxRenderMath?.(sb);
   });
   box.querySelector<HTMLElement>('.thumb.active')?.scrollIntoView({ block: 'nearest' });
+  const pos = $('slidePos');
+  if (pos) pos.textContent = t('sb.slidePos', { cur: cur + 1, total: deck.slides.length });
 }
 
 function renderCurrentThumb(): void {
@@ -160,6 +162,8 @@ function applyZoom(slideEl?: HTMLElement): void {
   $('canvasWrap').style.width = deck.width * zoom + 'px';
   $('canvasWrap').style.height = deck.height * zoom + 'px';
   $('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  const slider = $('zoomSlider') as HTMLInputElement | null;
+  if (slider) slider.value = String(Math.round(zoom * 100));
 }
 
 function buildHitboxes(slideEl: HTMLElement): void {
@@ -963,6 +967,25 @@ function bindUI(): void {
   $('zoomIn').addEventListener('click', () => { zoom = Math.min(3, zoom * 1.15); applyZoom(); });
   $('zoomOut').addEventListener('click', () => { zoom = Math.max(0.1, zoom / 1.15); applyZoom(); });
   $('zoomFit').addEventListener('click', fitZoom);
+  $('zoomFitBtn').addEventListener('click', fitZoom);
+  ($('zoom100') as HTMLElement | null)?.addEventListener('click', () => { zoom = 1; applyZoom(); });
+  ($('zoomSlider') as HTMLInputElement | null)?.addEventListener('input', (e) => {
+    const v = Number((e.target as HTMLInputElement).value);
+    if (Number.isFinite(v) && v >= 10 && v <= 300) { zoom = v / 100; applyZoom(); }
+  });
+  // Ribbon 选项卡切换
+  document.querySelectorAll<HTMLButtonElement>('.rtab').forEach(tb => tb.addEventListener('click', () => {
+    document.querySelectorAll('.rtab').forEach(x => x.classList.toggle('active', x === tb));
+    document.querySelectorAll('.ribbon-page').forEach(pg => pg.classList.toggle('active', (pg as HTMLElement).dataset.page === tb.dataset.tab));
+  }));
+  // 插入按钮组（Ribbon；与隐藏的 insertType 下拉等效）
+  document.querySelectorAll<HTMLButtonElement>('[data-insert]').forEach(b => b.addEventListener('click', () => insertElement(b.dataset.insert!)));
+  // 导出按钮组（设计页；与隐藏的 exportFormat 下拉等效）
+  document.querySelectorAll<HTMLButtonElement>('[data-exp]').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.exp!;
+    if (v === 'pptx-editable') doExport('pptx', true);
+    else doExport(v);
+  }));
   $('thumbs').addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const del = target.closest('.thumb-del') as HTMLElement | null;

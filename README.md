@@ -54,7 +54,7 @@ npm run app          # 以 Electron 桌面应用打开
 ## 桌面应用与分发（v1.6.0）
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
-- **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`）：
+- **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：
 
 | 平台 | 安装版 | 便携版 |
 |---|---|---|

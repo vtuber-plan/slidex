@@ -19,10 +19,12 @@
 - 编辑器：表格检查器新增「列宽比 `<cols>`」「行高比 `<rows>`」输入（容错解析、补齐/截断、撤销可回退）
 - 测试：`test/gap-warnings.mjs`（10）、`test/gap-pptx-links.mjs`（42）、`test/gap-table-inspector.mjs`（14），已并入 `node test/run.mjs`
 
-## v1.6（当前，已完成）—— 桌面分发
+## v1.6（当前，已完成）—— 桌面分发 + PPT 式编辑界面
 - 全仓 TypeScript（src/electron/app 三工程统一 `npm run build`）
+- **编辑器界面 PowerPoint 化**：标题栏 + Ribbon 选项卡（开始/插入/设计/视图，FA 图标分组按钮）、
+  页码式缩略图栏、灰底居中带阴影画布、状态栏（页码指示 + 缩放滑杆）；亮色主题对齐 Office 观感
+- 品牌重绘：SVG 设计 + Chrome 高保真渲染管线（`npm run assets`），应用图标与 NSIS 向导图同一设计语言
 - electron-builder 多平台分发：win x64/arm64 NSIS+便携、macOS arm64 dmg+zip、Linux x64 AppImage+deb
-- 品牌资产脚本化生成（应用图标 + NSIS 双语安装向导界面）
 - GitHub Actions：CI 全量测试 + tag 触发四平台构建发布
 
 ## v1.x（近期）

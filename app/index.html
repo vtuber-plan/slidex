@@ -20,70 +20,14 @@
 <link rel="stylesheet" href="/app/styles.css">
 </head>
 <body>
-<header id="toolbar">
-  <div class="tb-group">
-    <span id="logo">Slide<b>X</b></span>
+
+<!-- 标题栏：logo + 文件名 | 语言 / 主题 -->
+<header id="titlebar">
+  <div class="tb-left">
+    <span id="logo"><i class="fa-solid fa-clapperboard"></i>&nbsp;Slide<b>X</b></span>
     <span id="deckName" class="muted" title="">—</span>
   </div>
-  <div class="tb-group">
-    <button id="btnNewSlide" data-i18n="app.newSlide" data-i18n-title="app.newSlideTitle">＋页</button>
-    <button id="btnDupSlide" data-i18n="app.dupSlide">复制页</button>
-    <button id="btnDelSlide" data-i18n="app.delSlide">删页</button>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button id="btnUndo" data-i18n-title="app.undoTitle">↩</button>
-    <button id="btnRedo" data-i18n-title="app.redoTitle">↪</button>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <span class="tb-label" data-i18n="app.insert">插入</span>
-    <select id="insertType">
-      <option value="" data-i18n="app.insertPick">选择元素…</option>
-      <option value="text">text</option>
-      <option value="shape:rect">rect</option>
-      <option value="shape:roundRect">roundRect</option>
-      <option value="shape:ellipse">ellipse</option>
-      <option value="shape:rightArrow">rightArrow</option>
-      <option value="shape:star5">star5</option>
-      <option value="shape:donut">donut</option>
-      <option value="line">line</option>
-      <option value="image">image</option>
-      <option value="icon">icon</option>
-      <option value="table">table</option>
-      <option value="chart">chart</option>
-      <option value="code">code</option>
-      <option value="formula">formula</option>
-    </select>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button class="align-btn" data-align="left" data-i18n-title="app.alignLeft">⇤</button>
-    <button class="align-btn" data-align="center" data-i18n-title="app.alignCenterH">↔</button>
-    <button class="align-btn" data-align="right" data-i18n-title="app.alignRight">⇥</button>
-    <button class="align-btn" data-align="top" data-i18n-title="app.alignTop">⇧</button>
-    <button class="align-btn" data-align="middle" data-i18n-title="app.alignCenterV">↕</button>
-    <button class="align-btn" data-align="bottom" data-i18n-title="app.alignBottom">⇩</button>
-  </div>
-  <div class="tb-sep"></div>
-  <div class="tb-group">
-    <button id="btnFront" data-i18n-title="app.front">⬆</button>
-    <button id="btnBack" data-i18n-title="app.back">⬇</button>
-    <button id="btnPainter" data-i18n-title="app.painterTitle">🖌</button>
-  </div>
-  <div class="tb-spacer"></div>
-  <div class="tb-group">
-    <button id="btnSource" data-i18n="app.source">源码</button>
-    <button id="btnPresent" data-i18n="app.present">放映</button>
-    <button id="btnSave" class="primary" data-i18n="app.save">保存</button>
-    <select id="exportFormat">
-      <option value="" data-i18n="app.export">导出…</option>
-      <option value="png" data-i18n="app.export.png">PNG（每页 2x）</option>
-      <option value="pdf" data-i18n="app.export.pdf">PDF（矢量文本）</option>
-      <option value="pptx" data-i18n="app.export.pptx">PPTX（一比一）</option>
-      <option value="pptx-editable" data-i18n="app.export.pptxEditable">PPTX（可编辑混合）</option>
-      <option value="html" data-i18n="app.export.html">HTML（自包含）</option>
-    </select>
+  <div class="tb-right">
     <select id="langSel" title="Language">
       <option value="zh-CN">中文</option>
       <option value="en">English</option>
@@ -95,6 +39,126 @@
     </select>
   </div>
 </header>
+
+<!-- Ribbon：选项卡 + 分组工具页 -->
+<div id="ribbon">
+  <div class="tabstrip" role="tablist">
+    <button class="rtab active" data-tab="home" data-i18n="tab.home">开始</button>
+    <button class="rtab" data-tab="insert" data-i18n="tab.insert">插入</button>
+    <button class="rtab" data-tab="design" data-i18n="tab.design">设计</button>
+    <button class="rtab" data-tab="view" data-i18n="tab.view">视图</button>
+  </div>
+
+  <!-- 开始：幻灯片 / 剪贴板 / 排列 / 放映 -->
+  <div class="ribbon-page active" data-page="home">
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" id="btnNewSlide" data-i18n-title="app.newSlideTitle"><i class="fa-solid fa-square-plus"></i><span data-i18n="rb.newSlide">新建页</span></button>
+        <button class="rbtn" id="btnDupSlide"><i class="fa-solid fa-clone"></i><span data-i18n="rb.dupSlide">复制页</span></button>
+        <button class="rbtn" id="btnDelSlide"><i class="fa-solid fa-trash-can"></i><span data-i18n="rb.delSlide">删页</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.slides">幻灯片</div>
+    </div>
+    <div class="rsep"></div>
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" id="btnUndo" data-i18n-title="app.undoTitle"><i class="fa-solid fa-rotate-left"></i><span data-i18n="rb.undo">撤销</span></button>
+        <button class="rbtn" id="btnRedo" data-i18n-title="app.redoTitle"><i class="fa-solid fa-rotate-right"></i><span data-i18n="rb.redo">重做</span></button>
+        <button class="rbtn" id="btnPainter" data-i18n-title="app.painterTitle"><i class="fa-solid fa-paint-roller"></i><span data-i18n="rb.painter">格式刷</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.clipboard">剪贴板</div>
+    </div>
+    <div class="rsep"></div>
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn slim align-btn" data-align="left" data-i18n-title="app.alignLeft"><i class="fa-solid fa-align-left"></i></button>
+        <button class="rbtn slim align-btn" data-align="center" data-i18n-title="app.alignCenterH"><i class="fa-solid fa-align-center"></i></button>
+        <button class="rbtn slim align-btn" data-align="right" data-i18n-title="app.alignRight"><i class="fa-solid fa-align-right"></i></button>
+        <button class="rbtn slim align-btn" data-align="top" data-i18n-title="app.alignTop"><i class="fa-solid fa-arrow-up-long"></i></button>
+        <button class="rbtn slim align-btn" data-align="middle" data-i18n-title="app.alignCenterV"><i class="fa-solid fa-grip-lines"></i></button>
+        <button class="rbtn slim align-btn" data-align="bottom" data-i18n-title="app.alignBottom"><i class="fa-solid fa-arrow-down-long"></i></button>
+        <button class="rbtn slim" id="btnFront" data-i18n-title="app.front"><i class="fa-solid fa-angles-up"></i></button>
+        <button class="rbtn slim" id="btnBack" data-i18n-title="app.back"><i class="fa-solid fa-angles-down"></i></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.arrange">排列</div>
+    </div>
+    <div class="rsep"></div>
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn accent" id="btnPresent"><i class="fa-solid fa-play"></i><span data-i18n="rb.present">放映</span></button>
+        <button class="rbtn" id="btnSave"><i class="fa-solid fa-floppy-disk"></i><span data-i18n="rb.save">保存</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.show">放映</div>
+    </div>
+  </div>
+
+  <!-- 插入：文本媒体 / 形状线条（保留隐藏的 insertType 供逻辑兼容） -->
+  <div class="ribbon-page" data-page="insert">
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" data-insert="text"><i class="fa-solid fa-font"></i><span data-i18n="el.text">文本</span></button>
+        <button class="rbtn" data-insert="image"><i class="fa-solid fa-image"></i><span data-i18n="el.image">图片</span></button>
+        <button class="rbtn" data-insert="icon"><i class="fa-solid fa-icons"></i><span data-i18n="el.icon">图标</span></button>
+        <button class="rbtn" data-insert="table"><i class="fa-solid fa-table"></i><span data-i18n="el.table">表格</span></button>
+        <button class="rbtn" data-insert="chart"><i class="fa-solid fa-chart-column"></i><span data-i18n="el.chart">图表</span></button>
+        <button class="rbtn" data-insert="code"><i class="fa-solid fa-terminal"></i><span data-i18n="el.code">代码</span></button>
+        <button class="rbtn" data-insert="formula"><i class="fa-solid fa-square-root-variable"></i><span data-i18n="el.formula">公式</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.elements">元素</div>
+    </div>
+    <div class="rsep"></div>
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" data-insert="line"><i class="fa-solid fa-slash"></i><span data-i18n="el.line">线条</span></button>
+        <button class="rbtn" data-insert="shape:rect"><i class="fa-solid fa-square"></i><span data-i18n="el.rect">矩形</span></button>
+        <button class="rbtn" data-insert="shape:roundRect"><i class="fa-regular fa-square"></i><span data-i18n="el.roundRect">圆角矩形</span></button>
+        <button class="rbtn" data-insert="shape:ellipse"><i class="fa-regular fa-circle"></i><span data-i18n="el.ellipse">椭圆</span></button>
+        <button class="rbtn" data-insert="shape:rightArrow"><i class="fa-solid fa-arrow-right-long"></i><span data-i18n="el.rightArrow">箭头</span></button>
+        <button class="rbtn" data-insert="shape:star5"><i class="fa-regular fa-star"></i><span data-i18n="el.star5">五角星</span></button>
+        <button class="rbtn" data-insert="shape:donut"><i class="fa-solid fa-circle-notch"></i><span data-i18n="el.donut">圆环</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.shapes">形状</div>
+    </div>
+    <select id="insertType" class="visually-hidden" aria-hidden="true" tabindex="-1">
+      <option value=""></option>
+    </select>
+  </div>
+
+  <!-- 设计：导出 -->
+  <div class="ribbon-page" data-page="design">
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" data-exp="png"><i class="fa-solid fa-file-image"></i><span>PNG</span></button>
+        <button class="rbtn" data-exp="pdf"><i class="fa-solid fa-file-pdf"></i><span>PDF</span></button>
+        <button class="rbtn" data-exp="pptx"><i class="fa-solid fa-file-powerpoint"></i><span data-i18n="rb.pptx">PPTX</span></button>
+        <button class="rbtn" data-exp="pptx-editable"><i class="fa-solid fa-file-zipper"></i><span data-i18n="rb.pptxEditable">PPTX 可编辑</span></button>
+        <button class="rbtn" data-exp="html"><i class="fa-solid fa-file-code"></i><span>HTML</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.export">导出</div>
+    </div>
+    <div class="rsep"></div>
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" id="btnSource"><i class="fa-solid fa-code"></i><span data-i18n="rb.source">源码</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.code">源码视图</div>
+    </div>
+    <select id="exportFormat" class="visually-hidden" aria-hidden="true" tabindex="-1">
+      <option value=""></option>
+    </select>
+  </div>
+
+  <!-- 视图：缩放 -->
+  <div class="ribbon-page" data-page="view">
+    <div class="rgroup">
+      <div class="rbtns">
+        <button class="rbtn" id="zoomFit"><i class="fa-solid fa-arrows-left-right-to-line"></i><span data-i18n="sb.fit">适配</span></button>
+        <button class="rbtn" id="zoom100"><i class="fa-solid fa-magnifying-glass"></i><span>100%</span></button>
+      </div>
+      <div class="rlabel" data-i18n="rg.zoom">缩放</div>
+    </div>
+  </div>
+</div>
 
 <div id="main">
   <aside id="slidesPane">
@@ -131,13 +195,18 @@
   </aside>
 </div>
 
+<!-- 状态栏：页码 · 诊断 | 适配 缩放滑杆 百分比 -->
 <footer id="statusbar">
-  <div id="diag" data-i18n="sb.ready">就绪</div>
+  <div id="statusLeft">
+    <span id="slidePos"></span>
+    <span id="diag" data-i18n="sb.ready">就绪</span>
+  </div>
   <div id="statusRight">
-    <button id="zoomOut">−</button>
+    <button id="zoomOut" title="−"><i class="fa-solid fa-minus"></i></button>
+    <input type="range" id="zoomSlider" min="10" max="300" value="100" step="1">
+    <button id="zoomIn" title="＋"><i class="fa-solid fa-plus"></i></button>
     <span id="zoomLabel">100%</span>
-    <button id="zoomIn">＋</button>
-    <button id="zoomFit" data-i18n="sb.fit">适配</button>
+    <button id="zoomFitBtn" data-i18n="sb.fit">适配</button>
   </div>
 </footer>
 

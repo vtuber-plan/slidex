@@ -20,7 +20,7 @@ async function openPage(scheme) {
 const state = (page) => page.evaluate(() => ({
   theme: document.documentElement.dataset.theme,
   bodyBg: getComputedStyle(document.body).backgroundColor,
-  toolbarBg: getComputedStyle(document.getElementById('toolbar')).backgroundColor,
+  toolbarBg: getComputedStyle(document.getElementById('ribbon')).backgroundColor,
   sel: document.getElementById('themeSel').value,
 }));
 

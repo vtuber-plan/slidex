@@ -23,6 +23,11 @@
   --accent: #3FB6C9;
   --accent-strong: #2C8DA0;
   --accent-contrast: #06222A;
+  --accent-soft: #24424C;
+  --accent-soft-border: #2F5B68;
+  --icon: #9FD8E2;
+  --thumb-card-edge: rgba(255, 255, 255, .07);
+  --slide-edge: rgba(255, 255, 255, .10);
   --danger: #F08A8A;
   --warn: #D9B96A;
   --ok-border: #3D7A4F;
@@ -40,14 +45,14 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #EEF1F4;
+  --bg: #F1F3F5;
   --bg-deep: #E4E8ED;
-  --stage: #DCE1E7;
-  --thumb-pane: #E7EBEF;
-  --panel: #F7F9FB;
-  --border: #D9DEE4;
+  --stage: #E3E6EA;            /* PowerPoint 式中性灰画布底 */
+  --thumb-pane: #EBEEF1;
+  --panel: #FAFBFC;
+  --border: #D8DDE3;
   --border-strong: #C5CCD5;
-  --text: #232C36;
+  --text: #26303A;
   --text-strong: #141C26;
   --muted: #5F6B78;
   --faint: #8B96A2;
@@ -59,6 +64,11 @@
   --accent: #0E8FA3;
   --accent-strong: #0B7A8C;
   --accent-contrast: #FFFFFF;
+  --accent-soft: #E3F1F4;
+  --accent-soft-border: #BFDDE3;
+  --icon: #0B7A8C;
+  --thumb-card-edge: rgba(20, 28, 38, .10);
+  --slide-edge: rgba(20, 28, 38, .14);
   --danger: #C03434;
   --warn: #7C6212;
   --ok-border: #2F6B3F;

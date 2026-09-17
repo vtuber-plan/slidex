@@ -1,98 +1,173 @@
-// make-assets.mjs — 生成 electron-builder 打包所需品牌资产（零依赖，纯 Node）
+// make-assets.mjs — 生成 electron-builder 打包所需品牌资产
+// 设计以 SVG 表达，用本机 Chrome 高保真渲染（渐变/模糊阴影/圆角），零设计工具依赖。
 //   build/icon.png            512×512  应用图标（electron-builder 自动转 ico/icns）
 //   build/installerSidebar.bmp 164×314 NSIS 安装向导左侧大图
 //   build/installerHeader.bmp  150×57  NSIS 安装向导页顶小图
-// 设计语言与编辑器主题一致：teal 底 + 纸白卡片 + 橙色强调。
+// 设计语言与编辑器主题一致：深 teal 渐变底 + 纸白幻灯片卡叠层 + 橙色播放徽章。
+// 国内无 Chrome 时可用 CHROME_PATH 指定浏览器路径。
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { existsSync } from 'node:fs';
 
 const OUT = path.resolve('build');
 fs.mkdirSync(OUT, { recursive: true });
 
-// ── 颜色 ──
-const TEAL_D = [12, 67, 76], TEAL = [20, 96, 108], ORANGE = [180, 99, 44];
-const PAPER = [250, 248, 244], MIST = [216, 210, 198], INK = [35, 42, 49];
+// ── SVG 设计（teal × 纸白 × 橙，与 UI 主题同源） ──
 
-// ── 小工具 ──
-const lerp = (a, b, t) => a + (b - a) * t;
-const mix = (c1, c2, t) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
-// 圆角矩形有向距离（<0 在内部）
-function rrSDF(px, py, x, y, w, h, r) {
-  const qx = Math.abs(px - (x + w / 2)) - (w / 2 - r);
-  const qy = Math.abs(py - (y + h / 2)) - (h / 2 - r);
-  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+/** 512×512 应用图标：圆角渐变底 + 三层幻灯片卡 + 播放徽章 + 柱状图 */
+const ICON_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1A6E7C"/>
+      <stop offset=".55" stop-color="#125562"/>
+      <stop offset="1" stop-color="#0A3A44"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".14"/>
+      <stop offset=".45" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#02181D" flood-opacity=".5"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#gloss)"/>
+
+  <!-- 幻灯片叠层（deck 隐喻） -->
+  <rect x="132" y="86" width="298" height="272" rx="22" fill="#FFFFFF" opacity=".14" transform="rotate(-6 281 222)"/>
+  <rect x="118" y="98" width="298" height="272" rx="22" fill="#FFFFFF" opacity=".26" transform="rotate(-2 267 234)"/>
+
+  <!-- 主卡片 -->
+  <g filter="url(#cardShadow)">
+    <rect x="104" y="118" width="298" height="274" rx="22" fill="#FAF8F4"/>
+  </g>
+  <rect x="136" y="152" width="140" height="26" rx="13" fill="#14606C"/>
+  <rect x="136" y="196" width="196" height="12" rx="6" fill="#D9D3C7"/>
+  <rect x="136" y="220" width="150" height="12" rx="6" fill="#E7E1D5"/>
+  <!-- 柱状图 -->
+  <rect x="140" y="316" width="26" height="40" rx="6" fill="#2C8DA0"/>
+  <rect x="176" y="296" width="26" height="60" rx="6" fill="#14606C"/>
+  <rect x="212" y="272" width="26" height="84" rx="6" fill="#B4632C"/>
+
+  <!-- 播放徽章 -->
+  <circle cx="338" cy="330" r="34" fill="#B4632C"/>
+  <circle cx="338" cy="330" r="34" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="3"/>
+  <path d="M 328 312 L 356 330 L 328 348 Z" fill="#FAF8F4"/>
+</svg>`;
+
+/** 164×314 NSIS 向导侧边图 */
+const SIDEBAR_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2=".6" y2="1">
+      <stop offset="0" stop-color="#1A6E7C"/>
+      <stop offset="1" stop-color="#0A3A44"/>
+    </linearGradient>
+    <filter id="sh" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#02181D" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <rect width="164" height="314" fill="url(#bg)"/>
+  <rect x="16" y="46" width="132" height="130" rx="12" fill="#FFFFFF" opacity=".14" transform="rotate(-5 82 111)"/>
+  <g filter="url(#sh)">
+    <rect x="20" y="52" width="124" height="122" rx="12" fill="#FAF8F4"/>
+  </g>
+  <rect x="34" y="68" width="58" height="12" rx="6" fill="#14606C"/>
+  <rect x="34" y="90" width="86" height="6" rx="3" fill="#D9D3C7"/>
+  <rect x="34" y="102" width="64" height="6" rx="3" fill="#E7E1D5"/>
+  <rect x="36" y="140" width="12" height="20" rx="3" fill="#2C8DA0"/>
+  <rect x="53" y="130" width="12" height="30" rx="3" fill="#14606C"/>
+  <rect x="70" y="120" width="12" height="40" rx="3" fill="#B4632C"/>
+  <circle cx="82" cy="224" r="26" fill="#B4632C"/>
+  <path d="M 75 212 L 92 224 L 75 236 Z" fill="#FAF8F4"/>
+  <text x="82" y="278" text-anchor="middle" font-family="'Segoe UI','MiSans',sans-serif" font-size="21" font-weight="700" fill="#FAF8F4">Slide<tspan fill="#9FD8E2">X</tspan></text>
+  <text x="82" y="296" text-anchor="middle" font-family="'Segoe UI','MiSans',sans-serif" font-size="9.5" fill="#9FD8E2" opacity=".85" letter-spacing="1">XML SLIDE LANGUAGE</text>
+</svg>`;
+
+/** 150×57 NSIS 向导页顶图 */
+const HEADER_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2=".8">
+      <stop offset="0" stop-color="#1A6E7C"/>
+      <stop offset="1" stop-color="#0A3A44"/>
+    </linearGradient>
+    <filter id="sh" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#02181D" flood-opacity=".4"/>
+    </filter>
+  </defs>
+  <rect width="150" height="57" fill="url(#bg)"/>
+  <g filter="url(#sh)">
+    <rect x="10" y="9" width="66" height="39" rx="6" fill="#FAF8F4"/>
+  </g>
+  <rect x="17" y="16" width="30" height="7" rx="3.5" fill="#14606C"/>
+  <rect x="17" y="28" width="46" height="4" rx="2" fill="#D9D3C7"/>
+  <rect x="18" y="38" width="7" height="7" rx="1.5" fill="#2C8DA0"/>
+  <rect x="28" y="34" width="7" height="11" rx="1.5" fill="#14606C"/>
+  <rect x="38" y="30" width="7" height="15" rx="1.5" fill="#B4632C"/>
+  <text x="92" y="34" font-family="'Segoe UI','MiSans',sans-serif" font-size="15" font-weight="700" fill="#FAF8F4">Slide<tspan fill="#9FD8E2">X</tspan></text>
+</svg>`;
+
+// ── Chrome 渲染 ──
+function findChrome() {
+  if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
+  const candidates = process.platform === 'win32'
+    ? ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+       'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe']
+    : ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
+  return candidates.find(existsSync) || null;
 }
 
-/** 画布：SS 倍超采样。paint(px,py,ss) → [r,g,b,a(0..1)] */
-function render(w, h, ss, paint) {
-  const img = Buffer.alloc(w * h * 4);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let r = 0, g = 0, b = 0, a = 0;
-    for (let sy = 0; sy < ss; sy++) for (let sx = 0; sx < ss; sx++) {
-      const [pr, pg, pb, pa] = paint(x + (sx + 0.5) / ss, y + (sy + 0.5) / ss, ss);
-      r += pr * pa; g += pg * pa; b += pb * pa; a += pa;
-    }
-    const n = ss * ss;
-    const i = (y * w + x) * 4;
-    if (a > 0) { img[i] = Math.round(r / a); img[i + 1] = Math.round(g / a); img[i + 2] = Math.round(b / a); }
-    img[i + 3] = Math.round(clamp01(a / n) * 255);
-  }
-  return img;
+const html = (svg) => `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0}body{background:transparent}</style></head><body>${svg}</body></html>`;
+
+const { default: puppeteer } = await import('puppeteer-core');
+const exe = findChrome();
+if (!exe) { console.error('未找到 Chrome/Edge，可用 CHROME_PATH 指定'); process.exit(1); }
+const browser = await puppeteer.launch({ executablePath: exe, args: ['--no-sandbox', '--font-render-hinting=none'] });
+const page = await browser.newPage();
+
+// PNG（保留圆角外透明）：截图 SVG 元素本身
+async function renderPng(svg, w, h, file) {
+  await page.setViewport({ width: w, height: h });
+  await page.setContent(html(svg), { waitUntil: 'networkidle0' });
+  await page.screenshot({ path: file, omitBackground: true, clip: { x: 0, y: 0, width: w, height: h } });
+  console.log('生成', path.basename(file), `${w}×${h}`);
 }
 
-/** 超采样 paint 包装：shape(d) 返回 0..1 覆盖度由 SDF*ss 阈值化，颜色 bg→fg 混合 */
-function layer(base, shape) {
-  return (px, py, ss) => {
-    const d = shape(px, py) * ss; // SDF 尺度随采样密度放大 → 天然抗锯齿
-    const cov = clamp01(0.5 - d);
-    if (cov <= 0) return base(px, py, ss);
-    const top = typeof shape.color === 'function' ? shape.color(px, py) : shape.color;
-    if (cov >= 1) return [top[0], top[1], top[2], 1];
-    const under = base(px, py, ss);
-    // 透明底上直接累积 alpha；不透明底做颜色混合
-    const ua = under[3];
-    const outA = cov + ua * (1 - cov);
-    if (outA <= 0) return [0, 0, 0, 0];
-    return [
-      (top[0] * cov + under[0] * ua * (1 - cov)) / outA,
-      (top[1] * cov + under[1] * ua * (1 - cov)) / outA,
-      (top[2] * cov + under[2] * ua * (1 - cov)) / outA,
-      outA,
-    ];
-  };
-}
-const rect = (x, y, w, h, r, color) => { const f = (px, py) => rrSDF(px, py, x, y, w, h, r); f.color = color; return f; };
-
-/** 透明画布上逐层堆叠 */
-function stack(w, h, shapes) {
-  let base = () => [0, 0, 0, 0];
-  for (const s of shapes) base = layer(base, s);
-  return base;
+// BMP（24bpp，不透明）：canvas 读回 RGBA → Node 端编码
+async function renderBmp(svg, w, h, file) {
+  await page.setViewport({ width: w, height: h });
+  await page.setContent(html(svg), { waitUntil: 'load' });
+  const b64 = await page.evaluate((W, H) => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); // BMP 无 alpha，白底
+    return new Promise((ok) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, W, H);
+        const d = ctx.getImageData(0, 0, W, H).data;
+        let s = '', chunk = 0x8000;
+        for (let i = 0; i < d.length; i += chunk) s += String.fromCharCode.apply(null, d.subarray(i, i + chunk));
+        ok(btoa(s));
+      };
+      const svgEl = document.querySelector('svg');
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svgEl));
+    });
+  }, w, h);
+  const rgba = Buffer.from(b64, 'base64');
+  writeBmp(file, rgba, w, h);
+  console.log('生成', path.basename(file), `${w}×${h}`);
 }
 
-// ── PNG 编码（RGBA8） ──
-const CRC_TABLE = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
-function crc32(buf) { let c = -1; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; }
-function chunk(type, data) {
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0); out.write(type, 4, 'ascii'); data.copy(out, 8);
-  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
-  return out;
-}
-function writePng(file, img, w, h) {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-  const raw = Buffer.alloc((w * 4 + 1) * h);
-  for (let y = 0; y < h; y++) { raw[y * (w * 4 + 1)] = 0; img.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4); }
-  const png = Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0)),
-  ]);
-  fs.writeFileSync(file, png);
-}
+await renderPng(ICON_SVG, 512, 512, path.join(OUT, 'icon.png'));
+await renderBmp(SIDEBAR_SVG, 164, 314, path.join(OUT, 'installerSidebar.bmp'));
+await renderBmp(HEADER_SVG, 150, 57, path.join(OUT, 'installerHeader.bmp'));
+await browser.close();
 
 // ── BMP 编码（24bpp BGR，底到顶） ──
 function writeBmp(file, img, w, h) {
@@ -110,70 +185,4 @@ function writeBmp(file, img, w, h) {
   head.writeUInt32LE(data.length, 34);
   fs.writeFileSync(file, Buffer.concat([head, data]));
 }
-
-// ── 图标 512×512：teal 渐变圆角底 + 纸白幻灯片卡 + 图表元素 ──
-function iconPaint() {
-  const S = 512, m = 48;
-  // 圆角底：对角渐变，圆角外透明（macOS/dmg 圆角规范）
-  let base = layer(() => [0, 0, 0, 0], rect(0, 0, S, S, 108, (px, py) => mix(TEAL_D, TEAL, clamp01((px + py) / 1024))));
-  // 卡片
-  base = layer(base, rect(m + 14, m + 26, S - 2 * m - 28, S - 2 * m - 52, 30, [8, 40, 46])); // 阴影层（深色偏移）
-  base = layer(base, rect(m, m, S - 2 * m, S - 2 * m - 52, 30, PAPER));
-  // 卡片内容：teal 标题条 + 两行 mist 文字线 + 橙色竖条
-  base = layer(base, rect(m + 34, m + 30, 180, 22, 11, TEAL));
-  base = layer(base, rect(m + 34, m + 70, 300, 10, 5, MIST));
-  base = layer(base, rect(m + 34, m + 90, 250, 10, 5, MIST));
-  base = layer(base, rect(m + 34, m + 118, 12, 84, 6, ORANGE));
-  // 三根柱状图（teal/teal/orange）
-  base = layer(base, rect(m + 66, m + 170, 26, 32, 6, TEAL));
-  base = layer(base, rect(m + 104, m + 152, 26, 50, 6, TEAL));
-  base = layer(base, rect(m + 142, m + 134, 26, 68, 6, ORANGE));
-  // 折线（用小方块近似转折点 + 细横条连线）
-  base = layer(base, rect(m + 200, m + 150, 120, 8, 4, INK));
-  base = layer(base, rect(m + 310, m + 176, 8, 26, 4, INK));
-  base = layer(base, rect(m + 200, m + 176, 118, 8, 4, INK));
-  return base;
-}
-
-// ── NSIS 侧边大图 164×314 ──
-function sidebarPaint() {
-  const bg = (px, py) => [...mix(TEAL_D, TEAL, clamp01(py / 314 * 0.8)), 1];
-  let base = bg;
-  // 大卡片轮廓（纸白填充）+ 橙色顶条 + 三行线 + 双柱
-  base = layer(base, rect(18, 60, 128, 150, 14, PAPER));
-  base = layer(base, rect(18, 60, 128, 14, 14, ORANGE));
-  base = layer(base, rect(34, 92, 70, 9, 4, mix(TEAL, TEAL_D, 0.2)));
-  base = layer(base, rect(34, 110, 96, 6, 3, MIST));
-  base = layer(base, rect(34, 124, 80, 6, 3, MIST));
-  base = layer(base, rect(34, 150, 16, 40, 5, TEAL));
-  base = layer(base, rect(58, 136, 16, 54, 5, ORANGE));
-  base = layer(base, rect(88, 144, 16, 46, 5, TEAL));
-  // 底部三个圆点装饰
-  base = layer(base, rect(58, 240, 14, 14, 7, PAPER));
-  base = layer(base, rect(78, 240, 14, 14, 7, ORANGE));
-  base = layer(base, rect(98, 240, 14, 14, 7, mix(TEAL, PAPER, 0.45)));
-  return base;
-}
-
-// ── NSIS 顶图 150×57 ──
-function headerPaint() {
-  const bg = (px, py) => [...mix(TEAL_D, TEAL, clamp01(px / 150 * 0.7)), 1];
-  let base = bg;
-  base = layer(base, rect(10, 10, 90, 37, 6, PAPER));
-  base = layer(base, rect(10, 10, 90, 5, 6, ORANGE));
-  base = layer(base, rect(20, 22, 46, 5, 2, mix(TEAL, TEAL_D, 0.2)));
-  base = layer(base, rect(20, 32, 62, 4, 2, MIST));
-  base = layer(base, rect(110, 26, 8, 21, 3, ORANGE));
-  base = layer(base, rect(124, 18, 8, 29, 3, PAPER));
-  base = layer(base, rect(138, 30, 8, 17, 3, mix(TEAL, PAPER, 0.45)));
-  return base;
-}
-
-const SS = 3;
-console.log('生成 build/icon.png 512×512 …');
-writePng(path.join(OUT, 'icon.png'), render(512, 512, SS, iconPaint()), 512, 512);
-console.log('生成 build/installerSidebar.bmp 164×314 …');
-writeBmp(path.join(OUT, 'installerSidebar.bmp'), render(164, 314, SS, sidebarPaint()), 164, 314);
-console.log('生成 build/installerHeader.bmp 150×57 …');
-writeBmp(path.join(OUT, 'installerHeader.bmp'), render(150, 57, SS, headerPaint()), 150, 57);
 console.log('完成 →', OUT);
