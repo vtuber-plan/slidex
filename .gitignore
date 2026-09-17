@@ -5,3 +5,6 @@ out/
 .DS_Store
 Thumbs.db
 .qa-images/
+release/
+dist-electron/
+.cache/

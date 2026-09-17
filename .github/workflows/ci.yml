@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # 测试跑在 windows-latest：GUI/导出测试需要 Chrome，
+    # runner 预装 Chrome 位于 C:\Program Files\Google\Chrome\Application\chrome.exe（与 test/* 探测路径一致）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build (src / app / electron)
+        run: npm run build
+      - name: Pre-generate PPTX for structure tests
+        run: node dist/cli.js export examples/quickstart/deck.slx -f pptx
+      - name: Test
+        run: npm test

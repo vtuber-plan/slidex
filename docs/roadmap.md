@@ -19,6 +19,12 @@
 - 编辑器：表格检查器新增「列宽比 `<cols>`」「行高比 `<rows>`」输入（容错解析、补齐/截断、撤销可回退）
 - 测试：`test/gap-warnings.mjs`（10）、`test/gap-pptx-links.mjs`（42）、`test/gap-table-inspector.mjs`（14），已并入 `node test/run.mjs`
 
+## v1.6（当前，已完成）—— 桌面分发
+- 全仓 TypeScript（src/electron/app 三工程统一 `npm run build`）
+- electron-builder 多平台分发：win x64/arm64 NSIS+便携、macOS arm64 dmg+zip、Linux x64 AppImage+deb
+- 品牌资产脚本化生成（应用图标 + NSIS 双语安装向导界面）
+- GitHub Actions：CI 全量测试 + tag 触发四平台构建发布
+
 ## v1.x（近期）
 - 动画导出到 PPTX（原生对象的进入效果 timing XML）
 - 形状库扩充到 OOXML 常用 30+（star 系列、flowchart、callout）

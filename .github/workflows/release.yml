@@ -1,0 +1,81 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build + Test
+        run: |
+          npm run build
+          node dist/cli.js export examples/quickstart/deck.slx -f pptx
+          node test/run.mjs
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # windows x64 + arm64：NSIS 安装版 + 便携版（可交叉出 arm64）
+          - os: windows-latest
+            args: --win nsis portable --x64 --arm64
+            artifact: slidex-win
+          # macOS arm64：dmg 安装版 + zip 便携版（arm64 原生 runner）
+          - os: macos-latest
+            args: --mac dmg zip --arm64
+            artifact: slidex-mac
+          # linux x64：AppImage 便携版 + deb 安装包
+          - os: ubuntu-latest
+            args: --linux AppImage deb --x64
+            artifact: slidex-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build (src / app / electron)
+        run: npm run build
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # 加速 CI 上的 Electron 二进制下载
+          ELECTRON_BUILDER_CACHE: .cache/electron-builder
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          generate_release_notes: true

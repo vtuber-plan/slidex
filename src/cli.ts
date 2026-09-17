@@ -107,7 +107,7 @@ async function main() {
       const file = args[1] ? path.resolve(args[1]) : null;
       let electronPath: string;
       try { electronPath = require('electron') as string; } catch { die('未安装 electron，请先运行 npm install'); return; }
-      const mainJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../electron/main.js');
+      const mainJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist-electron/main.js');
       const child = spawn(electronPath, [mainJs, ...(file ? [file] : [])], { stdio: 'inherit' });
       child.on('exit', (code) => process.exit(code ?? 0));
       break;

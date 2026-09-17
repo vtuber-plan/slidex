@@ -1,17 +1,21 @@
 {
   "name": "slidex",
-  "version": "0.1.0",
+  "version": "1.6.0",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "type": "module",
   "bin": {
     "slidex": "dist/cli.js"
   },
-  "main": "dist/index.js",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json",
+    "assets": "node scripts/make-assets.mjs",
     "start": "npm run build && node dist/cli.js serve examples/quickstart/deck.slx",
-    "app": "npm run build && electron electron/main.js",
-    "test": "npm run build && node test/run.mjs"
+    "app": "npm run build && electron dist-electron/main.js",
+    "test": "npm run build && node test/run.mjs",
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --arm64",
+    "dist:mac": "npm run build && electron-builder --mac --arm64",
+    "dist:linux": "npm run build && electron-builder --linux --x64"
   },
   "engines": {
     "node": ">=18"
@@ -30,8 +34,10 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^24.13.5",
     "electron": "^44.4.1",
-    "typescript": "^7.0.2",
-    "@types/node": "^24.13.5"
-  }
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2"
+  },
+  "author": "SlideX Team"
 }

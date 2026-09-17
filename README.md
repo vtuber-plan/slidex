@@ -51,6 +51,23 @@ npm start            # 浏览器打开示例编辑器 http://127.0.0.1:4870（�
 npm run app          # 以 Electron 桌面应用打开
 ```
 
+## 桌面应用与分发（v1.6.0）
+
+- **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
+- **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`）：
+
+| 平台 | 安装版 | 便携版 |
+|---|---|---|
+| Windows x64 / arm64 | NSIS 向导（中文/英双语、可选安装目录、品牌侧边图） | 单文件 exe |
+| Windows 通用（双架构合一） | NSIS | 单文件 exe |
+| macOS arm64 | dmg | zip |
+| Linux x64 | deb | AppImage |
+
+- 本地打包：`npm run dist:win`（mac/linux 需对应系统：`dist:mac` / `dist:linux`）
+- 品牌资产由 `npm run assets` 生成（`scripts/make-assets.mjs`，纯 Node 绘制 icon 与 NSIS 引导图）
+- CI：push/PR 跑全量测试（`.github/workflows/ci.yml`）；打 tag `v*` 自动构建四平台并发布 GitHub Release（`release.yml`）
+- 国内网络打包加速：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`
+
 常用命令（`npm run build` 后 `node dist/cli.js <cmd>`，或 `npm link` 后直接 `slidex`）：
 
 ```bash
