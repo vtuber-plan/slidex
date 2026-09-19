@@ -26,6 +26,9 @@ interface ApiBody {
   format?: string;
   scale?: number;
   editable?: boolean;
+  name?: string;
+  data?: string;
+  _tooLarge?: boolean;
   [k: string]: unknown;
 }
 
@@ -58,8 +61,9 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   function readBody(req: IncomingMessage): Promise<ApiBody> {
     return new Promise((ok) => {
       let buf = '';
-      req.on('data', (c: Buffer | string) => { buf += c; });
-      req.on('end', () => { try { ok(JSON.parse(buf || '{}')); } catch { ok({}); } });
+      let tooLarge = false;
+      req.on('data', (c: Buffer | string) => { if (!tooLarge) { buf += c; if (Buffer.byteLength(buf) > 30 * 1024 * 1024) { tooLarge = true; buf = ''; } } });
+      req.on('end', () => { if (tooLarge) { ok({ _tooLarge: true }); return; } try { ok(JSON.parse(buf || '{}')); } catch { ok({}); } });
     });
   }
 
@@ -72,8 +76,10 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
 
   // 路径安全：不允许 ..，限定在 base 内
   const safeJoin = (base: string, rel: string): string | null => {
-    const p = path.resolve(base, '.' + path.sep + rel.replace(/\\/g, '/'));
-    return p.startsWith(path.resolve(base)) ? p : null;
+    const root = path.resolve(base);
+    const p = path.resolve(root, '.' + path.sep + rel.replace(/\\/g, '/'));
+    const relative = path.relative(root, p);
+    return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) ? p : null;
   };
 
   async function route(req: IncomingMessage, res: ServerResponse) {
@@ -103,7 +109,13 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     }
     if (req.method === 'GET' && p === '/api/deck') {
       const xml = fs.readFileSync(deckFile, 'utf8');
-      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml });
+      const stat = fs.statSync(deckFile);
+      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml, mtimeMs: stat.mtimeMs });
+      return;
+    }
+    if (req.method === 'GET' && p === '/api/stat') {
+      const stat = fs.statSync(deckFile);
+      send(res, 200, { path: deckFile, mtimeMs: stat.mtimeMs, size: stat.size });
       return;
     }
     if (req.method === 'GET' && /^\/render\/\d+$/.test(p)) {
@@ -146,7 +158,27 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const tmp = deckFile + '.tmp';
       fs.writeFileSync(tmp, xml, 'utf8');
       fs.renameSync(tmp, deckFile);
-      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings });
+      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, mtimeMs: fs.statSync(deckFile).mtimeMs });
+      return;
+    }
+    if (req.method === 'POST' && p === '/api/media') {
+      const body = await readBody(req);
+      if (body._tooLarge) { send(res, 413, { ok: false, error: '请求体过大' }); return; }
+      const { name = '', data = '' } = body;
+      const ext = path.extname(path.basename(name)).toLowerCase();
+      const allowed = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+      if (!allowed.has(ext) || !/^[A-Za-z0-9._ -]+$/.test(path.basename(name))) { send(res, 200, { ok: false, error: '不支持的图片文件名或格式' }); return; }
+      const m = /^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,([A-Za-z0-9+/=]+)$/.exec(data);
+      if (!m) { send(res, 200, { ok: false, error: '图片数据无效' }); return; }
+      const buf = Buffer.from(m[1], 'base64');
+      if (!buf.length || buf.length > 20 * 1024 * 1024) { send(res, 200, { ok: false, error: '图片必须小于 20MB' }); return; }
+      const mediaDir = path.join(deckDir, 'media');
+      fs.mkdirSync(mediaDir, { recursive: true });
+      const stem = path.basename(name, ext).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'image';
+      let filename = stem + ext, seq = 2;
+      while (fs.existsSync(path.join(mediaDir, filename))) filename = `${stem}-${seq++}${ext}`;
+      fs.writeFileSync(path.join(mediaDir, filename), buf);
+      send(res, 200, { ok: true, src: `media/${filename}` });
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {

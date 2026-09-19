@@ -13,6 +13,8 @@ import type {
 const GEOM: AttrSpec[] = [
   ['x', 'num', 0], ['y', 'num', 0], ['w', 'num', 0], ['h', 'num', 0],
   ['rotation', 'num', 0], ['opacity', 'num', 1], ['flip-h', 'bool', false], ['flip-v', 'bool', false],
+  ['href', 'str'], ['alt', 'str'],
+  ['locked', 'bool', false], ['lock-aspect', 'bool', false],
 ];
 const TEXT_STYLE: AttrSpec[] = [
   ['color', 'color'], ['font-size', 'num'], ['font-family', 'str'], ['bold', 'bool'],
@@ -70,6 +72,9 @@ export const ELEMENT_SCHEMA: ElementSchema = {
   formula: {
     label: '公式', attrs: [...GEOM, ['tex', 'str'], ['font-size', 'num', 20], ['color', 'color']],
     content: 'code',
+  },
+  group: {
+    label: '组合', attrs: [...GEOM], children: ['text', 'shape', 'line', 'image', 'icon', 'table', 'chart', 'code', 'formula', 'group'],
   },
 };
 
@@ -145,7 +150,40 @@ function buildDeck(root: XMLNode, errors: Diag[], warnings: Diag[]): Deck {
         warn(warnings, c, 'W_UNKNOWN_TAG', `<deck> 内未知标签 <${c.name}>（已忽略）`);
     }
   }
+  assignContainerIds(deck);
+  if (!deck.slides.length) {
+    errors.push({ code: 'E_DECK_EMPTY', message: '<deck> 至少需要一个 <slide>', line: root.line, col: root.col });
+    const recovered = newSlide('content');
+    recovered.id = 'slide1';
+    recovered.line = root.line;
+    deck.slides.push(recovered);
+  }
   return deck;
+}
+
+/** 规范要求页面和元素 id 可省略；解析时稳定地补齐，并避开显式 id。 */
+function assignContainerIds(deck: Deck): void {
+  const containerIds = new Set([...deck.masters, ...deck.slides].map(s => s.id).filter(Boolean));
+  const assignContainer = (s: SlideContainer, prefix: string, index: number): void => {
+    if (!s.id) {
+      let n = index + 1;
+      while (containerIds.has(prefix + n)) n++;
+      s.id = prefix + n;
+      containerIds.add(s.id);
+    }
+    const flatten = (els: SlideElement[]): SlideElement[] => els.flatMap(e => [e, ...(e.elements ? flatten(e.elements) : [])]);
+    const allElements = flatten(s.elements);
+    const ids = new Set(allElements.map(e => e.id).filter(Boolean));
+    let seq = 1;
+    for (const el of allElements) {
+      if (el.id) continue;
+      while (ids.has('e' + seq)) seq++;
+      el.id = 'e' + seq++;
+      ids.add(el.id);
+    }
+  };
+  deck.masters.forEach((s, i) => assignContainer(s, 'master', i));
+  deck.slides.forEach((s, i) => assignContainer(s, 'slide', i));
 }
 
 function buildTheme(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[]): void {
@@ -156,6 +194,7 @@ function buildTheme(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[])
         const nm = k.attrs.name, val = k.attrs.value;
         if (!nm || !val) { errors.push({ code: 'E_XML', message: '<color> 需要 name 与 value', line: k.line, col: k.col }); continue; }
         if (val.startsWith('$')) errors.push({ code: 'E_THEME_CYCLE', message: `调色板颜色 ${nm} 的 value 不能是引用（${val}）`, line: k.line, col: k.col });
+        else if (Object.prototype.hasOwnProperty.call(deck.theme.colors, nm)) errors.push({ code: 'E_DUP_ID', message: `调色板颜色名称重复：${nm}`, line: k.line, col: k.col });
         else deck.theme.colors[nm] = val;
       }
     } else if (c.name === 'text-styles') {
@@ -243,7 +282,9 @@ function buildElement(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[
       if (!Number.isFinite(v)) errors.push({ code: 'E_XML', message: `${node.name}.${name}="${raw}" 不是数字`, line: node.line, col: node.col });
       else el[key] = v;
     } else if (kind === 'bool') {
-      el[key] = raw === 'true' || raw === '1';
+      if (!/^(true|false|1|0)$/.test(raw)) {
+        errors.push({ code: 'E_ATTR_VALUE', message: `${node.name}.${name}="${raw}" 不是布尔值（true/false/1/0）`, line: node.line, col: node.col });
+      } else el[key] = raw === 'true' || raw === '1';
     } else {
       el[key] = raw;
     }
@@ -256,9 +297,20 @@ function buildElement(node: XMLNode, deck: Deck, errors: Diag[], warnings: Diag[
 
   // 内容
   if (schema.content) el.content = node.content || '';
+  if (el.type === 'text' && el.content) {
+    const extracted = extractTextFill(el.content);
+    if (extracted) { el.fillObj = extracted.fill; el.content = extracted.content; }
+  }
 
   // 子元素
   if (node.children.length) buildElementChildren(el, node, deck, errors, warnings);
+
+  // 即使元素自闭合，也要建立稳定的集合字段，避免校验器/编辑器访问 undefined。
+  if (el.type === 'chart') {
+    if (!el.chartData) el.chartData = { cols: [], rows: [] };
+    if (!el.seriesList) el.seriesList = [];
+  }
+  if (el.type === 'table' && !el.rowsData) el.rowsData = [];
 
   // 衍生解析
   if (el.type === 'shape' && el.fillNode) { el.fillObj = el.fillNode; delete el.fillNode; }
@@ -286,11 +338,11 @@ function buildElementChildren(el: SlideElement, node: XMLNode, deck: Deck, error
         break;
       }
       case 'chart/data': {
-        const cols = (c.attrs.cols || '').split(',').map(x => x.trim()).filter(Boolean);
+        const cols = parseCsvLine(c.attrs.cols || '').map(x => x.trim()).filter(Boolean);
         const rows: Array<Array<string | number | null>> = [];
         for (const r of c.children) {
           if (r.name !== 'row') continue;
-          rows.push((r.content || '').split(',').map(x => {
+          rows.push(parseCsvLine(r.content || '').map(x => {
             const t = x.trim();
             if (t === '' || t === 'null' || t === 'NULL') return null;
             const v = Number(t);
@@ -311,6 +363,12 @@ function buildElementChildren(el: SlideElement, node: XMLNode, deck: Deck, error
       case 'chart/x-axis': case 'chart/y-axis': {
         const ax = c.name === 'x-axis' ? 'xAxis' : 'yAxis';
         el[ax] = { ...c.attrs, line: c.line };
+        break;
+      }
+      case 'group/text': case 'group/shape': case 'group/line': case 'group/image': case 'group/icon':
+      case 'group/table': case 'group/chart': case 'group/code': case 'group/formula': case 'group/group': {
+        el.elements ||= [];
+        el.elements.push(buildElement(c, deck, errors, warnings));
         break;
       }
       default:
@@ -336,6 +394,15 @@ function fillFrom(node: XMLNode): Fill {
   }
   if (t === 'image') return { type: 'image', src: node.attrs.src || '', fit: node.attrs.fit || 'cover', opacity: num(node.attrs.opacity, 1) };
   return { type: 'solid', color: '#FFFFFF' };
+}
+
+/** text 是 raw-content 标签；单独抽取规范允许的 `<fill>` 子元素。 */
+function extractTextFill(content: string): { fill: Fill; content: string } | null {
+  const m = /^\s*(<fill\b(?:[^>]*?\/>|[^>]*>[\s\S]*?<\/fill>))\s*/i.exec(content);
+  if (!m) return null;
+  const parsed = parseXML(m[1]);
+  if (!parsed.root || parsed.root.name !== 'fill' || parsed.errors.length) return null;
+  return { fill: fillFrom(parsed.root), content: content.slice(m[0].length) };
 }
 export function solidFill(color: string): Fill { return { type: 'solid', color }; }
 
@@ -363,13 +430,34 @@ export function validateDeck(deck: Deck, errors: Diag[] = [], warnings: Diag[] =
     const st = deck.theme.textStyles[sname];
     refCheck(st.color, `文本样式 ${sname}.color`);
   }
+  for (const tname in deck.theme.tableStyles) {
+    const ts = deck.theme.tableStyles[tname];
+    for (const [part, st] of [
+      ['header', ts.header], ['last-row', ts.lastRow], ['first-col', ts.firstCol], ['last-col', ts.lastCol], ['cell', ts.cell],
+      ...(ts.body || []).map((st, i) => [`body[${i}]`, st] as [string, StyleAttrs]),
+    ] as Array<[string, StyleAttrs | null]>) {
+      if (!st) continue;
+      for (const k of ['fill', 'color', 'border-top', 'border-right', 'border-bottom', 'border-left']) {
+        const v = st[k];
+        if (k.startsWith('border-') && v) refCheck(v.trim().split(/\s+/).pop(), `表格样式 ${tname}.${part}.${k}`);
+        else refCheck(v, `表格样式 ${tname}.${part}.${k}`);
+      }
+    }
+  }
 
   const katexOffline = katexOfflineDeclared(opts);
+  const containerIds = new Set<string>();
+  for (const container of [...deck.masters, ...deck.slides]) {
+    if (containerIds.has(container.id)) errors.push({ code: 'E_DUP_ID', message: `页面/母版 id 重复：${container.id}`, line: container.line });
+    containerIds.add(container.id);
+  }
   for (const master of deck.masters) {
+    validateFill(master.background, deck, errors, warnings, refCheck, `<master id=${master.id}>.background`, master.line);
     const ids = new Set<string>();
     for (const el of master.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
   }
   for (const slide of deck.slides) {
+    validateFill(slide.background, deck, errors, warnings, refCheck, '<slide>.background', slide.line);
     const ids = new Set<string>(); // id 唯一性按页内校验
     for (const el of slide.elements) validateElement(el, deck, errors, warnings, refCheck, ids, katexOffline);
     if (slide.master && !deck.masters.some(m => m.id === slide.master)) {
@@ -378,7 +466,8 @@ export function validateDeck(deck: Deck, errors: Diag[] = [], warnings: Diag[] =
     if (!TRANSITIONS.has(slide.transition)) {
       errors.push({ code: 'E_XML', message: `transition="${slide.transition}" 不受支持（none/fade/slide-left/slide-up/zoom）`, line: slide.line });
     }
-    const elIds = new Set(slide.elements.map(e => e.id));
+    const nestedIds = (els: SlideElement[]): string[] => els.flatMap(e => [e.id, ...(e.elements ? nestedIds(e.elements) : [])]);
+    const elIds = new Set(nestedIds(slide.elements));
     for (const a of slide.animations) {
       if (!a.target || !elIds.has(a.target)) warnings.push({ code: 'W_ANIM_TARGET', message: `<animation target="${a.target}"> 未找到本页元素`, line: a.line });
       if (!ANIM_EFFECTS.has(a.effect)) errors.push({ code: 'E_XML', message: `animation effect="${a.effect}" 不受支持`, line: a.line });
@@ -397,11 +486,22 @@ function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings:
   for (const k of ['x', 'y', 'w', 'h']) {
     if (el[k] === undefined) errors.push({ code: 'E_BOUNDS', message: `${at} 缺少几何属性 ${k}`, line: el.line, col: el.col });
   }
+  if (el.w !== undefined && el.w < 0 || el.h !== undefined && el.h < 0) {
+    errors.push({ code: 'E_BOUNDS', message: `${at} w/h 不能为负数`, line: el.line, col: el.col });
+  }
+  if (el.opacity !== undefined && (el.opacity < 0 || el.opacity > 1)) {
+    errors.push({ code: 'E_ATTR_RANGE', message: `${at}.opacity 必须在 0..1`, line: el.line, col: el.col });
+  }
+  if (el.href && !/^(https?:|mailto:|slide:)/i.test(el.href)) errors.push({ code: 'E_ATTR_VALUE', message: `${at}.href 仅支持 http(s)、mailto 或 slide:<id>`, line: el.line, col: el.col });
+  if (el.href?.startsWith('slide:') && !deck.slides.some(s => s.id === el.href!.slice(6))) errors.push({ code: 'E_SLIDE_REF', message: `${at}.href 引用了不存在的页面 ${el.href}`, line: el.line, col: el.col });
+  if ((el.type === 'image' || el.type === 'icon') && !el.alt) warnings.push({ code: 'W_ALT_MISSING', message: `${at} 建议提供 alt 无障碍描述`, line: el.line, col: el.col });
   refCheck(el.fill, `${at}.fill`, el); refCheck(el.stroke, `${at}.stroke`, el); refCheck(el.color, `${at}.color`, el);
+  validateFill(el.fillObj || null, deck, errors, warnings, refCheck, `${at}.fill`, el.line);
 
   if (el.type === 'text' && el.style && !deck.theme.textStyles[el.style.slice(1)] && el.style.startsWith('$')) {
     errors.push({ code: 'E_THEME_REF', message: `${at} 引用了不存在的文本样式 ${el.style}`, line: el.line, col: el.col });
   }
+  if (el.type === 'text') validateRichStyles(el.content || '', warnings, el);
   if (el.type === 'shape') {
     if (!SHAPE_NAMES.has(el.name || 'rect')) errors.push({ code: 'E_SHAPE_NAME', message: `${at} 未知形状 ${el.name}`, line: el.line, col: el.col });
     if (el.name === 'custom' && (!el.path || !el.viewBox)) errors.push({ code: 'E_SHAPE_NAME', message: `${at} custom 形状需要 path 与 view-box`, line: el.line, col: el.col });
@@ -409,24 +509,47 @@ function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings:
   if (el.type === 'line') {
     const pts = parsePoints(el.points || '');
     if (pts.length < 2) errors.push({ code: 'E_LINE_POINTS', message: `${at} points 至少 2 个点（"x,y x,y"）`, line: el.line, col: el.col });
+    if (!['sharp', 'round', 'smooth'].includes(el.curve || 'round')) errors.push({ code: 'E_ATTR_VALUE', message: `${at}.curve 不受支持`, line: el.line, col: el.col });
+    for (const k of ['arrowStart', 'arrowEnd'] as const) if (!['none', 'arrow', 'stealth', 'diamond', 'oval'].includes(el[k] || 'none')) {
+      errors.push({ code: 'E_ATTR_VALUE', message: `${at}.${k} 不受支持`, line: el.line, col: el.col });
+    }
   }
   if (el.type === 'image') {
     if (!el.src) errors.push({ code: 'E_MEDIA_SRC', message: `${at} 缺少 src`, line: el.line, col: el.col });
-    else if (el.src.startsWith('..')) warnings.push({ code: 'W_PATH_ESCAPE', message: `${at} src 越出项目目录：${el.src}`, line: el.line, col: el.col });
+    else if (isEscapingPath(el.src)) warnings.push({ code: 'W_PATH_ESCAPE', message: `${at} src 越出项目目录：${el.src}`, line: el.line, col: el.col });
+    if (!['cover', 'contain', 'fill'].includes(el.fit || 'cover')) errors.push({ code: 'E_ATTR_VALUE', message: `${at}.fit 不受支持`, line: el.line, col: el.col });
+    if (el.crop) {
+      const p = el.crop.split(/[\s,]+/).map(Number);
+      if (p.length !== 4 || p.some(v => !Number.isFinite(v) || v < 0 || v >= 1) || p[0] + p[2] >= 1 || p[1] + p[3] >= 1) {
+        errors.push({ code: 'E_ATTR_RANGE', message: `${at}.crop 必须是 4 个 0..0.99 比例，且相对两边之和小于 1`, line: el.line, col: el.col });
+      }
+    }
   }
   if (el.type === 'table') {
+    if (el.style?.startsWith('$') && !deck.theme.tableStyles[el.style.slice(1)]) errors.push({ code: 'E_THEME_REF', message: `${at} 引用了不存在的表格样式 ${el.style}`, line: el.line, col: el.col });
     if (el.cols && el.cols.length) {
       const sum = el.cols.reduce((a, b) => a + b, 0);
       if (Math.abs(sum - 1) > 0.001 || el.cols.some(c => c <= 0)) errors.push({ code: 'E_COLS_SUM', message: `${at} <cols> 比例必须全为正数且和为 1（当前和 ${sum.toFixed(3)}）`, line: el.line, col: el.col });
+    }
+    if (el.rowsRatio?.length) {
+      const sum = el.rowsRatio.reduce((a, b) => a + b, 0);
+      if (el.rowsRatio.some(v => v <= 0) || Math.abs(sum - 1) > 0.001 || el.rowsRatio.length !== (el.rowsData || []).length) errors.push({ code: 'E_ROWS_SUM', message: `${at} <rows> 必须与行数一致、全为正数且和为 1`, line: el.line, col: el.col });
     }
     const ncols = el.cols?.length || 0;
     if (ncols) {
       for (const e of tableRowWidthErrors(el.rowsData || [], ncols)) {
         errors.push({ code: 'E_ROW_LEN', message: `${at} 第 ${e.row + 1} 行宽度（含合并覆盖）应为 ${ncols}，实际 ${e.width}`, line: el.line, col: el.col });
       }
+      validateTableSpans(el.rowsData || [], ncols, errors, el);
+    }
+    for (const row of el.rowsData || []) for (const cell of row) {
+      if (typeof cell.style === 'string' && cell.style.startsWith('$') && !deck.theme.textStyles[cell.style.slice(1)]) errors.push({ code: 'E_THEME_REF', message: `${at} 单元格引用了不存在的文本样式 ${cell.style}`, line: el.line, col: el.col });
+      for (const k of ['fill', 'color']) refCheck(cell[k], `${at}.td.${k}`, el);
+      validateRichStyles(String(cell.text || ''), warnings, el);
     }
   }
   if (el.type === 'chart') validateChart(el, deck, errors, refCheck);
+  if (el.type === 'group') for (const child of el.elements || []) validateElement(child, deck, errors, warnings, refCheck, ids, katexOffline);
   if (el.type === 'text') checkTextOverflow(el, deck, warnings, at);
   if (katexOffline && elementUsesMath(el)) {
     warnings.push({ code: 'W_KATEX_OFFLINE', message: `${at} 离线环境：KaTeX（CDN）不可用，公式将回退为等宽原文本`, line: el.line, col: el.col });
@@ -436,6 +559,11 @@ function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings:
 function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: RefCheck): void {
   const colsSet = new Set(el.chartData!.cols); // chart 元素经 buildElementChildren 后必有 chartData/seriesList
   const at = `<chart id=${el.id || '?'}>`;
+  if (!el.chartData!.cols.length) errors.push({ code: 'E_ENCODE_COL', message: `${at} data.cols 不能为空`, line: el.line, col: el.col });
+  if (colsSet.size !== el.chartData!.cols.length) errors.push({ code: 'E_ENCODE_COL', message: `${at} data.cols 列名必须唯一`, line: el.line, col: el.col });
+  for (let i = 0; i < el.chartData!.rows.length; i++) {
+    if (el.chartData!.rows[i].length !== el.chartData!.cols.length) errors.push({ code: 'E_ROW_LEN', message: `${at} 数据第 ${i + 1} 行应有 ${el.chartData!.cols.length} 列，实际 ${el.chartData!.rows[i].length}`, line: el.line, col: el.col });
+  }
   if (!el.seriesList!.length) errors.push({ code: 'E_CHART_MIX', message: `${at} 至少需要一个 <series>`, line: el.line, col: el.col });
   const hasPie = el.seriesList!.some(s => s.type === 'pie');
   if (hasPie && el.seriesList!.length > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} pie 系列必须独占（不能与其他系列混用）`, line: el.line, col: el.col });
@@ -443,6 +571,16 @@ function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: R
   if (stackVals.size > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} 所有 stack 系列必须使用相同的 stack 值`, line: el.line, col: el.col });
   for (const se of el.seriesList!) {
     if (!CHART_TYPES.has(se.type)) errors.push({ code: 'E_CHART_MIX', message: `series type="${se.type}" 不受支持（v1: bar/line/area/pie/scatter）`, line: se.line });
+    if (se.stack && !['value', 'percent'].includes(String(se.stack))) errors.push({ code: 'E_ATTR_VALUE', message: `series stack="${se.stack}" 不受支持（value/percent）`, line: se.line });
+    if (se.marker && !['none', 'circle', 'rect', 'diamond', 'triangle'].includes(String(se.marker))) errors.push({ code: 'E_ATTR_VALUE', message: `series marker="${se.marker}" 不受支持`, line: se.line });
+    if (se.dash && !['solid', 'dash', 'dot'].includes(String(se.dash))) errors.push({ code: 'E_ATTR_VALUE', message: `series dash="${se.dash}" 不受支持`, line: se.line });
+    if (se['data-labels'] && !['none', 'value', 'percent', 'category'].includes(String(se['data-labels']))) errors.push({ code: 'E_ATTR_VALUE', message: `series data-labels="${se['data-labels']}" 不受支持`, line: se.line });
+    if (se['inner-radius'] !== undefined) {
+      const r = Number(se['inner-radius']);
+      if (!Number.isFinite(r) || r < 0 || r > 1) errors.push({ code: 'E_ATTR_RANGE', message: `series inner-radius 必须在 0..1`, line: se.line });
+    }
+    if (typeof se.fill === 'string') for (const color of se.fill.split(/\s+/).filter(Boolean)) refCheck(color, `series.fill`, { line: se.line });
+    refCheck(se.stroke, `series.stroke`, { line: se.line });
     for (const ch of ['x', 'y'] as const) {
       if (!se[ch]) errors.push({ code: 'E_ENCODE_COL', message: `series 缺少 encode 列 ${ch}`, line: se.line });
       else if (!colsSet.has(se[ch]!)) errors.push({ code: 'E_ENCODE_COL', message: `series 的 ${ch} 列 "${se[ch]}" 不在 data.cols 中`, line: se.line });
@@ -458,6 +596,75 @@ function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: R
           break;
         }
       }
+    }
+  }
+}
+
+function validateFill(fill: Fill | null | undefined, deck: Deck, errors: Diag[], warnings: Diag[], refCheck: RefCheck, ctx: string, line?: number): void {
+  if (!fill) return;
+  if (fill.type === 'solid') refCheck(fill.color, ctx, { line });
+  else if (fill.type === 'gradient') {
+    if (fill.stops.length < 2) errors.push({ code: 'E_FILL', message: `${ctx} 渐变至少需要两个 stop`, line });
+    let prev = -Infinity;
+    for (const stop of fill.stops) {
+      if (!Number.isFinite(stop.pos) || stop.pos < 0 || stop.pos > 1 || stop.pos < prev) errors.push({ code: 'E_FILL', message: `${ctx} stop.pos 必须按升序位于 0..1`, line });
+      prev = stop.pos;
+      refCheck(stop.color, `${ctx}.stop`, { line });
+    }
+  } else if (fill.type === 'image') {
+    if (!fill.src) errors.push({ code: 'E_MEDIA_SRC', message: `${ctx} 图片填充缺少 src`, line });
+    else if (isEscapingPath(fill.src)) warnings.push({ code: 'W_PATH_ESCAPE', message: `${ctx} src 越出项目目录：${fill.src}`, line });
+    if (!['cover', 'contain', 'fill'].includes(fill.fit || 'cover')) errors.push({ code: 'E_ATTR_VALUE', message: `${ctx}.fit 不受支持`, line });
+    if (fill.opacity !== undefined && (fill.opacity < 0 || fill.opacity > 1)) errors.push({ code: 'E_ATTR_RANGE', message: `${ctx}.opacity 必须在 0..1`, line });
+  }
+}
+
+function isEscapingPath(src: string): boolean {
+  if (/^(https?:|data:)/i.test(src)) return false;
+  if (/^(?:[a-zA-Z]:[\\/]|[\\/]{1,2})/.test(src)) return true;
+  let depth = 0;
+  for (const part of src.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') { if (--depth < 0) return true; }
+    else depth++;
+  }
+  return false;
+}
+
+function validateTableSpans(rows: TableCell[][], ncols: number, errors: Diag[], el: SlideElement): void {
+  const covered: boolean[][] = [];
+  for (let r = 0; r < rows.length; r++) {
+    covered[r] ||= [];
+    let c = 0;
+    for (const cell of rows[r]) {
+      while (covered[r][c]) c++;
+      const rs = Number(cell['row-span'] ?? 1), cs = Number(cell['col-span'] ?? 1);
+      if (!Number.isInteger(rs) || !Number.isInteger(cs) || rs < 1 || cs < 1 || r + rs > rows.length || c + cs > ncols) {
+        errors.push({ code: 'E_SPAN', message: `<table id=${el.id}> 第 ${r + 1} 行存在越界或非法合并`, line: el.line, col: el.col });
+        continue;
+      }
+      for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) {
+        covered[r + dr] ||= [];
+        if (covered[r + dr][c + dc]) errors.push({ code: 'E_SPAN', message: `<table id=${el.id}> 合并区域互相重叠`, line: el.line, col: el.col });
+        covered[r + dr][c + dc] = true;
+      }
+      c += cs;
+    }
+  }
+}
+
+function validateRichStyles(content: string, warnings: Diag[], node: { line?: number; col?: number }): void {
+  const allowed: Record<string, Set<string>> = {
+    span: new Set(['color', 'font-size', 'font-family', 'background-color', 'font-weight', 'font-style']),
+    p: new Set(['text-align', 'line-height', 'margin-top', 'margin-left', 'margin-right', 'text-indent']),
+    li: new Set(['text-align', 'line-height', 'margin-top', 'margin-left', 'margin-right', 'text-indent']),
+  };
+  const re = /<(span|p|li)\b[^>]*\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content))) {
+    for (const decl of (m[2] ?? m[3] ?? '').split(';')) {
+      const k = decl.split(':', 1)[0].trim().toLowerCase();
+      if (k && !allowed[m[1].toLowerCase()].has(k)) warnings.push({ code: 'W_STYLE_PROP', message: `<${m[1].toLowerCase()}> 不支持样式属性 ${k}（已忽略）`, line: node.line, col: node.col });
     }
   }
 }
@@ -671,6 +878,27 @@ export function parsePoints(str: string): Array<[number, number]> {
     return m ? [+m[1], +m[2]] as [number, number] : null;
   }).filter(Boolean) as Array<[number, number]>; // filter(Boolean) 不收窄类型，断言与运行时语义一致
 }
+/** RFC 4180 风格单行 CSV；双引号内允许逗号，`""` 表示一个引号。 */
+export function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cell = '', quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') { cell += '"'; i++; }
+      else quoted = !quoted;
+    } else if (ch === ',' && !quoted) { out.push(cell); cell = ''; }
+    else cell += ch;
+  }
+  out.push(cell);
+  return out;
+}
+export function formatCsvRow(values: unknown[]): string {
+  return values.map(value => {
+    const s = value === null || value === undefined ? '' : String(value);
+    return /[",\r\n]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(',');
+}
 function warn(list: Diag[], node: XMLNode | undefined, code: string, message: string): void { list.push({ code, message, line: node?.line, col: node?.col }); }
 
 // 颜色解析：$ref 展开（一层）
@@ -716,6 +944,7 @@ function defaultsFor(type: ElementType): Record<string, unknown> { // 注意：�
     };
     case 'code': return { x: 100, y: 120, w: 520, h: 200, lang: 'js', 'line-numbers': true, 'font-size': 13, fill: '#F6F6F4', color: '#333842', radius: 6, content: 'console.log("hello slidex");' };
     case 'formula': return { x: 200, y: 200, w: 400, h: 70, 'font-size': 22, tex: 'E = mc^2', content: '' };
+    case 'group': return { x: 100, y: 100, w: 400, h: 240, elements: [] };
     default: return {};
   }
 }

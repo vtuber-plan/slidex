@@ -1,7 +1,7 @@
 // serializer.ts — IR → 规范形 XML（spec §18）
 // 打开 → 保存 → 再打开，IR 不变（幂等）。编辑器所有保存都走这里。
 
-import { ELEMENT_SCHEMA } from './ir.js';
+import { ELEMENT_SCHEMA, formatCsvRow } from './ir.js';
 import { decodeEntities } from './parser.js';
 import type { AxisSpec, Deck, DeckTheme, Fill, SlideContainer, SlideElement, StyleAttrs } from './types.js';
 
@@ -150,7 +150,12 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
   if (el.fillObj) children.push(fillChild(el.fillObj, pad + IND));
 
   switch (el.type) {
-    case 'text': return withRichContent(open, el.content, pad);
+    case 'text': {
+      if (!children.length) return withRichContent(open, el.content, pad);
+      const c = (el.content || '').replace(/^\n+|\n+$/g, '');
+      if (c.trim()) children.push(indentRich(c, pad + IND));
+      return `${pad}${open}>\n${children.join('\n')}\n${pad}</text>`;
+    }
     case 'formula': {
       const tex = el.tex || decodeEntities(el.content || '').trim();
       if (!el.tex && tex) return withCodeContent(open, tex, pad);
@@ -176,7 +181,7 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
     }
     case 'chart': {
       const d = el.chartData || { cols: [], rows: [] };
-      children.push(`${pad}${IND}<data cols="${esc(d.cols.join(','))}">${d.rows.length ? '\n' + d.rows.map(r => `${pad}${IND}${IND}<row>${r.map(v => v === null || v === undefined ? '' : String(v)).join(',')}</row>`).join('\n') + '\n' + pad + IND : ''}</data>`);
+      children.push(`${pad}${IND}<data cols="${esc(formatCsvRow(d.cols))}">${d.rows.length ? '\n' + d.rows.map(r => `${pad}${IND}${IND}<row>${escText(formatCsvRow(r))}</row>`).join('\n') + '\n' + pad + IND : ''}</data>`);
       for (const se of el.seriesList || []) {
         const a = [`type="${esc(se.type)}"`];
         for (const k of SERIES_ATTR_ORDER) if (se[k] !== undefined && se[k] !== '' && se[k] !== false) a.push(`${k}="${esc(String(se[k]))}"`);
@@ -188,6 +193,10 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
         const a = Object.keys(rest).filter(k => rest[k] !== '' && rest[k] !== undefined).map(k => `${k}="${esc(String(rest[k]))}"`);
         children.push(`${pad}${IND}<${tag}${a.length ? ' ' + a.join(' ') : ''}/>`);
       }
+      break;
+    }
+    case 'group': {
+      for (const child of el.elements || []) children.push(serializeElement(child, pad + IND));
       break;
     }
   }
@@ -236,4 +245,7 @@ export function fmt(v: unknown): string {
 
 export function esc(s: unknown): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function escText(s: unknown): string {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

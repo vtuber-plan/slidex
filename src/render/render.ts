@@ -169,8 +169,8 @@ function renderElement(el: SlideElement, deck: Deck, media: string, isMaster?: s
   let inner = '';
   try {
     switch (el.type) {
-      case 'text': inner = renderText(el, deck); break;
-      case 'shape': inner = renderShape(el, deck); break;
+      case 'text': inner = renderText(el, deck, media); break;
+      case 'shape': inner = renderShape(el, deck, media); break;
       case 'line': inner = renderLine(el, deck); break;
       case 'image': inner = renderImage(el, deck, media); break;
       case 'icon': inner = renderIcon(el, deck); break;
@@ -178,12 +178,21 @@ function renderElement(el: SlideElement, deck: Deck, media: string, isMaster?: s
       case 'chart': inner = renderChart(el, deck); break;
       case 'code': inner = renderCode(el, deck); break;
       case 'formula': inner = renderFormula(el, deck); break;
+      case 'group': inner = renderGroup(el, deck, media); break;
       default: inner = `<div class="slx-placeholder">未知元素 ${esc(el.type)}</div>`;
     }
   } catch (e) {
     inner = `<div class="slx-placeholder" title="${esc((e as Error).message)}">渲染错误：${esc(el.type)}#${esc(el.id || '')}</div>`;
   }
-  return `  <div class="slx-el"${idAttr} style="${style}">${inner}</div>`;
+  const aria = el.alt ? ` aria-label="${esc(el.alt)}" role="${el.type === 'image' || el.type === 'icon' ? 'img' : 'group'}"` : '';
+  const action = el.href?.startsWith('slide:') ? ` data-slide-target="${esc(el.href.slice(6))}" tabindex="0"` : '';
+  const linked = el.href && !el.href.startsWith('slide:') ? `<a href="${esc(el.href)}" target="_blank" rel="noopener noreferrer" style="display:block;width:100%;height:100%;color:inherit;text-decoration:none">${inner}</a>` : inner;
+  return `  <div class="slx-el"${idAttr}${aria}${action} style="${style}">${linked}</div>`;
+}
+
+function renderGroup(el: SlideElement, deck: Deck, media: string): string {
+  const children = (el.elements || []).map(child => renderElement(child, deck, media)).join('\n');
+  return `<div class="slx-group" style="position:relative;width:100%;height:100%;overflow:visible">${children}</div>`;
 }
 
 // ── 文本 ──
@@ -223,11 +232,16 @@ export function resolveTextStyle(el: SlideElement, deck: Deck): TextStyle {
   return out;
 }
 
-function renderText(el: SlideElement, deck: Deck): string {
+function renderText(el: SlideElement, deck: Deck, mediaBase: string): string {
   const st = resolveTextStyle(el, deck);
   const [ha, va] = String(st.align || 'left top').split(/\s+/);
   const shadow = parseShadow(el.shadow);
   const html = renderRichText(el.content || '', { deck });
+  const fill = el.fillObj;
+  const fillCss = fill?.type === 'solid' ? `background:${resolveColor(fill.color, deck)}`
+    : fill?.type === 'gradient' ? `background:${gradientCss(fill, deck)}`
+    : fill?.type === 'image' ? `background-image:url("${esc(mediaSrc(fill.src, mediaBase))}");background-size:${fill.fit === 'contain' ? 'contain' : fill.fit === 'fill' ? '100% 100%' : 'cover'};background-position:center`
+    : '';
   const css = [
     `display:flex`, `flex-direction:column`,
     `justify-content:${va === 'middle' || va === 'center' ? 'center' : va === 'bottom' ? 'flex-end' : 'flex-start'}`,
@@ -240,6 +254,7 @@ function renderText(el: SlideElement, deck: Deck): string {
     st.lineHeightPx ? `line-height:${f(st.lineHeightPx)}px` : `line-height:${f(st.lineHeight)}`,
     st.letterSpacing ? `letter-spacing:${f(st.letterSpacing)}px` : '',
     st.backgroundColor ? `background-color:${st.backgroundColor}` : '',
+    fillCss,
     `text-align:${ha || 'left'}`,
     el.wrap === false ? 'white-space:nowrap;overflow:visible' : '',
     shadow ? `text-shadow:${f(shadow.dx)}px ${f(shadow.dy)}px ${f(shadow.blur)}px ${resolveColor(shadow.color, deck)}` : '',
@@ -249,7 +264,7 @@ function renderText(el: SlideElement, deck: Deck): string {
 }
 
 // ── 形状 ──
-function renderShape(el: SlideElement, deck: Deck): string {
+function renderShape(el: SlideElement, deck: Deck, mediaBase: string): string {
   const { d, viewBox, fillRule } = shapeSvg(el);
   const fill: Fill | null = el.fillObj || (el.fill ? { type: 'solid', color: el.fill } : null);
   let defs = '', fillRef: string | undefined = 'none';
@@ -258,7 +273,7 @@ function renderShape(el: SlideElement, deck: Deck): string {
     else if (fill.type === 'gradient') { const g = gradientDef(fill, deck); defs = g.defs; fillRef = `url(#${g.id})`; }
     else if (fill.type === 'image') {
       const gid = `slxg${gradSeq++}`;
-      defs = `<defs><pattern id="${gid}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${esc(fill.src)}" width="1" height="1" preserveAspectRatio="${fill.fit === 'contain' ? 'xMidYMid meet' : 'slice'}"/></pattern></defs>`;
+      defs = `<defs><pattern id="${gid}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${esc(mediaSrc(fill.src, mediaBase))}" width="1" height="1" preserveAspectRatio="${fill.fit === 'contain' ? 'xMidYMid meet' : 'slice'}"/></pattern></defs>`;
       fillRef = `url(#${gid})`;
     }
   }

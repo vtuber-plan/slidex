@@ -43,7 +43,7 @@
 | `render/code.js` | 轻量语法高亮（白名单语言） | `highlight(code, lang) → html` |
 | `export/capture.js` | puppeteer-core：探测浏览器 → 打开渲染页 → 截图/打印 | `capturePngs`, `capturePdf` |
 | `export/pptx.ts` | PNG ×N → pptx（OOXML zip，zlib deflate，零依赖手写） | `buildPptx(pngs, deck) → Buffer` |
-| `export/html.js` | 单文件自包含放映包（媒体 base64 内联） | `buildStandaloneHtml(deck) → string` |
+| `export/html.js` | 单文件放映包（本地媒体 base64 内联；公式/图标/网络字体保留 CDN） | `buildStandaloneHtml(deck) → string` |
 | `server.js` | 本地 HTTP：静态 app + deck API + 媒体挂载 + 导出触发 | `startServer(deckPath, opts)` |
 | `cli.js` | `init / serve / present / validate / export` 子命令 | — |
 

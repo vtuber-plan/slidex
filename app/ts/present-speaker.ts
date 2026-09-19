@@ -10,6 +10,9 @@ declare global {
 
 const res = await fetch('/api/deck').then(r => r.json()) as { xml: string };
 const deck: Deck = parseSlideX(res.xml).deck;
+for (const font of deck.fonts || []) {
+  const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = font.src; document.head.appendChild(link);
+}
 const curBox = document.getElementById('curBox')!;
 const nextBox = document.getElementById('nextBox')!;
 const holders = deck.slides.map(s => {
@@ -40,8 +43,9 @@ function show(i: number): void {
   curBox.querySelector('.holder')?.remove();
   nextBox.querySelector('.holder')?.remove();
   cur = i;
+  holders[cur].style.display = '';
   curBox.appendChild(holders[cur]);
-  if (holders[cur + 1]) nextBox.appendChild(holders[cur + 1]);
+  if (holders[cur + 1]) { holders[cur + 1].style.display = ''; nextBox.appendChild(holders[cur + 1]); }
   document.getElementById('pos')!.textContent = `${cur + 1} / ${holders.length}`;
   document.getElementById('notesBox')!.textContent = deck.slides[cur].notes || t('sp.notes');
   window.slxRenderMath?.(curBox);

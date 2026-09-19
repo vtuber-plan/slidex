@@ -90,6 +90,8 @@ async function saveAs(): Promise<void> {
 
 async function exportAs(format: string, editable = false): Promise<void> {
   if (!win) return;
+  const saved = await win.webContents.executeJavaScript('window.__slxDirty === true ? window.__slxSave() : Promise.resolve(true)').catch(() => false) as boolean;
+  if (!saved) { dialog.showErrorBox(M('导出失败', 'Export failed'), M('当前文稿保存失败，已取消导出。', 'The current deck could not be saved; export was cancelled.')); return; }
   win.webContents.send?.('slidex-exporting');
   const res = await fetch(`${baseUrl}/api/export`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -104,6 +106,19 @@ async function exportAs(format: string, editable = false): Promise<void> {
     buttons: [M('打开所在文件夹', 'Open folder'), M('关闭', 'Close')],
   });
   if (r.response === 0) shell.showItemInFolder(last);
+}
+
+async function openPresentWindow(): Promise<void> {
+  if (!win) return;
+  const saved = await win.webContents.executeJavaScript('window.__slxDirty === true ? window.__slxSave() : Promise.resolve(true)').catch(() => false) as boolean;
+  if (!saved) return;
+  presentWin = new BrowserWindow({
+    width: 1280, height: 760, backgroundColor: '#101419',
+    title: M('SlideX 放映', 'SlideX Present'), autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true },
+  });
+  presentWin.setMenuBarVisibility(false);
+  await presentWin.loadURL(baseUrl + '/present');
 }
 
 function buildMenu(): void {
@@ -156,15 +171,7 @@ function buildMenu(): void {
     {
       label: M('放映', 'Slide Show'),
       submenu: [
-        { label: M('进入放映', 'Present'), accelerator: 'F5', click: () => {
-          presentWin = new BrowserWindow({
-            width: 1280, height: 760, backgroundColor: '#101419',
-            title: M('SlideX 放映', 'SlideX Present'), autoHideMenuBar: true,
-            webPreferences: { contextIsolation: true },
-          });
-          presentWin.setMenuBarVisibility(false);
-          presentWin.loadURL(baseUrl + '/present');
-        } },
+        { label: M('进入放映', 'Present'), accelerator: 'F5', click: () => { void openPresentWindow(); } },
         { label: M('演讲者视图', 'Speaker View'), click: () => {
           const w = new BrowserWindow({ width: 1100, height: 700, backgroundColor: '#1B2027', title: M('演讲者视图', 'Speaker View'), autoHideMenuBar: true });
           w.loadURL(baseUrl + '/present-speaker');
@@ -241,7 +248,8 @@ async function handleClose(): Promise<void> {
       });
       if (r === 2) return;                      // 取消：留在编辑器
       if (r === 0) {                            // 保存：等待 /api/save 完成再关
-        await win.webContents.executeJavaScript('window.__slxSave ? window.__slxSave() : Promise.resolve()').catch(() => {});
+        const saved = await win.webContents.executeJavaScript('window.__slxSave ? window.__slxSave() : Promise.resolve(false)').catch(() => false) as boolean;
+        if (!saved) return;
       }
     }
     win.destroy();

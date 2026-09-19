@@ -36,27 +36,18 @@ let vis = await page.evaluate(() => {
 });
 t('动画目标初始隐藏', vis.kicker === 'hidden' && vis.title === 'hidden', JSON.stringify(vis));
 
-// 点击 1：第一组（kicker onClick fade-in + title withPrevious fly-in）
+// 点击 1：第一组（kicker + title），随后 accentbar afterPrevious 自动链播
 await page.keyboard.press('ArrowRight');
-await new Promise(r => setTimeout(r, 700));
+await new Promise(r => setTimeout(r, 1200));
 vis = await page.evaluate(() => {
   const h = [...document.querySelectorAll('.slide-holder')].find(x => x.style.display !== 'none');
   const q = (id) => { const el = h.querySelector('.slx-el[data-id="' + id + '"]'); return el ? el.style.visibility : '?'; };
   return { kicker: q('kicker'), title: q('title'), accentbar: q('accentbar') };
 });
-t('点击播放第一组', vis.kicker === '' && vis.title === '' && vis.accentbar === 'hidden', JSON.stringify(vis));
+t('点击播放第一组', vis.kicker === '' && vis.title === '', JSON.stringify(vis));
+t('afterPrevious 自动链播', vis.accentbar === '', JSON.stringify(vis));
 
-// 点击 2：afterPrevious 组（accentbar zoom-in）
-await page.keyboard.press('ArrowRight');
-await new Promise(r => setTimeout(r, 800));
-vis = await page.evaluate(() => {
-  const h = [...document.querySelectorAll('.slide-holder')].find(x => x.style.display !== 'none');
-  const el = h.querySelector('.slx-el[data-id="accentbar"]');
-  return el ? el.style.visibility : '?';
-});
-t('afterPrevious 自动链播', vis === '', String(vis));
-
-// 第 3 次点击：组播完 → 翻页
+// 第 2 次点击：全部组播完 → 翻页
 await page.keyboard.press('ArrowRight');
 await new Promise(r => setTimeout(r, 300));
 const hud = await page.$eval('#hud', el => el.textContent);

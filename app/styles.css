@@ -134,6 +134,15 @@ button.active { border-color: var(--accent); color: var(--accent); background: t
 .selbox .handle.s  { left: calc(50% - 4px); bottom: -5px; cursor: ns-resize; }
 .selbox .handle.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
 .selbox .handle.w  { left: -5px; top: calc(50% - 4px); cursor: ew-resize; }
+.selbox .rotate-handle {
+  position: absolute; left: calc(50% - 6px); top: -30px; width: 12px; height: 12px;
+  box-sizing: border-box; border: 2px solid var(--accent); border-radius: 50%;
+  background: #fff; cursor: grab; pointer-events: auto;
+}
+.selbox .rotate-handle::after {
+  content: ''; position: absolute; left: 3px; top: 10px; width: 1px; height: 16px;
+  background: var(--accent); pointer-events: none;
+}
 .selbox .size-tag {
   position: absolute; left: 50%; bottom: -22px; transform: translateX(-50%);
   background: var(--accent-strong); color: var(--accent-contrast); font-size: 11px; padding: 0 6px; border-radius: 3px; white-space: nowrap;
@@ -229,3 +238,6 @@ button.active { border-color: var(--accent); color: var(--accent); background: t
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
+.snap-guide{position:absolute;pointer-events:none;z-index:50;background:#D83B72;box-shadow:0 0 0 1px #FFFFFF80}
+.snap-guide.vertical{top:0;bottom:0;width:1px}
+.snap-guide.horizontal{left:0;right:0;height:1px}

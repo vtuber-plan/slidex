@@ -11,6 +11,9 @@ declare global {
 interface Res { xml: string }
 const res = await fetch('/api/deck').then(r => r.json()) as Res;
 const deck: Deck = parseSlideX(res.xml).deck;
+for (const font of deck.fonts || []) {
+  const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = font.src; document.head.appendChild(link);
+}
 
 const stage = document.getElementById('stage')!;
 const holders: HTMLElement[] = deck.slides.map((s, i) => {
@@ -29,7 +32,8 @@ interface Group { auto: boolean; chained: boolean; anims: Animation[] }
 
 function buildTimeline(slide: SlideContainer): Group[] {
   const groups: Group[] = [];
-  for (const a of slide.animations) {
+  const master = slide.master ? deck.masters.find(m => m.id === slide.master) : undefined;
+  for (const a of [...(master?.animations || []), ...slide.animations]) {
     if (!groups.length || a.trigger === 'onClick' || a.trigger === 'afterPrevious') {
       groups.push({ auto: groups.length === 0 && a.trigger !== 'onClick', chained: a.trigger === 'afterPrevious', anims: [a] });
     } else {
@@ -42,7 +46,8 @@ function elOf(holder: HTMLElement, target: string): HTMLElement | null {
   return holder.querySelector(`.slx-el[data-id="${CSS.escape(target)}"]`);
 }
 function applyInitial(holder: HTMLElement, slide: SlideContainer): void {
-  for (const a of slide.animations) {
+  const master = slide.master ? deck.masters.find(m => m.id === slide.master) : undefined;
+  for (const a of [...(master?.animations || []), ...slide.animations]) {
     if (ENTRANCES.has(a.effect)) {
       elOf(holder, a.target)?.style.setProperty('visibility', 'hidden');
     }
@@ -53,28 +58,31 @@ function playAnim(holder: HTMLElement, a: Animation): void {
   if (!el) return;
   const dur = a.duration || EFFECT_DEFAULT_MS[a.effect] || 500;
   const d = a.direction ?? 'up';
+  const baseRaw = el.style.transform || '';
+  const base = baseRaw || 'none';
+  const after = baseRaw ? ` ${baseRaw}` : '';
   const H = deck.height / 4, W = deck.width / 4;
   let kf: Keyframe[] | null = null;
   switch (a.effect) {
     case 'appear': el.style.visibility = ''; return;
     case 'fade-in': kf = [{ opacity: 0 }, { opacity: 1 }]; break;
     case 'fly-in':
-      kf = d === 'up' ? [{ opacity: 0, transform: `translateY(${H}px)` }, { opacity: 1, transform: 'none' }]
-        : d === 'down' ? [{ opacity: 0, transform: `translateY(${-H}px)` }, { opacity: 1, transform: 'none' }]
-        : d === 'left' ? [{ opacity: 0, transform: `translateX(${W}px)` }, { opacity: 1, transform: 'none' }]
-        : [{ opacity: 0, transform: `translateX(${-W}px)` }, { opacity: 1, transform: 'none' }];
+      kf = d === 'up' ? [{ opacity: 0, transform: `translateY(${H}px)${after}` }, { opacity: 1, transform: base }]
+        : d === 'down' ? [{ opacity: 0, transform: `translateY(${-H}px)${after}` }, { opacity: 1, transform: base }]
+        : d === 'left' ? [{ opacity: 0, transform: `translateX(${W}px)${after}` }, { opacity: 1, transform: base }]
+        : [{ opacity: 0, transform: `translateX(${-W}px)${after}` }, { opacity: 1, transform: base }];
       break;
     case 'float-in':
-      kf = d === 'down' ? [{ opacity: 0, transform: 'translateY(-40px)' }, { opacity: 1, transform: 'none' }]
-        : [{ opacity: 0, transform: 'translateY(40px)' }, { opacity: 1, transform: 'none' }];
+      kf = d === 'down' ? [{ opacity: 0, transform: `translateY(-40px)${after}` }, { opacity: 1, transform: base }]
+        : [{ opacity: 0, transform: `translateY(40px)${after}` }, { opacity: 1, transform: base }];
       break;
-    case 'zoom-in': kf = [{ opacity: 0, transform: 'scale(0.5)' }, { opacity: 1, transform: 'scale(1)' }]; break;
+    case 'zoom-in': kf = [{ opacity: 0, transform: `${baseRaw ? baseRaw + ' ' : ''}scale(0.5)` }, { opacity: 1, transform: base }]; break;
     case 'wipe-in': {
       const from = d === 'down' ? 'inset(0 0 100% 0)' : d === 'left' ? 'inset(0 100% 0 0)' : d === 'right' ? 'inset(0 0 0 100%)' : 'inset(100% 0 0 0)';
       kf = [{ clipPath: from }, { clipPath: 'inset(0 0 0 0)' }];
       break;
     }
-    case 'pulse': kf = [{ transform: 'scale(1)' }, { transform: 'scale(1.1)', offset: 0.5 }, { transform: 'scale(1)' }]; break;
+    case 'pulse': kf = [{ transform: base }, { transform: `${baseRaw ? baseRaw + ' ' : ''}scale(1.1)`, offset: 0.5 }, { transform: base }]; break;
     case 'fade-out': kf = [{ opacity: 1 }, { opacity: 0 }]; break;
     case 'disappear': el.style.visibility = 'hidden'; return;
   }
@@ -85,6 +93,7 @@ function playAnim(holder: HTMLElement, a: Animation): void {
 
 let cur = 0;
 let timeline: Group[] = [], groupIdx = 0;
+let chainTimer = 0, timelineGeneration = 0;
 let ch: BroadcastChannel | null = null;
 try { ch = new BroadcastChannel('slidex-present'); } catch { /* 无 BroadcastChannel 时静默 */ }
 
@@ -94,6 +103,19 @@ function fit(): void {
 }
 function playGroup(holder: HTMLElement, group: Group): void {
   group.anims.forEach(a => playAnim(holder, a));
+}
+function groupMs(group: Group): number {
+  return Math.max(0, ...group.anims.map(a => (a.delay || 0) + (a.duration || EFFECT_DEFAULT_MS[a.effect] || 500)));
+}
+function playGroupAndChain(holder: HTMLElement, index: number, generation: number): void {
+  if (generation !== timelineGeneration || index >= timeline.length) return;
+  const group = timeline[index];
+  playGroup(holder, group);
+  groupIdx = index + 1;
+  if (timeline[groupIdx]?.chained) {
+    clearTimeout(chainTimer);
+    chainTimer = window.setTimeout(() => playGroupAndChain(holder, groupIdx, generation), groupMs(group));
+  }
 }
 function show(i: number, { animateTransition = true } = {}): void {
   if (i < 0 || i >= holders.length) return;
@@ -105,6 +127,8 @@ function show(i: number, { animateTransition = true } = {}): void {
   fit();
   timeline = buildTimeline(s);
   groupIdx = 0;
+  timelineGeneration++;
+  clearTimeout(chainTimer);
   applyInitial(h, s);
   if (animateTransition && s.transition && s.transition !== 'none') {
     const kf: Keyframe[] = s.transition === 'fade' ? [{ opacity: 0 }, { opacity: 1 }]
@@ -113,7 +137,7 @@ function show(i: number, { animateTransition = true } = {}): void {
       : [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }];
     h.animate(kf, { duration: 320, easing: 'ease-out' });
   }
-  while (groupIdx < timeline.length && timeline[groupIdx].auto) { playGroup(h, timeline[groupIdx]); groupIdx++; }
+  if (timeline[0]?.auto) playGroupAndChain(h, 0, timelineGeneration);
   document.getElementById('hud')!.textContent = `${cur + 1} / ${holders.length}`;
   window.slxRenderMath?.(h);
   document.getElementById('notes')!.textContent = s.notes || t('pr.noNotes');
@@ -121,8 +145,7 @@ function show(i: number, { animateTransition = true } = {}): void {
 }
 function advance(): void {
   if (groupIdx < timeline.length) {
-    playGroup(holders[cur], timeline[groupIdx]);
-    groupIdx++;
+    playGroupAndChain(holders[cur], groupIdx, timelineGeneration);
   } else {
     show(cur + 1);
   }
@@ -142,7 +165,14 @@ addEventListener('keydown', (e: KeyboardEvent) => {
   else if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
   else if (e.key === 'Escape' && document.fullscreenElement) document.exitFullscreen?.();
 });
-document.getElementById('clickzone')!.addEventListener('click', (e: MouseEvent) => {
+document.body.addEventListener('click', (e: MouseEvent) => {
+  const target = (e.target as HTMLElement).closest<HTMLElement>('[data-slide-target]');
+  if (target) {
+    const i = deck.slides.findIndex(s => s.id === target.dataset.slideTarget);
+    if (i >= 0) show(i);
+    e.preventDefault(); return;
+  }
+  if ((e.target as HTMLElement).closest('a')) return;
   if (e.clientX > innerWidth / 2) advance(); else show(cur - 1);
 });
 if (ch) ch.onmessage = (ev: MessageEvent) => {

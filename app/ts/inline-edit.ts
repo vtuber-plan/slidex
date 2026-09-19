@@ -27,7 +27,6 @@ export function startInlineEdit(el: SlideElement, hostEl: HTMLElement, deck: Dec
   if (session) finishInlineEdit(true);
   lastOpts = opts;
   session = { el, host: hostEl, deck, opts };
-  opts.onSnapshot();
   // 用"原始富文本"（公式显示为原文 span）替换 KaTeX 渲染结果，保证可编辑、可还原
   hostEl.innerHTML = renderRichText(el.content ?? '', { deck });
   hostEl.contentEditable = 'true';
@@ -65,7 +64,7 @@ export function finishInlineEdit(save = true): void {
   host.classList.remove('slx-editing');
   if (save) {
     const cleaned = sanitizeRich(host.innerHTML);
-    if (cleaned !== el.content) el.content = cleaned;
+    if (cleaned !== el.content) { opts.onSnapshot(); el.content = cleaned; }
   }
   session = null;
   opts.hideBar();
@@ -74,7 +73,7 @@ export function finishInlineEdit(save = true): void {
 
 function onBlur(): void { finishInlineEdit(true); }
 function onKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape') { e.preventDefault(); finishInlineEdit(true); }
+  if (e.key === 'Escape') { e.preventDefault(); finishInlineEdit(false); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     e.stopPropagation();
@@ -188,9 +187,10 @@ function walkNode(node: Node, out: string[]): void {
   }
   if (BLOCK_MAP[tag]) {
     const style = collectStyle(el, P_STYLE);
-    out.push(`<p${style}>`);
+    const mapped = BLOCK_MAP[tag];
+    out.push(`<${mapped}${style}>`);
     walkChildren(el, out);
-    out.push('</p>');
+    out.push(`</${mapped}>`);
     return;
   }
   if (tag === 'A') {

@@ -1,4 +1,4 @@
-// html.js — 自包含单文件放映包：内联 CSS/JS/媒体（本地图片转 base64），零依赖分发
+// html.js — 单文件放映包：内联 CSS/JS/本地媒体；公式、图标和用户字体仍按配置从 CDN 加载
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,6 +6,7 @@ import { renderSlide, slideCss, cdnLinks, runtimeJs } from '../render/render.js'
 import type { Deck } from '../types.js';
 
 const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+const esc = (s: string): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
   const cdn = cdnLinks();
@@ -13,6 +14,8 @@ export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
     if (!src || /^(https?:|data:)/i.test(src)) return src;
     const file = path.resolve(deckDir, src);
     try {
+      const rel = path.relative(path.resolve(deckDir), file);
+      if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return '';
       const ext = path.extname(file).toLowerCase();
       if (MIME[ext]) return `data:${MIME[ext]};base64,` + fs.readFileSync(file).toString('base64');
     } catch { /* 缺失则原样 */ }
@@ -22,15 +25,15 @@ export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
   deck.slides.forEach((s, i) => {
     let html = renderSlide(deck, s, { mediaBase: '' });
     html = html.replace(/(src|href)="([^"]+)"/g, (m, attr, v) => `${attr}="${media(v)}"`);
-    slidesHtml += `<div class="frame" data-i="${i}" style="${i === 0 ? '' : 'display:none;'}">${html}</div>\n`;
+    slidesHtml += `<div class="frame" data-i="${i}" data-slide-id="${esc(s.id)}" style="${i === 0 ? '' : 'display:none;'}">${html}</div>\n`;
   });
-  const fonts = (deck.fonts || []).map(f => `<link rel="stylesheet" href="${f.src}">`).join('\n');
+  const fonts = (deck.fonts || []).map(f => `<link rel="stylesheet" href="${esc(f.src)}">`).join('\n');
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${deck.title || 'SlideX'}</title>
+<title>${esc(deck.title || 'SlideX')}</title>
 <link rel="stylesheet" href="${cdn.katexCss}">
 <link rel="stylesheet" href="${cdn.faCss}">
 ${fonts}
@@ -73,7 +76,12 @@ ${runtimeJs()}
     else if(e.key==='ArrowLeft'||e.key==='PageUp'){show(Math.max(cur-1,0));e.preventDefault();}
     else if(e.key==='f'||e.key==='F'){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();}
   });
-  document.addEventListener('click',function(e){ if(e.clientX>innerWidth/2) show(Math.min(cur+1,frames.length-1)); else show(Math.max(cur-1,0)); });
+  document.addEventListener('click',function(e){
+    var target=e.target.closest&&e.target.closest('[data-slide-target]');
+    if(target){var id=target.getAttribute('data-slide-target');var idx=frames.findIndex(function(f){return f.getAttribute('data-slide-id')===id});if(idx>=0)show(idx);e.preventDefault();return;}
+    if(e.target.closest&&e.target.closest('a'))return;
+    if(e.clientX>innerWidth/2) show(Math.min(cur+1,frames.length-1)); else show(Math.max(cur-1,0));
+  });
   fit();
 })();
 </script>

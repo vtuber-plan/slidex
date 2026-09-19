@@ -39,15 +39,22 @@ const ce = await page.evaluate(() => {
 });
 t('双击进入 contentEditable', ce === 'true', `ce=${ce}`);
 await page.keyboard.type('新标题');
-await page.keyboard.press('Escape');
+await page.click('#editDone');
 await new Promise(r => setTimeout(r, 400));
 const saved = await page.evaluate(() => {
   const el = document.querySelector('#canvasHost .slx-el[data-id="title"]');
   return el.textContent;
 });
 t('内联编辑内容生效', saved.includes('新标题'), `text=${saved.slice(0, 30)}`);
-const xmlNow = fs.readFileSync(deckFile, 'utf8');
-t('内联编辑写入内容模型（预览态）', true); // 持久化需点保存，下一项验证
+const modelAfterSave = await page.evaluate(() => window.__slxGetXml?.() || '');
+t('内联编辑写入内容模型', modelAfterSave.includes('新标题'));
+
+await page.click('#canvasHost .slx-el[data-id="title"]', { clickCount: 2 });
+await page.keyboard.type('应取消');
+await page.keyboard.press('Escape');
+await new Promise(r => setTimeout(r, 200));
+const modelAfterCancel = await page.evaluate(() => window.__slxGetXml?.() || '');
+t('Escape 取消内联编辑', !modelAfterCancel.includes('应取消'));
 
 // 3) 内联工具条存在
 const barHidden = await page.$eval('#editBar', el => el.classList.contains('hidden'));

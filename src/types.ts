@@ -33,7 +33,7 @@ export type Fill =
   | { type: 'gradient'; angle: number; stops: Array<{ pos: number; color: string }> }
   | { type: 'image'; src: string; fit?: string; opacity?: number };
 
-export type ElementType = 'text' | 'shape' | 'line' | 'image' | 'icon' | 'table' | 'chart' | 'code' | 'formula';
+export type ElementType = 'text' | 'shape' | 'line' | 'image' | 'icon' | 'table' | 'chart' | 'code' | 'formula' | 'group';
 
 /** 幻灯片元素。属性由 ELEMENT_SCHEMA 动态驱动，因此保留索引签名。
  *  几何（x/y/w/h）可缺失（E_BOUNDS 校验项）；编辑器工厂可能写入 kebab 键（如 'stroke-width'）。 */
@@ -48,6 +48,10 @@ export interface SlideElement {
   opacity?: number;
   flipH?: boolean;
   flipV?: boolean;
+  href?: string;
+  alt?: string;
+  locked?: boolean;
+  lockAspect?: boolean;
   content?: string;
   fill?: string;
   fillObj?: Fill;
@@ -92,6 +96,8 @@ export interface SlideElement {
   rowsData?: TableCell[][];
   chartData?: ChartData;
   seriesList?: ChartSeries[];
+  /** group 的局部坐标子元素。 */
+  elements?: SlideElement[];
   xAxis?: AxisSpec;
   yAxis?: AxisSpec;
   line?: number;

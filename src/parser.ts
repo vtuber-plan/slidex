@@ -89,6 +89,8 @@ export function parseXML(xml: string, opts: ParseXMLOptions = {}): XMLParseResul
       const eq = s.indexOf(q, p + 1);
       if (eq < 0) { err(p, 'E_XML', `属性 ${aname} 的值未闭合`); i = n; return null; }
       const rawVal = s.slice(p + 1, eq);
+      const badEntity = /&(?!(?:lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);)/.exec(rawVal);
+      if (badEntity) err(p + 1 + (badEntity.index || 0), 'E_XML', `未知或未转义的实体：${rawVal.slice(badEntity.index, badEntity.index + 20)}`);
       if (Object.prototype.hasOwnProperty.call(attrs, aname)) err(p, 'E_XML', `属性重复：${aname}`);
       attrs[aname] = decodeEntities(rawVal);
       p = eq + 1;
@@ -167,7 +169,7 @@ export function parseXML(xml: string, opts: ParseXMLOptions = {}): XMLParseResul
 
   function unwrapCdata(str: string, decode: boolean): string {
     const unescape = decode ? decodeEntities : escapeHtml;
-    if (!str.includes('<![CDATA[')) return decode ? str : str;
+    if (!str.includes('<![CDATA[')) return decode ? decodeEntities(str) : str;
     let out = '', p = 0;
     for (;;) {
       const k = str.indexOf('<![CDATA[', p);
