@@ -123,6 +123,12 @@ async function openPresentWindow(): Promise<void> {
 
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
+  const edit = (command: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll') => async () => {
+    const target = BrowserWindow.getFocusedWindow() || win;
+    if (!target) return;
+    const handled = await target.webContents.executeJavaScript(`window.__slxCommand?.(${JSON.stringify(command)}) === true`).catch(() => false);
+    if (!handled) target.webContents[command]();
+  };
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
     {
@@ -151,10 +157,10 @@ function buildMenu(): void {
     {
       label: M('编辑', 'Edit'),
       submenu: [
-        { role: 'undo', label: M('撤销', 'Undo') }, { role: 'redo', label: M('重做', 'Redo') },
+        { label: M('撤销', 'Undo'), accelerator: 'CmdOrCtrl+Z', click: edit('undo') }, { label: M('重做', 'Redo'), accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', click: edit('redo') },
         { type: 'separator' },
-        { role: 'cut', label: M('剪切', 'Cut') }, { role: 'copy', label: M('复制', 'Copy') }, { role: 'paste', label: M('粘贴', 'Paste') },
-        { role: 'selectAll', label: M('全选', 'Select All') },
+        { label: M('剪切', 'Cut'), accelerator: 'CmdOrCtrl+X', click: edit('cut') }, { label: M('复制', 'Copy'), accelerator: 'CmdOrCtrl+C', click: edit('copy') }, { label: M('粘贴', 'Paste'), accelerator: 'CmdOrCtrl+V', click: edit('paste') },
+        { label: M('全选', 'Select All'), accelerator: 'CmdOrCtrl+A', click: edit('selectAll') },
       ],
     },
     {

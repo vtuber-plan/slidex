@@ -2,6 +2,17 @@
 
 本项目遵循语义化版本。发布日期以 Git tag 和 GitHub Release 为准。
 
+## Unreleased — React Studio
+
+- 正式编辑器迁移到 React、Tailwind CSS、Radix Themes 与 Zustand，构建使用 Vite。
+- ProseMirror 取代正式入口的 execCommand；新增结构化表格/图表面板和资源浏览。
+- 新画布支持多选、框选、吸附、旋转、缩放、组合和按手势撤销。
+- React Player 与独立 HTML 共用动画内核，补齐 HTML 动画与切换；新增预览网格和同源嵌入 API。
+- 新增自动保存、本地 20 版历史、文件版本冲突检测，兼容 Electron 保存/另存为。
+- 迁移搜索替换、格式复制、等距分布、右键菜单和系统剪贴板；桌面原生编辑菜单接入文档事务。
+- 编辑器与 Viewer 分路由懒加载；原界面保留在 `/legacy` 供兼容回归，英文界面仍待迁移。
+- React 公式与图标资源本地打包，修复深色播放器污染默认表格文字颜色。
+
 ## 1.6.1 - 2026-09-19
 
 ### DSL 与渲染

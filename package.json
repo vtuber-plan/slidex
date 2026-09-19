@@ -8,7 +8,10 @@
   },
   "main": "dist-electron/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p web/tsconfig.json && vite build",
+    "dev:web": "vite --host 127.0.0.1",
+    "test:react": "node test/react-editor.mjs",
+    "test:electron": "electron test/react-electron.cjs",
     "assets": "node scripts/make-assets.mjs",
     "start": "npm run build && node dist/cli.js serve examples/quickstart/deck.slx",
     "app": "npm run build && electron dist-electron/main.js",
@@ -21,7 +24,22 @@
     "node": ">=18"
   },
   "dependencies": {
-    "puppeteer-core": "^23.11.1"
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "@radix-ui/themes": "^3.3.0",
+    "katex": "^0.18.7",
+    "lucide-react": "^1.47.0",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.42.4",
+    "puppeteer-core": "^23.11.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
   },
   "keywords": [
     "slides",
@@ -34,10 +52,18 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/katex": "^0.16.8",
     "@types/node": "^24.13.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "electron": "^44.4.1",
     "electron-builder": "^26.15.3",
-    "typescript": "^7.0.2"
+    "prettier": "^3.9.8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.3"
   },
   "author": "SlideX Team"
 }

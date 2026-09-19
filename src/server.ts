@@ -86,10 +86,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
 
-    if (req.method === 'GET' && (p === '/' || p === '/index.html')) { serveFile(res, path.join(APP, 'index.html')); return; }
+    if (req.method === 'GET' && ['/', '/index.html', '/present', '/present-speaker', '/player', '/preview'].includes(p)) { serveFile(res, path.join(APP, 'web', 'index.html')); return; }
+    if (req.method === 'GET' && p === '/legacy') { serveFile(res, path.join(APP, 'index.html')); return; }
     if (req.method === 'GET' && p === '/favicon.ico') { send(res, 204, ''); return; }
-    if (req.method === 'GET' && p === '/present') { serveFile(res, path.join(APP, 'present.html')); return; }
-    if (req.method === 'GET' && p === '/present-speaker') { serveFile(res, path.join(APP, 'present-speaker.html')); return; }
+    if (req.method === 'GET' && p === '/legacy-present') { serveFile(res, path.join(APP, 'present.html')); return; }
+    if (req.method === 'GET' && p === '/legacy-speaker') { serveFile(res, path.join(APP, 'present-speaker.html')); return; }
     if (req.method === 'GET' && p === '/runtime.js') { send(res, 200, runtimeJs(), { 'Content-Type': MIME['.js'] }); return; }
     if (req.method === 'GET' && p === '/runtime.css') { send(res, 200, slideCss(), { 'Content-Type': MIME['.css'] }); return; }
     if (req.method === 'GET' && p.startsWith('/app/')) { const f = safeJoin(APP, p.slice(5)); if (!f) { send(res, 403, {}); return; } serveFile(res, f); return; }
@@ -149,7 +150,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/save') {
-      const { xml = '' } = await readBody(req);
+      const { xml = '', expectedMtime, expectedPath } = await readBody(req);
+      if ((typeof expectedPath === 'string' && path.resolve(expectedPath) !== deckFile) || (typeof expectedMtime === 'number' && expectedMtime !== fs.statSync(deckFile).mtimeMs)) {
+        send(res, 409, { ok: false, error: '文档已在其他窗口或外部程序中修改。请先下载当前 XML 备份，再重新打开文件。' });
+        return;
+      }
       const r = parseSlideX(xml);
       if (r.errors.some(e => e.code.startsWith('E_XML'))) {
         send(res, 200, { ok: false, errors: r.errors });

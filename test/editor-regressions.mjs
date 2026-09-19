@@ -31,7 +31,7 @@ const server = await startServer(file, { port: 0 });
 const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--no-sandbox'] });
 try {
   const page = await browser.newPage();
-  await page.goto(`http://127.0.0.1:${server.port}/`, { waitUntil: 'networkidle2' });
+  await page.goto(`http://127.0.0.1:${server.port}/legacy`, { waitUntil: 'networkidle2' });
   check('编辑器注入 deck fonts', await page.$eval('link[data-slx-font]', () => true).catch(() => false));
 
   await page.click('#canvasHost .slx-el[data-id="t"]');
@@ -90,7 +90,7 @@ try {
   const mediaResult = await page.evaluate(async () => fetch('/api/media', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'pixel.png', data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' }) }).then(r => r.json()));
   check('媒体导入写入安全 media 路径', mediaResult.ok && mediaResult.src === 'media/pixel.png' && fs.existsSync(path.join(tmp, 'media', 'pixel.png')));
 
-  await page.goto(`http://127.0.0.1:${server.port}/present-speaker`, { waitUntil: 'networkidle2' });
+  await page.goto(`http://127.0.0.1:${server.port}/legacy-speaker`, { waitUntil: 'networkidle2' });
   const displays = await page.$$eval('.holder', els => els.map(e => getComputedStyle(e).display));
   check('演讲者视图预览可见', displays.length > 0 && displays.every(x => x !== 'none'), JSON.stringify(displays));
 } finally {

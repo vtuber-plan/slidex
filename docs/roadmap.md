@@ -1,5 +1,13 @@
 # 路线图
 
+## React Studio（已实现，未发布）
+
+- React + Tailwind CSS + Radix Themes + Zustand；生产入口已切换，旧界面保留 `/legacy`。
+- ProseMirror 文本组件、表格单元格编辑、图表数据网格、图层/动画面板、资源库。
+- 事务撤销、自动保存、保存冲突检查、本地版本历史与 Electron 命令桥。
+- 共享 Player/HTML 动画运行时、独立 Viewer 懒加载、预览网格、演讲者视图。
+- 具体计划、验收和剩余边界见 [react-rebuild.md](react-rebuild.md)。以下 v1.x 为已发布版本的历史记录。
+
 ## v1（当前，已完成）
 - 语言：text/shape/line/image/icon/table/chart(5)/code/formula、主题三件套、行内 LaTeX
 - 编辑器：缩略图、拖拽缩放、检查器、源码视图、撤销重做、放映、保存

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { renderSlide, slideCss, cdnLinks, runtimeJs } from '../render/render.js';
 import type { Deck } from '../types.js';
+import { createPlayer } from '../player.js';
 
 const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 const esc = (s: string): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -28,6 +29,7 @@ export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
     slidesHtml += `<div class="frame" data-i="${i}" data-slide-id="${esc(s.id)}" style="${i === 0 ? '' : 'display:none;'}">${html}</div>\n`;
   });
   const fonts = (deck.fonts || []).map(f => `<link rel="stylesheet" href="${esc(f.src)}">`).join('\n');
+  const playbackDeck = JSON.stringify(deck).replace(/</g, '\\u003c');
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -57,6 +59,7 @@ ${runtimeJs()}
 (function(){
   var frames=[].slice.call(document.querySelectorAll('.frame'));
   var cur=0;
+  var player=(${createPlayer.toString()})(${playbackDeck},frames,function(i){cur=i;fit();document.getElementById('hud').textContent=(i+1)+' / '+frames.length;if(window.slxRenderMath)slxRenderMath(frames[i]);});
   function fit(){
     var f=frames[cur]; if(!f) return;
     var s=Math.min(innerWidth/ ${deck.width}, innerHeight/ ${deck.height});
@@ -64,25 +67,21 @@ ${runtimeJs()}
     f.style.display='';
   }
   function show(i){
-    if(i<0||i>=frames.length) return;
-    frames[cur].style.display='none';
-    cur=i; fit();
-    document.getElementById('hud').textContent=(cur+1)+' / '+frames.length;
-    if(window.slxRenderMath) slxRenderMath(frames[cur]);
+    player.show(i);
   }
   addEventListener('resize',fit);
   addEventListener('keydown',function(e){
-    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){show(Math.min(cur+1,frames.length-1));e.preventDefault();}
-    else if(e.key==='ArrowLeft'||e.key==='PageUp'){show(Math.max(cur-1,0));e.preventDefault();}
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){player.next();e.preventDefault();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){player.previous();e.preventDefault();}
     else if(e.key==='f'||e.key==='F'){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();}
   });
   document.addEventListener('click',function(e){
     var target=e.target.closest&&e.target.closest('[data-slide-target]');
     if(target){var id=target.getAttribute('data-slide-target');var idx=frames.findIndex(function(f){return f.getAttribute('data-slide-id')===id});if(idx>=0)show(idx);e.preventDefault();return;}
     if(e.target.closest&&e.target.closest('a'))return;
-    if(e.clientX>innerWidth/2) show(Math.min(cur+1,frames.length-1)); else show(Math.max(cur-1,0));
+    if(e.clientX>innerWidth/2) player.next(); else player.previous();
   });
-  fit();
+  player.show(0,false);
 })();
 </script>
 </body>

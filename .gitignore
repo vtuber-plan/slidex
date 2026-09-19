@@ -10,3 +10,4 @@ dist-electron/
 .cache/
 dist-pkg/
 handle64.exe
+app/web/

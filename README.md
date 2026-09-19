@@ -28,7 +28,9 @@
 
 - **单一文件**：一个 `.slx` 文件包含全部页面、母版与主题，媒体放同目录 `media/`，项目自包含、可整体拷贝。
 - **AI 友好**：受控 XML 子集 + 明确的校验错误（带行列号），LLM 一次生成即可用；编辑器任何操作都可切换到「源码」视图对照。
-- **类 PowerPoint 编辑器**：缩略图页栏、画布拖拽/缩放/对齐、**画布内直接编辑文本**（双击 + 内联格式工具条）、右键菜单、跨页复制粘贴、格式刷、属性检查器、撤销重做、放映模式。
+- **React Studio 编辑器**：React + Tailwind CSS + Radix Themes，缩略图排序、画布多选/框选/吸附/缩放/旋转、组合、图层和撤销重做；双击文本打开 ProseMirror 编辑组件。
+- **结构化内容编辑**：表格单元格选区、合并拆分和边框；图表数据网格与系列面板；图片上传与裁剪预览；形状/图标库；动画排序与整页预览。
+- **文档可靠性**：串行自动保存、外部修改冲突检查、当前浏览器最近 20 个保存版本、源码校验和桌面保存桥。
 - **动画与切换**：`<animation>` 编排入场/强调/退出（onClick / withPrevious / afterPrevious），页面 `transition` 切换；放映模式完整播放；导出 PNG/PDF/PPTX 为最终态。
 - **母版**：`<master>` 定义页骨架（logo/页脚等），页面一行引用。
 - **布局一比一导出**：
@@ -40,15 +42,18 @@
 - **富文本 + LaTeX 公式**：`<p>/<strong>/<span style>` 富文本子集，行内 `\( ... \)` KaTeX 公式，独立 `<formula>` 块级公式。
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
 - **桌面应用**：Electron 封装，原生菜单 + 文件对话框。
-- **全仓 TypeScript 化**：`app/ts/*.ts` 与 `src/*.ts` 均 strict 模式（`npm run build` 产出 `dist/`），类型单一来源 `src/types.ts`；**i18n**：界面文案 zh-CN / en 可切换（localStorage 持久化，默认跟随浏览器语言）。
+- **共享 Viewer/Player**：编辑器放映与 HTML 导出使用同一播放内核；独立 Player、预览网格与演讲者视图复用 React 渲染组件。
+- **TypeScript 严格检查**：文档类型来自 src/types.ts；核心与 React UI 独立构建。Studio 当前以中文为主，原界面的中英文版本可通过 `/legacy` 访问。
 
 ## 快速开始
 
 ```bash
-npm install          # puppeteer-core（导出用）+ electron（桌面应用）+ typescript（构建用）
-npm run build        # 编译编辑器 TypeScript → app/dist/
+npm install          # 安装编辑器、导出和桌面依赖
+npm run build        # 编译核心和桌面；Vite 构建 React → app/web/
 npm start            # 浏览器打开示例编辑器 http://127.0.0.1:4870（自动先构建）
 npm run app          # 以 Electron 桌面应用打开
+npm run test:react   # 新编辑器真实浏览器回归
+npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
 ## 桌面应用与分发（v1.6.1）

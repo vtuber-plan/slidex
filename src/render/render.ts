@@ -76,7 +76,7 @@ export function fontStack(family: string | undefined): string {
 // ─────────────────────────── 幻灯片 CSS（所有渲染场景共用） ───────────────────────────
 export function slideCss(): string {
   return `
-.slx-slide{position:relative;overflow:hidden;background:#fff;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.slx-slide{position:relative;overflow:hidden;background:#fff;color:#1a1a1a;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .slx-el{position:absolute;box-sizing:border-box;transform-origin:50% 50%}
 .slx-richtext{width:100%}
 .slx-richtext p{margin:0;min-height:1em}

@@ -63,7 +63,7 @@ try {
   const page = await browser.newPage();
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
-  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${PORT}/legacy`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#canvasHost .slx-el[data-id="tbl"]', { timeout: 10000 });
 
   // 选中表格元素 → 检查器显示表格属性（gui.editor2.mjs 的 PointerEvent 派发模式）
