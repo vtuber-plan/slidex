@@ -180,8 +180,15 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
   const hasChrome = fs.existsSync(CHROME);
   const suites = [
     ['test/dsl-regressions.mjs', true],
+    ['test/table-structure.mjs', true],
+    ['test/geometry.mjs', true],
+    ['test/selection.mjs', true],
     ['test/editor-regressions.mjs', hasChrome],
     ['test/react-editor.mjs', hasChrome],
+    ['test/react-groups.mjs', hasChrome],
+    ['test/react-text.mjs', hasChrome],
+    ['test/react-appearance.mjs', hasChrome],
+    ['test/release-offline.mjs', hasChrome],
     ['test/gap-warnings.mjs', true],
     ['test/gap-pptx-links.mjs', hasChrome],
     ['test/gap-table-inspector.mjs', hasChrome],

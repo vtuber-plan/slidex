@@ -247,7 +247,8 @@ function buildSlideContainer(node: XMLNode, deck: Deck, errors: Diag[], warnings
     line: node.line,
   };
   for (const c of node.children) {
-    if (c.name === 'background') container.background = fillFrom(c);
+    // Older serializers emitted a direct <fill> for non-solid backgrounds.
+    if (c.name === 'background' || c.name === 'fill') container.background = fillFrom(c);
     else if (c.name === 'animation') {
       const a: Animation = {
         target: c.attrs.target || '',
@@ -911,7 +912,7 @@ export function resolveColor(val: string | undefined, deck: Deck): string | unde
 // 阴影简写 "blur dx dy color" → css box-shadow / text-shadow
 export function parseShadow(str: string | undefined): Shadow | null {
   if (!str) return null;
-  const m = /^\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(#\w{4,8}|\$[\w-]+)\s*$/.exec(str);
+  const m = /^\s*(\d*\.?\d+)\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s+(#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{4}|[\da-f]{3})|\$[\w-]+)\s*$/i.exec(str);
   if (!m) return null;
   return { blur: +m[1], dx: +m[2], dy: +m[3], color: m[4] };
 }

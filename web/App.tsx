@@ -1,3 +1,4 @@
+import { t, useLocale, setLocale } from "./i18n";
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
@@ -43,7 +44,7 @@ import {
   AlignEndVertical,
   Minus,
 } from "lucide-react";
-import { useEditor, container, uid, uploadImage } from "./store";
+import { useEditor, container, scope, uid, uploadImage } from "./store";
 import { Thumbnail, RenderResources } from "./SlideSurface";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
@@ -51,6 +52,7 @@ import { Player, PreviewGrid, Presenter } from "./Player";
 import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
 import { EditingTools } from "./EditingTools";
+import { Diagnostic, ErrorMessage } from "./Diagnostics";
 import { serializeDeck } from "../src/serializer";
 import { parseSlideX, SHAPE_NAMES } from "../src/ir";
 import { shapeSvg as shapePath } from "../src/render/shapes";
@@ -69,6 +71,7 @@ function shapeSvg(name: string, w: number, h: number) {
   return `<svg viewBox="${shape.viewBox}"><path d="${shape.d}" fill-rule="${shape.fillRule}"/></svg>`;
 }
 export default function App() {
+  const language = useLocale();
   const s = useEditor(),
     [dark, setDark] = useState(
       localStorage.getItem("slidex-appearance") === "dark",
@@ -85,8 +88,9 @@ export default function App() {
     localStorage.getItem("slidex-autosave") !== "false",
   );
   const session = useMemo(() => uid("present"), []),
-    serialized = useMemo(() => serializeDeck(s.deck), [s.deck]),
-    dirty = serialized !== s.saved || !!s.editing;
+    committedDeck = s.gesture || s.deck,
+    serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
+    dirty = serialized !== s.saved || !!s.editing || !!s.gesture;
   const diagnostics = useMemo(() => {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
@@ -182,6 +186,12 @@ export default function App() {
         void state.save();
         return;
       }
+      if (e.key === "Escape" && state.groupPath.length && !state.gesture) {
+        e.preventDefault();
+        (e.target as HTMLElement).blur();
+        state.leaveGroup();
+        return;
+      }
       if (
         (e.target as HTMLElement).closest(
           "input,textarea,select,[contenteditable=true]",
@@ -216,8 +226,10 @@ export default function App() {
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         state.remove();
-      } else if (e.key === "Escape") state.select([]);
-      else if (e.key === "F5") {
+      } else if (e.key === "Escape") {
+        if (state.groupPath.length) state.leaveGroup();
+        else state.select([]);
+      } else if (e.key === "F5") {
         e.preventDefault();
         setPresent(true);
       } else if (e.key.startsWith("Arrow") && state.selection.length) {
@@ -268,8 +280,8 @@ export default function App() {
           els.length > 1
             ? Math.max(...els.map((e) => (e[axis] || 0) + (e[dim] || 0)))
             : axis === "x"
-              ? deck.width
-              : deck.height;
+              ? (scope(s).group?.w ?? deck.width)
+              : (scope(s).group?.h ?? deck.height);
       els.forEach((el) => {
         el[axis] = start + (end - start - (el[dim] || 0)) * position;
       });
@@ -305,14 +317,16 @@ export default function App() {
           <main className="loading">
             <Sparkles size={32} />
             <h1>SlideX Studio</h1>
-            <p>{s.error || "正在载入演示文稿…"}</p>
+            <p>{s.error || t("正在载入演示文稿…")}</p>
           </main>
         ) : route === "/present-speaker" ? (
           <Presenter initialDeck={s.deck} session={routeSession} />
         ) : ["/present", "/player", "/preview"].includes(route) ? (
           route === "/preview" && !present ? (
             <>
-              <Button onClick={() => location.assign("/")}>返回编辑器</Button>
+              <Button onClick={() => location.assign("/")}>
+                {t("返回编辑器")}
+              </Button>
               <PreviewGrid
                 deck={s.deck}
                 onSelect={(i) => {
@@ -344,7 +358,7 @@ export default function App() {
               </a>
               <div className="document-title">
                 <TextField.Root
-                  aria-label="演示文稿标题"
+                  aria-label={t("演示文稿标题")}
                   value={s.deck.title}
                   variant="surface"
                   onChange={(e) =>
@@ -354,19 +368,28 @@ export default function App() {
                   }
                 />
                 <span>
-                  {dirty ? "有未保存的更改" : s.status || "所有更改已保存"}
+                  {dirty
+                    ? t("有未保存的更改")
+                    : t(s.status) || t("所有更改已保存")}
                 </span>
               </div>
               <div className="header-actions">
+                <Button
+                  variant="ghost"
+                  aria-label="Language / 语言"
+                  onClick={() => setLocale(language === "zh" ? "en" : "zh")}
+                >
+                  {language === "zh" ? "EN" : "中文"}
+                </Button>
                 <HistoryDialog />
                 <Tool
-                  label={dark ? "浅色界面" : "深色界面"}
+                  label={dark ? t("浅色界面") : t("深色界面")}
                   onClick={() => setDark(!dark)}
                 >
                   {dark ? <Sun size={17} /> : <Moon size={17} />}
                 </Tool>
                 <Tool
-                  label="源码"
+                  label={t("源码")}
                   onClick={() => {
                     setXml(serialized);
                     setSource(true);
@@ -374,18 +397,18 @@ export default function App() {
                 >
                   <Braces size={18} />
                 </Tool>
-                <Tool label="预览网格" onClick={() => setPreview(true)}>
+                <Tool label={t("预览网格")} onClick={() => setPreview(true)}>
                   <Grid2X2 size={18} />
                 </Tool>
                 <Button variant="soft" onClick={() => void s.save()}>
                   <Save size={15} />
-                  保存
+                  {t("保存")}
                 </Button>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger>
                     <Button variant="soft" disabled={exporting}>
                       <Download size={15} />
-                      {exporting ? "导出中…" : "导出"}
+                      {exporting ? t("导出中…") : t("导出")}
                       <ChevronDown size={13} />
                     </Button>
                   </DropdownMenu.Trigger>
@@ -394,7 +417,7 @@ export default function App() {
                       checked={autosave}
                       onCheckedChange={setAutosave}
                     >
-                      自动保存
+                      {t("自动保存")}
                     </DropdownMenu.CheckboxItem>
                     <DropdownMenu.Separator />
                     {["png", "pdf", "pptx", "html"].map((f) => (
@@ -408,13 +431,13 @@ export default function App() {
                     <DropdownMenu.Item
                       onSelect={() => void exportDeck("pptx", true)}
                     >
-                      可编辑 PPTX
+                      {t("可编辑 PPTX")}
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>
                 </DropdownMenu.Root>
                 <Button onClick={() => setPresent(true)}>
                   <Play size={15} />
-                  放映
+                  {t("放映")}
                 </Button>
               </div>
             </header>
@@ -422,14 +445,14 @@ export default function App() {
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
                   <Button variant="ghost">
-                    文件
+                    {t("文件")}
                     <ChevronDown size={13} />
                   </Button>
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content>
                   <DropdownMenu.Item
                     onSelect={async () => {
-                      const path = prompt("输入 .slx 文件的完整路径");
+                      const path = prompt(t("输入 .slx 文件的完整路径"));
                       if (!path) return;
                       if (dirty && !(await s.save())) return;
                       try {
@@ -447,7 +470,7 @@ export default function App() {
                     }}
                   >
                     <FolderOpen size={14} />
-                    打开本地文件
+                    {t("打开本地文件")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={() => {
@@ -461,34 +484,38 @@ export default function App() {
                       setTimeout(() => URL.revokeObjectURL(url), 1000);
                     }}
                   >
-                    下载 XML 文档
+                    {t("下载 XML 文档")}
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
               <span className="separator" />
-              <Tool label="撤销" disabled={!s.past.length} onClick={s.undo}>
+              <Tool
+                label={t("撤销")}
+                disabled={!s.past.length}
+                onClick={s.undo}
+              >
                 <Undo2 size={17} />
               </Tool>
-              <Tool label="重做" disabled={!s.future.length} onClick={s.redo}>
+              <Tool
+                label={t("重做")}
+                disabled={!s.future.length}
+                onClick={s.redo}
+              >
                 <Redo2 size={17} />
               </Tool>
               <span className="separator" />
               <Tool
-                label="复制"
+                label={t("复制")}
                 disabled={!s.selection.length}
                 onClick={s.copy}
               >
                 <Copy size={16} />
               </Tool>
-              <Tool
-                label="粘贴"
-                disabled={!s.clipboard.length}
-                onClick={s.paste}
-              >
+              <Tool label={t("粘贴")} onClick={s.paste}>
                 <FilePlus size={16} />
               </Tool>
               <Tool
-                label="删除"
+                label={t("删除")}
                 disabled={!s.selection.length}
                 onClick={s.remove}
               >
@@ -497,12 +524,12 @@ export default function App() {
               <span className="separator" />
               {(
                 [
-                  ["左对齐", AlignLeft, "x", 0],
-                  ["水平居中", AlignCenter, "x", 0.5],
-                  ["右对齐", AlignRight, "x", 1],
-                  ["顶部对齐", AlignStartVertical, "y", 0],
-                  ["垂直居中", AlignCenterVertical, "y", 0.5],
-                  ["底部对齐", AlignEndVertical, "y", 1],
+                  [t("左对齐"), AlignLeft, "x", 0],
+                  [t("水平居中"), AlignCenter, "x", 0.5],
+                  [t("右对齐"), AlignRight, "x", 1],
+                  [t("顶部对齐"), AlignStartVertical, "y", 0],
+                  [t("垂直居中"), AlignCenterVertical, "y", 0.5],
+                  [t("底部对齐"), AlignEndVertical, "y", 1],
                 ] as const
               ).map(([label, Icon, axis, pos]) => (
                 <Tool
@@ -517,7 +544,7 @@ export default function App() {
               <span className="separator" />
               <Tool
                 id="btnGroup"
-                label="组合"
+                label={t("组合")}
                 disabled={s.selection.length < 2}
                 onClick={s.group}
               >
@@ -525,21 +552,21 @@ export default function App() {
               </Tool>
               <Tool
                 id="btnUngroup"
-                label="取消组合"
+                label={t("取消组合")}
                 disabled={!s.selection.length}
                 onClick={s.ungroup}
               >
                 <Ungroup size={17} />
               </Tool>
               <Tool
-                label="上移图层"
+                label={t("上移图层")}
                 disabled={!s.selection.length}
                 onClick={() => layer(1)}
               >
                 <ArrowUp size={16} />
               </Tool>
               <Tool
-                label="下移图层"
+                label={t("下移图层")}
                 disabled={!s.selection.length}
                 onClick={() => layer(-1)}
               >
@@ -549,17 +576,17 @@ export default function App() {
                 <EditingTools />
                 <Badge variant="soft">
                   {s.selection.length
-                    ? `${s.selection.length} 个对象`
-                    : "页面设计"}
+                    ? t(`${s.selection.length} 个对象`)
+                    : t("页面设计")}
                 </Badge>
               </div>
             </div>
             <div className="editor-layout">
               <aside className="filmstrip">
                 <div className="filmstrip-title">
-                  <strong>幻灯片</strong>
+                  <strong>{t("幻灯片")}</strong>
                   <Badge color="gray">{s.deck.slides.length}</Badge>
-                  <Tool label="新增页面" onClick={s.addPage}>
+                  <Tool label={t("新增页面")} onClick={s.addPage}>
                     <Plus size={16} />
                   </Tool>
                 </div>
@@ -580,9 +607,12 @@ export default function App() {
                     >
                       <button
                         onClick={() => s.goto(i)}
-                        aria-label={`第 ${i + 1} 页`}
+                        aria-label={t(`第 ${i + 1} 页`)}
                       >
-                        <Thumbnail deck={s.deck} slide={slide} />
+                        <Thumbnail
+                          deck={committedDeck}
+                          slide={committedDeck.slides[i]}
+                        />
                         <span>
                           <b>{String(i + 1).padStart(2, "0")}</b>
                           {slide.animations.length > 0 && (
@@ -596,14 +626,14 @@ export default function App() {
                 <div className="filmstrip-actions">
                   <Button variant="soft" onClick={s.addPage}>
                     <Plus size={14} />
-                    新建页面
+                    {t("新建页面")}
                   </Button>
                   <div className="flex justify-center">
-                    <Tool label="复制页面" onClick={s.duplicatePage}>
+                    <Tool label={t("复制页面")} onClick={s.duplicatePage}>
                       <Copy size={15} />
                     </Tool>
                     <Tool
-                      label="删除页面"
+                      label={t("删除页面")}
                       disabled={s.deck.slides.length <= 1}
                       onClick={s.deletePage}
                     >
@@ -617,27 +647,27 @@ export default function App() {
                 <div
                   className="insert-toolbar"
                   role="toolbar"
-                  aria-label="插入对象"
+                  aria-label={t("插入对象")}
                 >
                   {(
                     [
-                      ["text", "文本", Type],
-                      ["shape", "形状", Shapes],
-                      ["image", "图片", Image],
-                      ["table", "表格", Table2],
-                      ["chart", "图表", ChartColumn],
-                      ["line", "线条", Minus],
-                      ["icon", "图标", Sparkles],
+                      ["text", t("文本"), Type],
+                      ["shape", t("形状"), Shapes],
+                      ["image", t("图片"), Image],
+                      ["table", t("表格"), Table2],
+                      ["chart", t("图表"), ChartColumn],
+                      ["line", t("线条"), Minus],
+                      ["icon", t("图标"), Sparkles],
                     ] as const
                   ).map(([type, label, Icon]) =>
                     type === "image" ? (
                       <label key={type} className="insert-upload">
                         <Image size={18} />
-                        <span>图片</span>
+                        <span>{t("图片")}</span>
                         <input
                           type="file"
                           accept="image/*"
-                          aria-label="上传图片"
+                          aria-label={t("上传图片")}
                           onChange={(e) => {
                             if (e.target.files?.[0])
                               void uploadImage(e.target.files[0]);
@@ -665,13 +695,13 @@ export default function App() {
                     <DropdownMenu.Trigger>
                       <Button variant="ghost">
                         <Plus size={18} />
-                        <span>更多</span>
+                        <span>{t("更多")}</span>
                       </Button>
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content>
                       {[
-                        ["code", "代码"],
-                        ["formula", "公式"],
+                        ["code", t("代码")],
+                        ["formula", t("公式")],
                       ].map(([type, label]) => (
                         <DropdownMenu.Item
                           key={type}
@@ -689,13 +719,13 @@ export default function App() {
             <footer className="statusbar">
               <span>
                 {s.master
-                  ? `正在编辑母版 ${s.master}`
-                  : `第 ${s.page + 1} / ${s.deck.slides.length} 页`}
+                  ? t(`正在编辑母版 ${s.master}`)
+                  : t(`第 ${s.page + 1} / ${s.deck.slides.length} 页`)}
               </span>
               <span>
                 {diagnostics.length
-                  ? `${diagnostics.length} 条诊断`
-                  : "文档检查通过"}
+                  ? t(`${diagnostics.length} 条诊断`)
+                  : t("文档检查通过")}
               </span>
               <span className="status-path" title={s.file}>
                 {s.file}
@@ -703,50 +733,52 @@ export default function App() {
             </footer>
             {s.error && (
               <div className="error-toast" role="alert">
-                <pre>{s.error}</pre>
+                <ErrorMessage message={s.error} />
                 <Button
                   size="1"
                   variant="soft"
                   onClick={() => useEditor.setState({ error: "" })}
                 >
-                  关闭
+                  {t("关闭")}
                 </Button>
               </div>
             )}
             <Dialog.Root open={source} onOpenChange={setSource}>
               <Dialog.Content maxWidth="1000px">
-                <Dialog.Title>文档源码</Dialog.Title>
+                <Dialog.Title>{t("文档源码")}</Dialog.Title>
                 <Dialog.Description size="2" mb="3">
-                  编辑 XML 后验证并应用。保存和撤销与画布共享。
+                  {t("编辑 XML 后验证并应用。保存和撤销与画布共享。")}
                 </Dialog.Description>
                 <TextArea
                   className="source-editor"
                   value={xml}
                   onChange={(e) => setXml(e.target.value)}
                   rows={22}
-                  aria-label="XML 源码"
+                  aria-label={t("XML 源码")}
                 />
-                {s.error && <pre role="alert">{s.error}</pre>}
+                {s.error && (
+                  <div role="alert">
+                    <ErrorMessage message={s.error} />
+                  </div>
+                )}
                 {diagnostics.length > 0 && (
                   <details>
-                    <summary>文档诊断</summary>
+                    <summary>{t("文档诊断")}</summary>
                     {diagnostics.map((d, i) => (
-                      <p key={i}>
-                        {d.code} · 行 {d.line} · {d.message}
-                      </p>
+                      <Diagnostic key={i} value={d} />
                     ))}
                   </details>
                 )}
                 <div className="dialog-actions">
                   <Dialog.Close>
-                    <Button variant="soft">取消</Button>
+                    <Button variant="soft">{t("取消")}</Button>
                   </Dialog.Close>
                   <Button
                     onClick={() => {
                       if (s.applySource(xml)) setSource(false);
                     }}
                   >
-                    验证并应用
+                    {t("验证并应用")}
                   </Button>
                 </div>
               </Dialog.Content>
@@ -759,14 +791,14 @@ export default function App() {
             >
               <Dialog.Content>
                 <Dialog.Title>
-                  {library === "shape" ? "形状库" : "图标库"}
+                  {library === "shape" ? t("形状库") : t("图标库")}
                 </Dialog.Title>
                 <Dialog.Description size="2" mb="3">
-                  选择一个对象插入当前页面。
+                  {t("选择一个对象插入当前页面。")}
                 </Dialog.Description>
                 <TextField.Root
-                  placeholder="搜索名称…"
-                  aria-label="搜索资源"
+                  placeholder={t("搜索名称…")}
+                  aria-label={t("搜索资源")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -842,8 +874,10 @@ export default function App() {
               }}
             >
               <Dialog.Content>
-                <Dialog.Title>导出完成</Dialog.Title>
-                <Dialog.Description mb="3">点击文件下载。</Dialog.Description>
+                <Dialog.Title>{t("导出完成")}</Dialog.Title>
+                <Dialog.Description mb="3">
+                  {t("点击文件下载。")}
+                </Dialog.Description>
                 {exports.map((file) => (
                   <p key={file}>
                     <a
@@ -855,16 +889,16 @@ export default function App() {
                   </p>
                 ))}
                 <Dialog.Close>
-                  <Button>完成</Button>
+                  <Button>{t("完成")}</Button>
                 </Dialog.Close>
               </Dialog.Content>
             </Dialog.Root>
             {preview && (
               <div className="preview-overlay">
                 <header>
-                  <h2>幻灯片概览</h2>
+                  <h2>{t("幻灯片概览")}</h2>
                   <Button variant="soft" onClick={() => setPreview(false)}>
-                    返回编辑
+                    {t("返回编辑")}
                   </Button>
                 </header>
                 <PreviewGrid

@@ -1,3 +1,4 @@
+import { t, useLocale } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import {
@@ -26,6 +27,7 @@ export function Player({
   session?: string;
   embedded?: boolean;
 }) {
+  useLocale();
   const root = useRef<HTMLDivElement>(null),
     holders = useRef<(HTMLDivElement | null)[]>([]),
     controller = useRef<ReturnType<typeof createPlayer> | null>(null);
@@ -169,25 +171,28 @@ export function Player({
       </div>
       <div className="player-controls">
         <div className="flex items-center gap-2">
-          <Tool label="上一页" onClick={() => controller.current?.previous()}>
+          <Tool
+            label={t("上一页")}
+            onClick={() => controller.current?.previous()}
+          >
             <ChevronLeft size={18} />
           </Tool>
           <span data-testid="player-page">
             {current + 1} / {deck.slides.length}
           </span>
-          <Tool label="下一步" onClick={() => controller.current?.next()}>
+          <Tool label={t("下一步")} onClick={() => controller.current?.next()}>
             <ChevronRight size={18} />
           </Tool>
         </div>
         <div className="flex gap-2">
-          <Tool label="幻灯片网格" onClick={() => setGrid(!grid)}>
+          <Tool label={t("幻灯片网格")} onClick={() => setGrid(!grid)}>
             <Grid2X2 size={18} />
           </Tool>
-          <Tool label="演讲者视图" onClick={presenter}>
+          <Tool label={t("演讲者视图")} onClick={presenter}>
             <Presentation size={18} />
           </Tool>
           <Tool
-            label="全屏"
+            label={t("全屏")}
             onClick={() => {
               void root.current?.requestFullscreen?.();
             }}
@@ -195,7 +200,7 @@ export function Player({
             <Expand size={18} />
           </Tool>
           {onClose && (
-            <Tool label="退出放映" onClick={onClose}>
+            <Tool label={t("退出放映")} onClick={onClose}>
               <X size={18} />
             </Tool>
           )}
@@ -203,7 +208,7 @@ export function Player({
       </div>
       {notes && (
         <div className="player-notes">
-          {deck.slides[current]?.notes || "暂无备注"}
+          {deck.slides[current]?.notes || t("暂无备注")}
         </div>
       )}
       {grid && (
@@ -215,7 +220,7 @@ export function Player({
               setGrid(false);
             }}
           />
-          <Button onClick={() => setGrid(false)}>返回放映</Button>
+          <Button onClick={() => setGrid(false)}>{t("返回放映")}</Button>
         </div>
       )}
     </div>
@@ -228,6 +233,7 @@ export function PreviewGrid({
   deck: Deck;
   onSelect: (page: number) => void;
 }) {
+  useLocale();
   return (
     <div className="preview-grid">
       <RenderResources deck={deck} />
@@ -235,7 +241,7 @@ export function PreviewGrid({
         <button
           key={slide.id || i}
           onClick={() => onSelect(i)}
-          aria-label={`打开第 ${i + 1} 页`}
+          aria-label={t(`打开第 ${i + 1} 页`)}
         >
           <div
             style={{
@@ -268,6 +274,7 @@ export function Presenter({
   initialDeck: Deck;
   session: string;
 }) {
+  useLocale();
   const [deck, setDeck] = useState(initialDeck),
     [index, setIndex] = useState(0),
     [seconds, setSeconds] = useState(0),
@@ -312,7 +319,7 @@ export function Presenter({
     <div className="presenter">
       <RenderResources deck={deck} />
       <header>
-        <h1>演讲者视图</h1>
+        <h1>{t("演讲者视图")}</h1>
         <Button variant="soft" onClick={() => setSeconds(0)}>
           {Math.floor(seconds / 60)
             .toString()
@@ -322,24 +329,27 @@ export function Presenter({
       </header>
       <div className="presenter-slides">
         <section>
-          <h2>当前页 {index + 1}</h2>
+          <h2>
+            {t("当前页")}
+            {index + 1}
+          </h2>
           {thumb(index, 640)}
         </section>
         <section>
-          <h2>下一页</h2>
-          {thumb(index + 1, 320) || <p>演示结束</p>}
+          <h2>{t("下一页")}</h2>
+          {thumb(index + 1, 320) || <p>{t("演示结束")}</p>}
         </section>
       </div>
       <div className="flex gap-3">
         <Button onClick={() => ch.current?.postMessage({ type: "previous" })}>
-          上一页
+          {t("上一页")}
         </Button>
         <Button onClick={() => ch.current?.postMessage({ type: "next" })}>
-          下一步
+          {t("下一步")}
         </Button>
       </div>
-      <h2>讲稿</h2>
-      <pre>{deck.slides[index]?.notes || "暂无备注"}</pre>
+      <h2>{t("讲稿")}</h2>
+      <pre>{deck.slides[index]?.notes || t("暂无备注")}</pre>
     </div>
   );
 }

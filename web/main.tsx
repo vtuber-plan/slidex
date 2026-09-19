@@ -1,3 +1,4 @@
+import { t, useLocale } from "./i18n";
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "@radix-ui/themes/styles.css";
@@ -15,9 +16,9 @@ class ErrorBoundary extends Component<
   render() {
     return this.state.error ? (
       <main className="loading">
-        <h1>界面发生错误</h1>
+        <h1>{t("界面发生错误")}</h1>
         <pre>{this.state.error}</pre>
-        <button onClick={() => location.reload()}>重新加载</button>
+        <button onClick={() => location.reload()}>{t("重新加载")}</button>
       </main>
     ) : (
       this.props.children
@@ -26,7 +27,9 @@ class ErrorBoundary extends Component<
 }
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <Suspense fallback={<main className="loading">正在加载 SlideX…</main>}>
+    <Suspense
+      fallback={<main className="loading">{t("正在加载 SlideX…")}</main>}
+    >
       {["/present", "/present-speaker", "/player", "/preview"].includes(
         location.pathname,
       ) ? (

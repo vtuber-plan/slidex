@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { newElement, newSlide, parseSlideX } from "../src/ir";
 import { serializeDeck } from "../src/serializer";
 import { recordRevision } from "./revisions";
+import { resolveScope, scopedContainer } from "../src/group-scope";
 import type {
   Deck,
   SlideContainer,
@@ -12,10 +13,18 @@ import type {
 export const clone = <T>(value: T): T => structuredClone(value);
 export const uid = (prefix = "el") =>
   `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
-export const container = (s: Pick<EditorState, "deck" | "page" | "master">) =>
+export const rootContainer = (
+  s: Pick<EditorState, "deck" | "page" | "master">,
+) =>
   s.master
     ? s.deck.masters.find((x) => x.id === s.master)!
     : s.deck.slides[s.page];
+export const container = (
+  s: Pick<EditorState, "deck" | "page" | "master"> & { groupPath?: string[] },
+) => scopedContainer(rootContainer(s), s.groupPath || []);
+export const scope = (
+  s: Pick<EditorState, "deck" | "page" | "master" | "groupPath">,
+) => resolveScope(rootContainer(s), s.groupPath);
 const blank = parseSlideX(
   '<deck version="1" title="Untitled"><slide id="slide1"/></deck>',
 ).deck;
@@ -24,6 +33,9 @@ interface EditorState {
   deck: Deck;
   page: number;
   master: string;
+  groupPath: string[];
+  enterGroup: (id: string) => void;
+  leaveGroup: (depth?: number) => void;
   selection: string[];
   past: Deck[];
   future: Deck[];
@@ -66,12 +78,43 @@ const normalize = (s: EditorState, deck: Deck) => ({
   master: deck.masters.some((m) => m.id === s.master) ? s.master : "",
   selection: [],
   editing: "",
+  groupPath: resolveScope(
+    rootContainer({
+      ...s,
+      deck,
+      page: Math.min(s.page, deck.slides.length - 1),
+      master: deck.masters.some((m) => m.id === s.master) ? s.master : "",
+    }),
+    s.groupPath,
+  ).path,
 });
 let saveQueue: Promise<unknown> = Promise.resolve();
 export const useEditor = create<EditorState>((set, get) => ({
   deck: blank,
   page: 0,
   master: "",
+  groupPath: [],
+  enterGroup: (id) => {
+    window.__slxCommitText?.();
+    const s = get(),
+      el = container(s).elements.find((el) => el.id === id);
+    if (s.gesture || !el || el.type !== "group" || el.locked) return;
+    set({ groupPath: [...s.groupPath, id], selection: [], editing: "" });
+  },
+  leaveGroup: (depth) => {
+    window.__slxCommitText?.();
+    const s = get();
+    if (s.gesture) s.end(true);
+    const next = Math.max(
+      0,
+      Math.min(depth ?? s.groupPath.length - 1, s.groupPath.length),
+    );
+    set({
+      groupPath: s.groupPath.slice(0, next),
+      selection: s.groupPath[next] ? [s.groupPath[next]] : [],
+      editing: "",
+    });
+  },
   selection: [],
   past: [],
   future: [],
@@ -103,6 +146,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         past: [],
         future: [],
         master: "",
+        groupPath: [],
         error: parsed.errors.map((e) => e.message).join("\n"),
       });
     } catch (e) {
@@ -150,7 +194,31 @@ export const useEditor = create<EditorState>((set, get) => ({
   edit: (fn) => {
     const s = get(),
       deck = clone(s.deck);
+    if (scope(s).path.length !== s.groupPath.length) return;
     fn(deck, container({ ...s, deck }));
+    // Locking protects content and geometry, not only pointer gestures.
+    // Unlock is explicit; history/source replacement remain separate operations.
+    const before = rootContainer(s),
+      after = (s.master ? deck.masters : deck.slides).find(
+        (slide) => slide.id === before.id,
+      );
+    const protect = (previous: SlideElement[], next: SlideElement[]) => {
+      for (const old of previous) {
+        const index = next.findIndex((el) => el.id === old.id);
+        if (!old.locked) {
+          if (index >= 0 && old.elements && next[index].elements)
+            protect(old.elements, next[index].elements!);
+          continue;
+        }
+        if (index >= 0)
+          next[index] = {
+            ...clone(old),
+            locked: next[index].locked === false ? false : true,
+          };
+        else next.splice(previous.indexOf(old), 0, clone(old));
+      }
+    };
+    if (after) protect(before.elements, after.elements);
     if (JSON.stringify(deck) === JSON.stringify(s.deck)) return;
     set({
       deck,
@@ -163,7 +231,19 @@ export const useEditor = create<EditorState>((set, get) => ({
   begin: () => set({ gesture: clone(get().deck) }),
   preview: (fn) => {
     const s = get(),
-      deck = clone(s.gesture || s.deck);
+      base = s.gesture || s.deck;
+    // Pointer previews only edit the active page/master. Retain immutable
+    // references to other pages instead of cloning the whole deck per frame.
+    const deck = {
+      ...base,
+      slides: [...base.slides],
+      masters: [...base.masters],
+    };
+    if (s.master) {
+      const index = base.masters.findIndex((m) => m.id === s.master);
+      deck.masters[index] = clone(base.masters[index]);
+    } else deck.slides[s.page] = clone(base.slides[s.page]);
+    if (scope(s).path.length !== s.groupPath.length) return;
     fn(deck, container({ ...s, deck }));
     set({ deck });
   },
@@ -187,13 +267,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       });
   },
   select: (selection) => set({ selection }),
-  goto: (page) =>
+  goto: (page) => {
+    window.__slxCommitText?.();
     set({
       page: Math.max(0, Math.min(page, get().deck.slides.length - 1)),
       master: "",
+      groupPath: [],
       selection: [],
       editing: "",
-    }),
+    });
+  },
   undo: () => {
     const s = get(),
       d = s.past.at(-1);
@@ -217,8 +300,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   insert: (type, patch) => {
     const s = get(),
       el = newElement(type, { id: uid(type), ...patch });
-    el.x = (s.deck.width - (el.w || 0)) / 2;
-    el.y = (s.deck.height - (el.h || 0)) / 2;
+    el.x = ((scope(s).group?.w ?? s.deck.width) - (el.w || 0)) / 2;
+    el.y = ((scope(s).group?.h ?? s.deck.height) - (el.h || 0)) / 2;
     s.edit((_, slide) => slide.elements.push(el));
     set({ selection: [el.id] });
   },
@@ -404,6 +487,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     set({
       ...normalize(s, parsed.deck),
+      groupPath: [],
       past: [...s.past.slice(-99), s.deck],
       future: [],
       error: "",

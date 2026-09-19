@@ -1,21 +1,44 @@
+import { t, useLocale } from "./i18n";
 import {
   useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Button, Slider, Dialog, ContextMenu } from "@radix-ui/themes";
+import { Button, Slider, ContextMenu } from "@radix-ui/themes";
 import { Minus, Plus, Scan } from "lucide-react";
-import { useEditor, container, clone } from "./store";
+import { useEditor, container, rootContainer, scope, clone } from "./store";
+import {
+  inversePoint,
+  elementMatrix,
+  transformPoint,
+} from "../src/group-scope";
 import { SlideSurface } from "./SlideSurface";
 import { RichText } from "./RichText";
+import { TextOverflow } from "./TextOverflow";
 import type { SlideElement } from "../src/types";
+import { resizeElement } from "../src/geometry";
+import { scaleContents } from "../src/selection";
 
 export function Canvas() {
+  useLocale();
   const s = useEditor(),
     slide = container(s),
+    currentScope = scope(s),
     area = useRef<HTMLDivElement>(null),
     board = useRef<HTMLDivElement>(null);
+  const cancelPointer = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelPointer.current?.();
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
+  }, []);
+  useEffect(
+    () => () => cancelPointer.current?.(),
+    [s.page, s.master, s.groupPath.join("/")],
+  );
   const [size, setSize] = useState({ w: 900, h: 600 }),
     [box, setBox] = useState<{
       x: number;
@@ -32,14 +55,22 @@ export function Canvas() {
     if (area.current) observer.observe(area.current);
     return () => observer.disconnect();
   }, []);
-  const fit = Math.min(
-      (size.w - 100) / s.deck.width,
-      (size.h - 100) / s.deck.height,
-    ),
+  const fit = Math.min(size.w / s.deck.width, size.h / s.deck.height),
     scale = Math.max(0.1, fit * s.zoom);
   const point = (e: { clientX: number; clientY: number }) => {
     const r = board.current!.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+    return inversePoint(currentScope.matrix, {
+      x: (e.clientX - r.left) / scale,
+      y: (e.clientY - r.top) / scale,
+    });
+  };
+  const hitElement = (target: HTMLElement) => {
+    let hit = target.closest<HTMLElement>(".slx-el");
+    while (hit) {
+      const found = slide.elements.find((el) => el.id === hit!.dataset.id);
+      if (found) return found;
+      hit = hit.parentElement?.closest<HTMLElement>(".slx-el") || null;
+    }
   };
   const start = (
     e: ReactPointerEvent,
@@ -47,13 +78,9 @@ export function Canvas() {
     element?: SlideElement,
   ) => {
     if (e.button !== 0 || s.editing) return;
+    cancelPointer.current?.();
     if ((e.target as HTMLElement).closest("a")) e.preventDefault();
-    const hit = (e.target as HTMLElement).closest<HTMLElement>(".slx-el");
-    // Resolve nested children to their editable top-level group.
-    let top = hit;
-    while (top?.parentElement?.closest(".slx-el"))
-      top = top.parentElement.closest<HTMLElement>(".slx-el");
-    const el = element || slide.elements.find((x) => x.id === top?.dataset.id);
+    const el = element || hitElement(e.target as HTMLElement);
     const p = point(e),
       original = clone(slide.elements);
     let ids = s.selection;
@@ -101,8 +128,8 @@ export function Canvas() {
         const others = original.filter((x) => !ids.includes(x.id));
         const xs = [
           0,
-          s.deck.width / 2,
-          s.deck.width,
+          (currentScope.group?.w ?? s.deck.width) / 2,
+          currentScope.group?.w ?? s.deck.width,
           ...others.flatMap((x) => [
             x.x || 0,
             (x.x || 0) + (x.w || 0) / 2,
@@ -111,8 +138,8 @@ export function Canvas() {
         ];
         const ys = [
           0,
-          s.deck.height / 2,
-          s.deck.height,
+          (currentScope.group?.h ?? s.deck.height) / 2,
+          currentScope.group?.h ?? s.deck.height,
           ...others.flatMap((x) => [
             x.y || 0,
             (x.y || 0) + (x.h || 0) / 2,
@@ -157,68 +184,64 @@ export function Canvas() {
               ) *
                 180) /
                 Math.PI +
-              90;
+              (old.flipV ? -90 : 90);
             next.rotation = event.shiftKey
               ? Math.round(angle / 15) * 15
               : Math.round(angle);
             return;
           }
-          let w = Math.max(
-            8,
-            (old.w || 0) +
-              (handle.includes("w") ? -dx : handle.includes("e") ? dx : 0),
+          const bounds = resizeElement(
+            old,
+            handle,
+            dx,
+            dy,
+            !!old.lockAspect || event.shiftKey,
           );
-          let h = Math.max(
-            8,
-            (old.h || 0) +
-              (handle.includes("n") ? -dy : handle.includes("s") ? dy : 0),
-          );
-          if ((old.lockAspect || event.shiftKey) && old.w && old.h)
-            h = (w * old.h) / old.w;
-          next.x = (old.x || 0) + (handle.includes("w") ? (old.w || 0) - w : 0);
-          next.y = (old.y || 0) + (handle.includes("n") ? (old.h || 0) - h : 0);
-          next.w = w;
-          next.h = h;
-          const rescale = (nodes: SlideElement[]) =>
-            nodes.forEach((n) => {
-              n.x = ((n.x || 0) * w) / (old.w || 1);
-              n.y = ((n.y || 0) * h) / (old.h || 1);
-              n.w = ((n.w || 0) * w) / (old.w || 1);
-              n.h = ((n.h || 0) * h) / (old.h || 1);
-              if (n.elements) rescale(n.elements);
-            });
-          if (next.elements) rescale(next.elements);
-          if (next.type === "line" && old.points)
-            next.points = old.points
-              .split(/\s+/)
-              .map((p) => {
-                const [x, y] = p.split(",").map(Number);
-                return `${(x * w) / (old.w || 1)},${(y * h) / (old.h || 1)}`;
-              })
-              .join(" ");
+          const { w, h } = bounds;
+          Object.assign(next, bounds);
+          scaleContents(next, w / (old.w || 1), h / (old.h || 1));
         }),
       );
     };
-    const finish = (event: PointerEvent) => {
+    const cleanup = () => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", finish);
       target.removeEventListener("pointercancel", finish);
+      if (target.hasPointerCapture(e.pointerId))
+        target.releasePointerCapture(e.pointerId);
+      cancelPointer.current = null;
+      setBox(null);
+      setGuides({});
+    };
+    const finish = (event: PointerEvent) => {
+      cleanup();
       if (el) s.end(event.type === "pointercancel");
-      else {
+      else if (event.type !== "pointercancel") {
         const q = point(event),
           x = Math.min(p.x, q.x),
           y = Math.min(p.y, q.y);
-        const found = original.filter(
-          (el) =>
-            (el.x || 0) >= x &&
-            (el.y || 0) >= y &&
-            (el.x || 0) + (el.w || 0) <= Math.max(p.x, q.x) &&
-            (el.y || 0) + (el.h || 0) <= Math.max(p.y, q.y),
+        const found = original.filter((el) =>
+          [
+            [0, 0],
+            [el.w || 0, 0],
+            [0, el.h || 0],
+            [el.w || 0, el.h || 0],
+          ].every(([cx, cy]) => {
+            const v = transformPoint(elementMatrix(el), { x: cx, y: cy });
+            return (
+              v.x >= x &&
+              v.y >= y &&
+              v.x <= Math.max(p.x, q.x) &&
+              v.y <= Math.max(p.y, q.y)
+            );
+          }),
         );
         s.select([...new Set([...ids, ...found.map((x) => x.id)])]);
       }
-      setBox(null);
-      setGuides({});
+    };
+    cancelPointer.current = () => {
+      cleanup();
+      if (el) s.end(true);
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", finish);
@@ -232,13 +255,53 @@ export function Canvas() {
           <div className="canvas-caption">
             <span>
               {s.master
-                ? `母版 / ${s.master}`
-                : `画布 / ${String(s.page + 1).padStart(2, "0")}`}
+                ? t(`母版 / ${s.master}`)
+                : t(`画布 / ${String(s.page + 1).padStart(2, "0")}`)}
             </span>
             <span>
               {s.deck.width} × {s.deck.height}
             </span>
           </div>
+          <nav className="group-navigation" aria-label={t("编辑范围")}>
+            <button onClick={() => s.leaveGroup(0)}>{t("页面")}</button>
+            {currentScope.groups.map((group, i) => (
+              <span key={group.id}>
+                {" "}
+                →{" "}
+                <button
+                  onClick={() => s.leaveGroup(i + 1)}
+                  aria-current={
+                    i === currentScope.groups.length - 1
+                      ? "location"
+                      : undefined
+                  }
+                >
+                  {group.id}
+                </button>
+              </span>
+            ))}
+            {!!currentScope.groups.length && (
+              <Button size="1" variant="ghost" onClick={() => s.leaveGroup()}>
+                {t("退出组合")} · Esc
+              </Button>
+            )}
+          </nav>
+          {edited && !edited.locked && (
+            <RichText
+              key={edited.id}
+              element={edited}
+              deck={s.deck}
+              canvas={board}
+              onDone={(content) => {
+                if (content !== undefined) s.patch(edited.id, { content });
+                useEditor.setState({ editing: "" });
+              }}
+            />
+          )}
+          <TextOverflow
+            canvas={board}
+            ids={s.editing ? [s.editing] : s.selection}
+          />
           <div
             ref={area}
             className="canvas-workspace"
@@ -262,41 +325,53 @@ export function Canvas() {
                 }}
                 onPointerDown={start}
                 onContextMenu={(e) => {
-                  let hit = (e.target as HTMLElement).closest<HTMLElement>(
-                    ".slx-el",
-                  );
-                  while (hit?.parentElement?.closest(".slx-el"))
-                    hit = hit.parentElement.closest<HTMLElement>(".slx-el");
-                  if (hit?.dataset.id && !s.selection.includes(hit.dataset.id))
-                    s.select([hit.dataset.id]);
+                  if (s.editing) {
+                    e.stopPropagation();
+                    return;
+                  }
+                  const hit = hitElement(e.target as HTMLElement);
+                  if (hit && !s.selection.includes(hit.id)) s.select([hit.id]);
                 }}
                 onDoubleClick={(e) => {
+                  if (s.editing) return;
                   const p = point(e);
                   const el =
-                    slide.elements.find(
-                      (x) =>
-                        x.id ===
-                        (e.target as HTMLElement).closest<HTMLElement>(
-                          ".slx-el",
-                        )?.dataset.id,
-                    ) ||
-                    [...slide.elements]
-                      .reverse()
-                      .find(
-                        (x) =>
-                          p.x >= (x.x || 0) &&
-                          p.x <= (x.x || 0) + (x.w || 0) &&
-                          p.y >= (x.y || 0) &&
-                          p.y <= (x.y || 0) + (x.h || 0),
+                    hitElement(e.target as HTMLElement) ||
+                    [...slide.elements].reverse().find((el) => {
+                      const local = inversePoint(elementMatrix(el), p);
+                      return (
+                        local.x >= 0 &&
+                        local.y >= 0 &&
+                        local.x <= (el.w || 0) &&
+                        local.y <= (el.h || 0)
                       );
+                    });
+                  if (el?.type === "group" && !el.locked) {
+                    s.enterGroup(el.id);
+                    return;
+                  }
                   if (el?.type === "text" && !el.locked)
                     useEditor.setState({ editing: el.id });
                 }}
               >
-                <SlideSurface deck={s.deck} slide={slide} />
-                <div className="selection-overlay">
+                <SlideSurface deck={s.deck} slide={rootContainer(s)} />
+                <div
+                  className="selection-overlay"
+                  style={{
+                    width: currentScope.group?.w ?? s.deck.width,
+                    height: currentScope.group?.h ?? s.deck.height,
+                    transformOrigin: "0 0",
+                    transform: `matrix(${currentScope.matrix.join(",")})`,
+                  }}
+                >
+                  {!!currentScope.groups.length && (
+                    <div className="group-scope-outline" />
+                  )}
                   {slide.elements
-                    .filter((el) => s.selection.includes(el.id))
+                    .filter(
+                      (el) =>
+                        s.selection.includes(el.id) && el.id !== s.editing,
+                    )
                     .map((el) => (
                       <div
                         key={el.id}
@@ -306,7 +381,7 @@ export function Canvas() {
                           top: el.y,
                           width: Math.max(el.w || 0, 1),
                           height: Math.max(el.h || 0, 1),
-                          transform: `rotate(${el.rotation || 0}deg)`,
+                          transform: `rotate(${el.rotation || 0}deg) scale(${el.flipH ? -1 : 1},${el.flipV ? -1 : 1})`,
                           borderWidth: 1.5 / scale,
                         }}
                       >
@@ -325,7 +400,7 @@ export function Canvas() {
                             ].map((h) => (
                               <button
                                 key={h}
-                                aria-label={`调整 ${h}`}
+                                aria-label={t(`调整 ${h}`)}
                                 className={`handle handle-${h}`}
                                 style={{ width: 8 / scale, height: 8 / scale }}
                                 onPointerDown={(e) => {
@@ -366,10 +441,10 @@ export function Canvas() {
             </div>
           </div>
           <div className="canvas-bottom">
-            <span>Shift 多选 · Alt 暂停吸附 · 双击编辑文本</span>
+            <span>{t("Shift 多选 · Alt 暂停吸附 · 双击编辑文本")}</span>
             <div className="flex items-center gap-2">
               <Button
-                aria-label="缩小"
+                aria-label={t("缩小")}
                 size="1"
                 variant="ghost"
                 onClick={() =>
@@ -379,7 +454,7 @@ export function Canvas() {
                 <Minus size={14} />
               </Button>
               <Slider
-                aria-label="缩放"
+                aria-label={t("缩放")}
                 min={0.25}
                 max={2}
                 step={0.05}
@@ -389,7 +464,7 @@ export function Canvas() {
               />
               <span>{Math.round(scale * 100)}%</span>
               <Button
-                aria-label="放大"
+                aria-label={t("放大")}
                 size="1"
                 variant="ghost"
                 onClick={() =>
@@ -399,7 +474,7 @@ export function Canvas() {
                 <Plus size={14} />
               </Button>
               <Button
-                aria-label="适应画布"
+                aria-label={t("适应画布")}
                 size="1"
                 variant="ghost"
                 onClick={() => useEditor.setState({ zoom: 1 })}
@@ -408,47 +483,26 @@ export function Canvas() {
               </Button>
             </div>
           </div>
-          <label className="notes-label">
-            演讲者备注
-            <textarea
-              aria-label="演讲者备注"
-              value={slide.notes}
-              onChange={(e) =>
-                s.edit((_, slide) => {
-                  slide.notes = e.target.value;
-                })
-              }
-              placeholder="为这一页添加讲稿…"
-            />
-          </label>
-          <Dialog.Root
-            open={!!edited}
-            onOpenChange={(open) => {
-              if (!open) useEditor.setState({ editing: "" });
-            }}
-          >
-            <Dialog.Content maxWidth="900px">
-              <Dialog.Title>编辑文本</Dialog.Title>
-              <Dialog.Description size="2" mb="3">
-                选中文字后应用格式；完成后写入当前文本框。
-              </Dialog.Description>
-              {edited && (
-                <RichText
-                  element={edited}
-                  deck={s.deck}
-                  onDone={(content) => {
-                    if (content !== undefined) s.patch(edited.id, { content });
-                    useEditor.setState({ editing: "" });
-                  }}
-                />
-              )}
-            </Dialog.Content>
-          </Dialog.Root>
+          <details className="notes-panel">
+            <summary>{t("演讲者备注")}</summary>
+            <label className="notes-label">
+              <textarea
+                aria-label={t("演讲者备注")}
+                value={slide.notes}
+                onChange={(e) =>
+                  s.edit((_, slide) => {
+                    slide.notes = e.target.value;
+                  })
+                }
+                placeholder={t("为这一页添加讲稿…")}
+              />
+            </label>
+          </details>
         </section>
       </ContextMenu.Trigger>
       <ContextMenu.Content>
         <ContextMenu.Item disabled={!s.selection.length} onSelect={s.copy}>
-          复制
+          {t("复制")}
         </ContextMenu.Item>
         <ContextMenu.Item
           disabled={!s.selection.length}
@@ -457,17 +511,17 @@ export function Canvas() {
             s.remove();
           }}
         >
-          剪切
+          {t("剪切")}
         </ContextMenu.Item>
         <ContextMenu.Item onSelect={() => void s.paste()}>
-          粘贴
+          {t("粘贴")}
         </ContextMenu.Item>
         <ContextMenu.Separator />
         <ContextMenu.Item disabled={s.selection.length < 2} onSelect={s.group}>
-          组合
+          {t("组合")}
         </ContextMenu.Item>
         <ContextMenu.Item disabled={!s.selection.length} onSelect={s.ungroup}>
-          取消组合
+          {t("取消组合")}
         </ContextMenu.Item>
         <ContextMenu.Item
           disabled={!s.selection.length}
@@ -479,7 +533,7 @@ export function Canvas() {
             )
           }
         >
-          锁定 / 解锁
+          {t("锁定 / 解锁")}
         </ContextMenu.Item>
         <ContextMenu.Separator />
         <ContextMenu.Item
@@ -487,7 +541,7 @@ export function Canvas() {
           disabled={!s.selection.length}
           onSelect={s.remove}
         >
-          删除
+          {t("删除")}
         </ContextMenu.Item>
       </ContextMenu.Content>
     </ContextMenu.Root>

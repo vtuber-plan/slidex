@@ -11,6 +11,8 @@ import type { ServerHandle } from '../dist/server.js';
 import { templateDeck } from '../dist/template.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const profilePath = app.commandLine.getSwitchValue('user-data-dir');
+if (profilePath) app.setPath('userData', path.resolve(profilePath));
 let win: BrowserWindow | null = null;
 let presentWin: BrowserWindow | null = null;
 let server: ServerHandle | null = null;
@@ -217,7 +219,7 @@ function createWindow(): void {
     webPreferences: { contextIsolation: true, sandbox: true },
   });
   win.setMenuBarVisibility(true);
-  win.once('ready-to-show', () => win?.show());
+  if (!app.commandLine.hasSwitch('slidex-smoke-test')) win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(baseUrl)) return { action: 'allow' };
     void shell.openExternal(url);

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseSlideX } from './ir.js';
 import type { Deck } from './types.js';
 import { slidePageHtml, renderSlide, slideCss, cdnLinks, runtimeJs } from './render/render.js';
+import {offlineResources} from './export/resources.js';
 import { exportDeck } from './export/export.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,14 +125,14 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const xml = fs.readFileSync(deckFile, 'utf8');
       const { deck, errors } = parseSlideX(xml);
       if (!deck.slides[i]) { send(res, 404, { error: 'slide ' + i + ' 不存在' }); return; }
-      send(res, 200, slidePageHtml(deck, i, { mediaBase: '/f/' }), { 'Content-Type': MIME['.html'] });
+      send(res, 200, offlineResources(slidePageHtml(deck, i, { mediaBase: '/f/' })), { 'Content-Type': MIME['.html'] });
       return;
     }
     if (req.method === 'GET' && p === '/api/print') {
       // 全部页拼接的打印视图（PDF 抓取用）
       const xml = fs.readFileSync(deckFile, 'utf8');
       const { deck } = parseSlideX(xml);
-      send(res, 200, printHtml(deck), { 'Content-Type': MIME['.html'] });
+      send(res, 200, offlineResources(printHtml(deck)), { 'Content-Type': MIME['.html'] });
       return;
     }
     if (req.method === 'POST' && p === '/api/validate') {
@@ -214,7 +215,7 @@ function printHtml(deck: Deck): string {
   }).join('\n');
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <link rel="stylesheet" href="${cdn.katexCss}"><link rel="stylesheet" href="${cdn.faCss}">
-${(deck.fonts || []).map(f => `<link rel="stylesheet" href="${f.src}">`).join('')}
+${(deck.fonts || []).map(f => `<link rel="stylesheet" href="${(/^(https?:|data:|\/)/i.test(f.src)?f.src:'/f/'+f.src).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">`).join('')}
 <style>
 @page { size: ${deck.width}pt ${deck.height}pt; margin: 0 }
 html,body{margin:0;padding:0}

@@ -78,7 +78,7 @@ export function slideCss(): string {
   return `
 .slx-slide{position:relative;overflow:hidden;background:#fff;color:#1a1a1a;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .slx-el{position:absolute;box-sizing:border-box;transform-origin:50% 50%}
-.slx-richtext{width:100%}
+.slx-richtext{width:100%;flex-shrink:0;overflow-wrap:break-word}
 .slx-richtext p{margin:0;min-height:1em}
 .slx-richtext ul,.slx-richtext ol{margin:2px 0;padding-left:1.5em}
 .slx-richtext li{margin:1px 0}
@@ -145,15 +145,16 @@ export function renderSlide(deck: Deck, slide: SlideContainer, opts: RenderSlide
   const master = slide.master ? (deck.masters || []).find(m => m.id === slide.master) : null;
   let bgCss: string | undefined = '#FFFFFF';
   let bgInner = '';
+  let bgImage = '';
   const bg = slide.background || (master && master.background) || null;
   if (bg) {
     if (bg.type === 'solid') bgCss = resolveColor(bg.color, deck);
-    else if (bg.type === 'gradient') { bgInner = gradientCss(bg, deck); }
+    else if (bg.type === 'gradient') { bgImage = gradientCss(bg, deck); }
     else if (bg.type === 'image') { bgInner = `<img src="${mediaSrc(bg.src, media)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${bg.fit === 'fill' ? 'fill' : bg.fit === 'contain' ? 'contain' : 'cover'};${bg.opacity !== undefined && bg.opacity !== 1 ? `opacity:${bg.opacity};` : ''}" draggable="false"/>`; }
   }
   const masterEls = master ? master.elements.map(el => renderElement(el, deck, media, '1')).join('\n') : '';
   const els = slide.elements.map(el => renderElement(el, deck, media)).join('\n');
-  return `<div class="slx-slide" style="width:${f(deck.width)}px;height:${f(deck.height)}px;background:${bgCss};${bgInner ? `background-image:${bgInner};` : ''}">\n${bgInner}${masterEls ? masterEls + '\n' : ''}${els}\n</div>`;
+  return `<div class="slx-slide" style="width:${f(deck.width)}px;height:${f(deck.height)}px;background:${bgCss};${bgImage ? `background-image:${bgImage};` : ''}">\n${bgInner}${masterEls ? masterEls + '\n' : ''}${els}\n</div>`;
 }
 
 function renderElement(el: SlideElement, deck: Deck, media: string, isMaster?: string): string {
@@ -256,7 +257,7 @@ function renderText(el: SlideElement, deck: Deck, mediaBase: string): string {
     st.backgroundColor ? `background-color:${st.backgroundColor}` : '',
     fillCss,
     `text-align:${ha || 'left'}`,
-    el.wrap === false ? 'white-space:nowrap;overflow:visible' : '',
+    `white-space:${el.wrap === false ? 'nowrap' : 'pre-wrap'}`,
     shadow ? `text-shadow:${f(shadow.dx)}px ${f(shadow.dy)}px ${f(shadow.blur)}px ${resolveColor(shadow.color, deck)}` : '',
     'overflow:hidden',
   ].filter(Boolean).join(';');
@@ -273,11 +274,11 @@ function renderShape(el: SlideElement, deck: Deck, mediaBase: string): string {
     else if (fill.type === 'gradient') { const g = gradientDef(fill, deck); defs = g.defs; fillRef = `url(#${g.id})`; }
     else if (fill.type === 'image') {
       const gid = `slxg${gradSeq++}`;
-      defs = `<defs><pattern id="${gid}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${esc(mediaSrc(fill.src, mediaBase))}" width="1" height="1" preserveAspectRatio="${fill.fit === 'contain' ? 'xMidYMid meet' : 'slice'}"/></pattern></defs>`;
+      defs = `<defs><pattern id="${gid}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${esc(mediaSrc(fill.src, mediaBase))}" width="1" height="1" preserveAspectRatio="${fill.fit === 'fill' ? 'none' : fill.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}"/></pattern></defs>`;
       fillRef = `url(#${gid})`;
     }
   }
-  const sw = el.strokeWidth || 1;
+  const sw = el.strokeWidth ?? 1;
   const dash = el.strokeDash === 'dash' ? ' stroke-dasharray="8 5"' : el.strokeDash === 'dot' ? ' stroke-dasharray="2 4"' : '';
   const shadow = parseShadow(el.shadow);
   const stroke = el.stroke ? resolveColor(el.stroke, deck) : 'none';
@@ -292,9 +293,10 @@ function gradientDef(fill: GradFill, deck: Deck): { id: string; defs: string } {
   return { id, defs: `<defs><linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient></defs>` };
 }
 function gradientCss(fill: GradFill, deck: Deck): string {
-  const dir = ({ 0: 'to right', 90: 'to bottom', 180: 'to left', 270: 'to top' } as Record<number, string>)[Math.round(((fill.angle || 0) % 360 + 360) % 360)] || `linear-gradient(${fill.angle}deg)`;
+  const angle = ((fill.angle || 0) % 360 + 360) % 360;
+  const dir = ({ 0: 'to right', 90: 'to bottom', 180: 'to left', 270: 'to top' } as Record<number, string>)[angle] || `${angle + 90}deg`;
   const stops = (fill.stops || []).map(s => `${resolveColor(s.color, deck)} ${f((s.pos || 0) * 100)}%`).join(', ');
-  return `linear-gradient(${dir.startsWith('to') ? dir : 'to right'}, ${stops})`;
+  return `linear-gradient(${dir}, ${stops})`;
 }
 
 // ── 线条 ──
@@ -327,7 +329,7 @@ function renderLine(el: SlideElement, deck: Deck): string {
     d = 'M' + pts.map(p => `${f(p[0])},${f(p[1])}`).join(' L');
   }
   const color = resolveColor(el.stroke || '#4A5560', deck);
-  const sw = el.strokeWidth || 2;
+  const sw = el.strokeWidth ?? 2;
   const dash = el.strokeDash === 'dash' ? ` stroke-dasharray="${f(sw * 3)} ${f(sw * 2)}"` : el.strokeDash === 'dot' ? ` stroke-dasharray="${f(sw)} ${f(sw * 1.6)}"` : '';
   let defs = '', mStart = '', mEnd = '';
   const a0 = el.arrowStart && ARROWS[el.arrowStart] ? el.arrowStart : null;
@@ -536,7 +538,7 @@ export function slidePageHtml(deck: Deck, slideIndex: number, opts: SlidePageOpt
   const cdn = cdnLinks();
   const media = opts.mediaBase ?? '';
   const slide = deck.slides[slideIndex];
-  const fonts = (deck.fonts || []).map(f2 => `<link rel="stylesheet" href="${esc(f2.src)}">`).join('\n');
+  const fonts = (deck.fonts || []).map(f2 => `<link rel="stylesheet" href="${esc(mediaSrc(f2.src, media))}">`).join('\n');
   const html = renderSlide(deck, slide, { mediaBase: media });
   return `<!DOCTYPE html>
 <html lang="zh">

@@ -1,10 +1,11 @@
-// html.js — 单文件放映包：内联 CSS/JS/本地媒体；公式、图标和用户字体仍按配置从 CDN 加载
+// html.js — 单文件放映包：内联内置运行时及本地媒体；远程用户资源仍按文档配置加载。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderSlide, slideCss, cdnLinks, runtimeJs } from '../render/render.js';
 import type { Deck } from '../types.js';
 import { createPlayer } from '../player.js';
+import {offlineResources,localFontStylesheet} from './resources.js';
 
 const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 const esc = (s: string): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -28,9 +29,9 @@ export function buildStandaloneHtml(deck: Deck, deckDir: string): string {
     html = html.replace(/(src|href)="([^"]+)"/g, (m, attr, v) => `${attr}="${media(v)}"`);
     slidesHtml += `<div class="frame" data-i="${i}" data-slide-id="${esc(s.id)}" style="${i === 0 ? '' : 'display:none;'}">${html}</div>\n`;
   });
-  const fonts = (deck.fonts || []).map(f => `<link rel="stylesheet" href="${esc(f.src)}">`).join('\n');
+  const fonts = (deck.fonts || []).map(f => `<link rel="stylesheet" href="${esc(localFontStylesheet(f.src,deckDir))}">`).join('\n');
   const playbackDeck = JSON.stringify(deck).replace(/</g, '\\u003c');
-  return `<!DOCTYPE html>
+  return offlineResources(`<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -85,5 +86,5 @@ ${runtimeJs()}
 })();
 </script>
 </body>
-</html>`;
+</html>`);
 }

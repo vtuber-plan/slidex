@@ -1,9 +1,11 @@
+import { t, useLocale } from "./i18n";
 import { useState } from "react";
 import { Button, Dialog, TextField, DropdownMenu } from "@radix-ui/themes";
 import { Search, Paintbrush, AlignHorizontalSpaceAround } from "lucide-react";
 import { useEditor, container, clone } from "./store";
 import type { SlideElement } from "../src/types";
 import { Tool } from "./ui";
+import { selectionModel, updateSelection } from "../src/selection";
 
 const styleKeys = [
   "fill",
@@ -27,15 +29,14 @@ const styleKeys = [
   "radius",
 ] as const;
 export function EditingTools() {
+  useLocale();
   const s = useEditor(),
     [format, setFormat] = useState<Partial<SlideElement> | null>(null),
     [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [replacement, setReplacement] = useState(""),
     [message, setMessage] = useState("");
-  const current = container(s).elements.filter(
-    (e) => s.selection.includes(e.id) && !e.locked,
-  );
+  const current = selectionModel(container(s).elements, s.selection).editable;
   const distribute = (axis: "x" | "y") =>
     s.edit((_, slide) => {
       const els = slide.elements
@@ -79,7 +80,7 @@ export function EditingTools() {
     <>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button aria-label="分布与尺寸" variant="ghost">
+          <Button aria-label={t("分布与尺寸")} variant="ghost">
             <AlignHorizontalSpaceAround size={17} />
           </Button>
         </DropdownMenu.Trigger>
@@ -88,13 +89,13 @@ export function EditingTools() {
             disabled={current.length < 3}
             onSelect={() => distribute("x")}
           >
-            水平等距分布
+            {t("水平等距分布")}
           </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={current.length < 3}
             onSelect={() => distribute("y")}
           >
-            垂直等距分布
+            {t("垂直等距分布")}
           </DropdownMenu.Item>
           {(["w", "h"] as const).map((key) => (
             <DropdownMenu.Item
@@ -103,21 +104,22 @@ export function EditingTools() {
               onSelect={() =>
                 s.edit((_, slide) => {
                   const first = current[0];
-                  slide.elements.forEach((el) => {
-                    if (current.some((e) => e.id === el.id))
-                      el[key] = first[key];
-                  });
+                  slide.elements = updateSelection(
+                    slide.elements,
+                    s.selection,
+                    { key, value: first[key] || 1 },
+                  );
                 })
               }
             >
-              {key === "w" ? "统一宽度" : "统一高度"}
+              {key === "w" ? t("统一宽度") : t("统一高度")}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
-          <Button aria-label="格式刷" variant="ghost">
+          <Button aria-label={t("格式刷")} variant="ghost">
             <Paintbrush size={17} />
           </Button>
         </DropdownMenu.Trigger>
@@ -132,7 +134,7 @@ export function EditingTools() {
               setFormat(attrs);
             }}
           >
-            复制格式
+            {t("复制格式")}
           </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={!format || !current.length}
@@ -145,24 +147,24 @@ export function EditingTools() {
               })
             }
           >
-            应用格式
+            {t("应用格式")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Trigger>
-          <Button aria-label="查找替换" variant="ghost">
+          <Button aria-label={t("查找替换")} variant="ghost">
             <Search size={17} />
           </Button>
         </Dialog.Trigger>
         <Dialog.Content>
-          <Dialog.Title>查找与替换</Dialog.Title>
+          <Dialog.Title>{t("查找与替换")}</Dialog.Title>
           <Dialog.Description mb="3">
-            查找所有页面中的文字；替换保留富文本标签和格式。
+            {t("查找所有页面中的文字；替换保留富文本标签和格式。")}
           </Dialog.Description>
           <TextField.Root
-            aria-label="查找文字"
-            placeholder="查找文字"
+            aria-label={t("查找文字")}
+            placeholder={t("查找文字")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -170,8 +172,8 @@ export function EditingTools() {
             }}
           />
           <TextField.Root
-            aria-label="替换文字"
-            placeholder="替换为…"
+            aria-label={t("替换文字")}
+            placeholder={t("替换为…")}
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
             mt="3"
@@ -186,15 +188,19 @@ export function EditingTools() {
                   setOpen(false);
                 }}
               >
-                <strong>第 {m.page + 1} 页</strong>
+                <strong>
+                  {t("第")}
+                  {m.page + 1}
+                  {t("页")}
+                </strong>
                 <span>{m.text}</span>
               </button>
             ))}
           </div>
-          <p>{message || `${matches.length} 个匹配对象`}</p>
+          <p>{message || t(`${matches.length} 个匹配对象`)}</p>
           <div className="dialog-actions">
             <Dialog.Close>
-              <Button variant="soft">关闭</Button>
+              <Button variant="soft">{t("关闭")}</Button>
             </Dialog.Close>
             <Button
               disabled={!query || !matches.length}
@@ -230,10 +236,12 @@ export function EditingTools() {
                   };
                   deck.slides.forEach((slide) => slide.elements.forEach(visit));
                 });
-                setMessage(`已替换 ${count} 处；跨格式节点的匹配需逐项编辑。`);
+                setMessage(
+                  t(`已替换 ${count} 处；跨格式节点的匹配需逐项编辑。`),
+                );
               }}
             >
-              替换全部
+              {t("替换全部")}
             </Button>
           </div>
         </Dialog.Content>

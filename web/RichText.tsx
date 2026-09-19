@@ -1,4 +1,6 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { t, useLocale } from "./i18n";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Button, Select, TextField } from "@radix-ui/themes";
 import {
   Schema,
@@ -18,13 +20,15 @@ import {
   liftListItem,
 } from "prosemirror-schema-list";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
-import { history, undo, redo } from "prosemirror-history";
+import { history, undo, redo, closeHistory } from "prosemirror-history";
+import { TextContentTools } from "./TextContentTools";
 import { keymap } from "prosemirror-keymap";
 import type { Command } from "prosemirror-state";
 import { renderRichText } from "../src/render/richtext";
 import { resolveTextStyle } from "../src/render/render";
 import type { Deck, SlideElement } from "../src/types";
 import "prosemirror-view/style/prosemirror.css";
+import katex from "katex";
 declare global {
   interface Window {
     __slxCommitText?: () => void;
@@ -41,6 +45,8 @@ const styleMark: MarkSpec = {
     fontSize: { default: null },
     fontFamily: { default: null },
     backgroundColor: { default: null },
+    fontWeight: { default: null },
+    fontStyle: { default: null },
   },
   parseDOM: [
     {
@@ -52,6 +58,8 @@ const styleMark: MarkSpec = {
           fontSize: s.fontSize || null,
           fontFamily: s.fontFamily || null,
           backgroundColor: s.backgroundColor || null,
+          fontWeight: s.fontWeight || null,
+          fontStyle: s.fontStyle || null,
         };
       },
     },
@@ -121,31 +129,32 @@ export const richSchema = new Schema({
     textStyle: styleMark,
   }),
 });
-export function serializeRich(view: EditorView) {
+export function serializeRich(view: EditorView, doc = view.state.doc) {
   const div = document.createElement("div");
   div.append(
-    DOMSerializer.fromSchema(richSchema).serializeFragment(
-      view.state.doc.content,
-    ),
+    DOMSerializer.fromSchema(richSchema).serializeFragment(doc.content),
   );
   div
     .querySelectorAll<HTMLElement>(".slx-math")
     .forEach((n) =>
       n.replaceWith(document.createTextNode(`\\(${n.dataset.tex || ""}\\)`)),
     );
-  return div.innerHTML.replace(/<br>/g, "<br/>");
+  return div.innerHTML.replace(/<br>/g, "<br/>").replace(/&nbsp;/g, "&#160;");
 }
 export function RichText({
   element,
   deck,
   onDone,
+  canvas,
 }: {
   element: SlideElement;
   deck: Deck;
   onDone: (content?: string) => void;
+  canvas: React.RefObject<HTMLDivElement | null>;
 }) {
-  const host = useRef<HTMLDivElement>(null),
-    view = useRef<EditorView | null>(null),
+  useLocale();
+  const view = useRef<EditorView | null>(null),
+    finishRef = useRef<(commit: boolean) => void>(() => {}),
     done = useRef(onDone),
     [revision, setRevision] = useState(0);
   done.current = onDone;
@@ -154,7 +163,9 @@ export function RichText({
     source.innerHTML = renderRichText(element.content, { deck });
     const state = EditorState.create({
       schema: richSchema,
-      doc: DOMParser.fromSchema(richSchema).parse(source),
+      doc: DOMParser.fromSchema(richSchema).parse(source, {
+        preserveWhitespace: "full",
+      }),
       plugins: [
         history(),
         keymap({
@@ -169,34 +180,129 @@ export function RichText({
             return true;
           },
           Enter: splitListItem(richSchema.nodes.list_item),
+          "Shift-Enter": (state, dispatch) => {
+            dispatch?.(
+              state.tr
+                .replaceSelectionWith(richSchema.nodes.hard_break.create())
+                .scrollIntoView(),
+            );
+            return true;
+          },
           Tab: sinkListItem(richSchema.nodes.list_item),
           "Shift-Tab": liftListItem(richSchema.nodes.list_item),
           Escape: () => {
-            done.current();
+            finishRef.current(false);
             return true;
           },
           "Mod-Enter": () => {
-            done.current(serializeRich(view.current!));
+            finishRef.current(true);
             return true;
           },
         }),
         keymap(baseKeymap),
       ],
     });
-    const editor = new EditorView(host.current!, {
+    const target = Array.from(
+      canvas.current?.querySelectorAll<HTMLElement>(".slx-el") || [],
+    )
+      .find((node) => node.dataset.id === element.id)
+      ?.querySelector<HTMLElement>(".slx-richtext");
+    if (!target) return;
+    const original = target.innerHTML;
+    target.replaceChildren();
+    target.classList.add("inline-text-host");
+    let finished = false;
+    let compositionBoundary: ReturnType<typeof setTimeout> | undefined;
+    const finish = (commit: boolean) => {
+      if (finished) return;
+      // Blur commits native composition; parse the live DOM before unmounting,
+      // including mutations not yet delivered to ProseMirror's observer.
+      if (commit) editor.dom.blur();
+      const live = editor.dom.cloneNode(true) as HTMLElement;
+      live
+        .querySelectorAll(".ProseMirror-trailingBreak,.ProseMirror-separator")
+        .forEach((node) => node.remove());
+      const doc = commit
+        ? DOMParser.fromSchema(richSchema).parse(live, {
+            preserveWhitespace: "full",
+          })
+        : state.doc;
+      finished = true;
+      done.current(
+        commit && !doc.eq(state.doc) ? serializeRich(editor, doc) : undefined,
+      );
+    };
+    const editor = new EditorView(target, {
       state,
+      transformPastedHTML: (html) => {
+        const pasted = document.createElement("div");
+        pasted.innerHTML = html;
+        pasted
+          .querySelectorAll("script,style,meta,link,title")
+          .forEach((node) => node.remove());
+        // Office/browser clipboards often use div paragraphs outside our DSL subset.
+        for (const block of Array.from(
+          pasted.querySelectorAll("div"),
+        ).reverse()) {
+          if (block.querySelector("p,ul,ol"))
+            block.replaceWith(...block.childNodes);
+          else {
+            const p = document.createElement("p");
+            p.style.cssText = block.style.cssText;
+            p.append(...block.childNodes);
+            block.replaceWith(p);
+          }
+        }
+        return renderRichText(pasted.innerHTML, { deck });
+      },
+      handleDOMEvents: {
+        compositionstart: () => {
+          clearTimeout(compositionBoundary);
+          editor.dispatch(closeHistory(editor.state.tr));
+          return false;
+        },
+        compositionend: () => {
+          compositionBoundary = setTimeout(() => {
+            if (!editor.isDestroyed)
+              editor.dispatch(closeHistory(editor.state.tr));
+          }, 0);
+          return false;
+        },
+      },
+      nodeViews: {
+        math: (node) => {
+          const dom = document.createElement("span");
+          dom.className = "slx-math";
+          dom.dataset.tex = node.attrs.tex;
+          katex.render(node.attrs.tex, dom, { throwOnError: false });
+          return { dom };
+        },
+      },
       dispatchTransaction: (tr) => {
         editor.updateState(editor.state.apply(tr));
         setRevision((x) => x + 1);
       },
       attributes: {
-        "aria-label": "富文本内容",
+        "aria-label": t("富文本内容"),
         role: "textbox",
         "aria-multiline": "true",
       },
     });
     view.current = editor;
-    window.__slxCommitText = () => done.current(serializeRich(editor));
+    setRevision((x) => x + 1);
+    finishRef.current = finish;
+    window.__slxCommitText = () => finish(true);
+    const outside = (event: PointerEvent) => {
+      const node = event.target as HTMLElement;
+      if (
+        target.contains(node) ||
+        node.closest(".rich-editor, [data-rich-editor-ui]")
+      )
+        return;
+      // Commit before the next control reads the document or changes the page.
+      flushSync(() => finish(true));
+    };
+    document.addEventListener("pointerdown", outside, true);
     window.__slxTextCommand = (command) => {
       if (command === "undo") {
         undo(editor.state, editor.dispatch);
@@ -213,7 +319,11 @@ export function RichText({
       delete window.__slxCommitText;
       delete window.__slxTextCommand;
       view.current = null;
+      clearTimeout(compositionBoundary);
       editor.destroy();
+      target.innerHTML = original;
+      target.classList.remove("inline-text-host");
+      document.removeEventListener("pointerdown", outside, true);
     };
   }, [element.id]);
   const run = (command: Command) => {
@@ -232,18 +342,87 @@ export function RichText({
     const m = richSchema.marks.textStyle.create({ ...prev, ...attrs });
     const tr = v.state.tr;
     if (v.state.selection.empty) tr.addStoredMark(m);
-    else tr.addMark(v.state.selection.from, v.state.selection.to, m);
+    else
+      v.state.doc.nodesBetween(
+        v.state.selection.from,
+        v.state.selection.to,
+        (node, pos) => {
+          if (!node.isInline) return;
+          const prior =
+            node.marks.find((mark) => mark.type === richSchema.marks.textStyle)
+              ?.attrs || {};
+          tr.addMark(
+            Math.max(pos, v.state.selection.from),
+            Math.min(pos + node.nodeSize, v.state.selection.to),
+            richSchema.marks.textStyle.create({ ...prior, ...attrs }),
+          );
+        },
+      );
     v.dispatch(tr);
     v.focus();
   };
   const resolved = resolveTextStyle(element, deck);
+  const state = view.current?.state;
+  const marks: (readonly import("prosemirror-model").Mark[])[] = [];
+  if (state) {
+    if (state.selection.empty)
+      marks.push(state.storedMarks || state.selection.$from.marks());
+    else
+      state.doc.nodesBetween(
+        state.selection.from,
+        state.selection.to,
+        (node) => {
+          if (node.isText) marks.push(node.marks);
+        },
+      );
+  }
+  const active = (name: string) =>
+    marks.length > 0 &&
+    marks.every((ms) => {
+      const styles = ms.find((m) => m.type.name === "textStyle")?.attrs;
+      if (name === "strong" && styles?.fontWeight)
+        return styles.fontWeight === "bold" || Number(styles.fontWeight) >= 600;
+      if (name === "em" && styles?.fontStyle)
+        return styles.fontStyle === "italic";
+      return (
+        ms.some((m) => m.type.name === name) ||
+        (name === "strong" && !!resolved.bold) ||
+        (name === "em" && !!resolved.italic)
+      );
+    });
+  const common = (name: string, fallback: string) => {
+    const values = marks.map((ms) =>
+      String(
+        ms.find((m) => m.type.name === "textStyle")?.attrs[name] || fallback,
+      ),
+    );
+    return values.length && values.some((v) => v !== values[0])
+      ? ""
+      : values[0] || fallback;
+  };
+  const font = common("fontFamily", resolved.fontFamily || "Segoe UI");
+  const size = common("fontSize", `${resolved.fontSize}px`).replace(/px$/, "");
+  const color = common("color", resolved.color || "#1a1a1a");
+  const colorValue = (value: string, fallback: string) => {
+    if (/^#[\da-f]{6}$/i.test(value)) return value;
+    const rgb = value.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+    return rgb
+      ? "#" +
+          rgb
+            .slice(1)
+            .map((n) => Number(n).toString(16).padStart(2, "0"))
+            .join("")
+      : fallback;
+  };
+  const [sizeDraft, setSizeDraft] = useState(size);
+  useEffect(() => setSizeDraft(size), [size]);
   return (
     <div
       className="rich-editor"
       data-revision={revision}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="rich-toolbar" role="toolbar" aria-label="文本格式">
+      <div className="rich-toolbar" role="toolbar" aria-label={t("文本格式")}>
         {(
           [
             "strong",
@@ -257,10 +436,44 @@ export function RichText({
           <Button
             key={name}
             size="1"
-            variant="soft"
-            aria-label={["加粗", "斜体", "下划线", "删除线", "上标", "下标"][i]}
+            variant={active(name) ? "solid" : "soft"}
+            aria-pressed={active(name)}
+            aria-label={
+              [
+                t("加粗"),
+                t("斜体"),
+                t("下划线"),
+                t("删除线"),
+                t("上标"),
+                t("下标"),
+              ][i]
+            }
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => run(toggleMark(richSchema.marks[name]))}
+            onClick={() => {
+              if (
+                (name === "strong" &&
+                  (resolved.bold ||
+                    marks.some((ms) =>
+                      ms.some(
+                        (m) =>
+                          m.type.name === "textStyle" && m.attrs.fontWeight,
+                      ),
+                    ))) ||
+                (name === "em" &&
+                  (resolved.italic ||
+                    marks.some((ms) =>
+                      ms.some(
+                        (m) => m.type.name === "textStyle" && m.attrs.fontStyle,
+                      ),
+                    )))
+              ) {
+                format(
+                  name === "strong"
+                    ? { fontWeight: active(name) ? "normal" : "bold" }
+                    : { fontStyle: active(name) ? "normal" : "italic" },
+                );
+              } else run(toggleMark(richSchema.marks[name]));
+            }}
           >
             {["B", "I", "U", "S", "x²", "x₂"][i]}
           </Button>
@@ -269,30 +482,74 @@ export function RichText({
           size="1"
           variant="soft"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run(wrapInList(richSchema.nodes.bullet_list))}
+          onClick={() =>
+            run((state, dispatch, view) => {
+              for (let d = state.selection.$from.depth; d > 0; d--)
+                if (
+                  state.selection.$from.node(d).type ===
+                  richSchema.nodes.bullet_list
+                )
+                  return liftListItem(richSchema.nodes.list_item)(
+                    state,
+                    dispatch,
+                    view,
+                  );
+              return wrapInList(richSchema.nodes.bullet_list)(
+                state,
+                dispatch,
+                view,
+              );
+            })
+          }
         >
-          • 列表
+          {t("• 列表")}
         </Button>
         <Button
           size="1"
           variant="soft"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run(wrapInList(richSchema.nodes.ordered_list))}
+          onClick={() =>
+            run((state, dispatch, view) => {
+              for (let d = state.selection.$from.depth; d > 0; d--)
+                if (
+                  state.selection.$from.node(d).type ===
+                  richSchema.nodes.ordered_list
+                )
+                  return liftListItem(richSchema.nodes.list_item)(
+                    state,
+                    dispatch,
+                    view,
+                  );
+              return wrapInList(richSchema.nodes.ordered_list)(
+                state,
+                dispatch,
+                view,
+              );
+            })
+          }
         >
-          1. 列表
+          {t("1. 列表")}
         </Button>
         <Select.Root
-          defaultValue="Segoe UI"
+          value={font || "__mixed"}
           onValueChange={(fontFamily) => format({ fontFamily })}
         >
-          <Select.Trigger aria-label="字体" />
-          <Select.Content>
+          <Select.Trigger aria-label={t("字体")} />
+          <Select.Content data-rich-editor-ui>
+            {!font && (
+              <Select.Item value="__mixed" disabled>
+                {t("混合字体")}
+              </Select.Item>
+            )}
             {[
-              "Segoe UI",
-              "Microsoft YaHei",
-              "Arial",
-              "Georgia",
-              "Consolas",
+              ...new Set([
+                ...(font ? [font] : []),
+                "Segoe UI",
+                "Microsoft YaHei",
+                "Arial",
+                "Georgia",
+                "Consolas",
+              ]),
             ].map((f) => (
               <Select.Item key={f} value={f}>
                 {f}
@@ -301,63 +558,51 @@ export function RichText({
           </Select.Content>
         </Select.Root>
         <input
-          aria-label="文字颜色"
+          aria-label={t("文字颜色")}
           type="color"
+          value={colorValue(color, "#000000")}
           onChange={(e) => format({ color: e.target.value })}
         />
         <input
-          aria-label="文字背景"
+          aria-label={t("文字背景")}
           type="color"
-          defaultValue="#ffffff"
+          value={colorValue(
+            common("backgroundColor", resolved.backgroundColor || "#ffffff"),
+            "#ffffff",
+          )}
           onChange={(e) => format({ backgroundColor: e.target.value })}
         />
         <TextField.Root
-          aria-label="字号"
+          aria-label={t("字号")}
           type="number"
           min="1"
           max="300"
-          defaultValue={resolved.fontSize}
-          onChange={(e) => {
-            if (+e.target.value > 0)
-              format({ fontSize: `${e.target.value}px` });
+          value={sizeDraft}
+          placeholder={t("混合")}
+          onChange={(e) => setSizeDraft(e.target.value)}
+          onBlur={() => {
+            if (+sizeDraft > 0 && +sizeDraft <= 300 && sizeDraft !== size)
+              format({ fontSize: `${sizeDraft}px` });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
           }}
           style={{ width: 68 }}
         />
-        <Button
-          size="1"
-          variant="soft"
-          onClick={() => {
-            const href = prompt("链接地址（https:// 或 mailto:）");
-            if (href && /^(https?:|mailto:)/.test(href))
-              run(toggleMark(richSchema.marks.link, { href }));
-          }}
-        >
-          链接
+        <Button size="1" onClick={() => finishRef.current(true)}>
+          {t("完成")}
         </Button>
         <Button
           size="1"
-          onClick={() => done.current(serializeRich(view.current!))}
+          variant="ghost"
+          onClick={() => finishRef.current(false)}
         >
-          完成
-        </Button>
-        <Button size="1" variant="ghost" onClick={() => done.current()}>
-          取消
+          {t("取消")}
         </Button>
       </div>
-      <div
-        ref={host}
-        className="rich-document slx-richtext"
-        style={{
-          fontFamily: resolved.fontFamily,
-          fontSize: resolved.fontSize,
-          color: resolved.color,
-          lineHeight: resolved.lineHeight,
-          fontWeight: resolved.bold ? "bold" : undefined,
-          fontStyle: resolved.italic ? "italic" : undefined,
-        }}
-      />
+      <TextContentTools view={view.current} revision={revision} />
       <span className="rich-hint">
-        Ctrl+Enter 完成 · Esc 取消 · Ctrl+Z 撤销文字修改
+        {t("Ctrl+Enter 完成 · Esc 取消 · Ctrl+Z 撤销文字修改")}
       </span>
     </div>
   );

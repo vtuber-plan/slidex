@@ -11,13 +11,13 @@ interface RichTextCtx {
 const INLINE = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'sup', 'sub', 'a', 'br']);
 const BLOCK = new Set(['p', 'li', 'ul', 'ol']);
 
-const P_STYLE_PROPS = ['text-align', 'line-height', 'margin-top', 'margin-left', 'margin-right', 'text-indent'];
+const P_STYLE_PROPS = ['text-align', 'line-height', 'margin-top', 'margin-bottom', 'margin-left', 'margin-right', 'text-indent'];
 const SPAN_STYLE_PROPS = ['color', 'font-size', 'font-family', 'background-color', 'font-weight', 'font-style'];
 
 const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const escapeAttr = (s: string): string => escapeHtml(s).replace(/"/g, '&quot;');
-const decodeEnt = (s: string): string => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos);/g, (all: string, g: string): string => {
-  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+const decodeEnt = (s: string): string => s.replace(/&(#x?[0-9a-fA-F]+|lt|gt|amp|quot|apos|nbsp);/g, (all: string, g: string): string => {
+  const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: '\u00a0' };
   if (named[g]) return named[g];
   const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
   return Number.isFinite(code) ? String.fromCodePoint(code) : all;
@@ -30,7 +30,7 @@ export function renderRichText(content: unknown, ctx: RichTextCtx = {}): string 
   // 1) 抽出行内公式 → 占位
   const maths: string[] = [];
   src = src.replace(/\\\(([\s\S]+?)\\\)/g, (_all: string, tex: string): string => {
-    maths.push(tex);
+    maths.push(decodeEnt(tex));
     return `\x00${maths.length - 1}\x00`;
   });
 
@@ -97,12 +97,13 @@ function parseAttrs(raw: string): Record<string, string> {
 
 function buildSafeAttr(name: string, attrs: Record<string, string>, ctx: RichTextCtx): string {
   if (name === 'a') {
-    const href = attrs.href || '';
+    const href = decodeEnt(attrs.href || '');
     if (/^(https?:|mailto:)/i.test(href)) return ` href="${escapeAttr(href)}" class="slx-link"`;
     return '';
   }
+  const listStart = name === 'ol' && /^\d+$/.test(attrs.start || '') ? ` start="${attrs.start}"` : '';
   const style = attrs.style;
-  if (!style) return '';
+  if (!style) return listStart;
   const allowed = name === 'span' ? SPAN_STYLE_PROPS : P_STYLE_PROPS;
   const keep: string[] = [];
   for (const decl of style.split(';')) {
@@ -115,7 +116,7 @@ function buildSafeAttr(name: string, attrs: Record<string, string>, ctx: RichTex
     if (!vv) continue;
     if (kk === 'line-height') {
       if (/^\d*\.?\d+$/.test(vv)) { /* 倍数 */ } else if (/^\d+(\.\d+)?px$/i.test(vv)) vv = vv.toLowerCase(); else continue;
-    } else if (kk.endsWith('margin') || kk === 'text-indent' || kk === 'font-size') {
+    } else if (kk.startsWith('margin-') || kk === 'text-indent' || kk === 'font-size') {
       if (!/^-?\d+(\.\d+)?px$/i.test(vv)) continue;
       vv = vv.toLowerCase();
     } else if (kk === 'text-align') {
@@ -127,7 +128,7 @@ function buildSafeAttr(name: string, attrs: Record<string, string>, ctx: RichTex
     }
     keep.push(`${kk}:${vv}`);
   }
-  return keep.length ? ` style="${escapeAttr(keep.join(';'))}"` : '';
+  return listStart + (keep.length ? ` style="${escapeAttr(keep.join(';'))}"` : '');
 }
 
 function resolveColorRef(v: string, ctx: RichTextCtx): string {

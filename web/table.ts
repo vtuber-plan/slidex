@@ -1,26 +1,6 @@
 import type { TableCell } from "../src/types";
-export interface CellPosition {
-  cell: TableCell;
-  row: number;
-  col: number;
-  index: number;
-}
-export function tableGrid(rows: TableCell[][], width: number) {
-  const grid: (CellPosition | undefined)[][] = rows.map(() => Array(width));
-  rows.forEach((cells, row) => {
-    let col = 0;
-    cells.forEach((cell, index) => {
-      while (grid[row][col]) col++;
-      const pos = { cell, row, col, index };
-      for (let y = 0; y < Number(cell["row-span"] || 1); y++)
-        for (let x = 0; x < Number(cell["col-span"] || 1); x++) {
-          if (grid[row + y]) grid[row + y][col + x] = pos;
-        }
-      col += Number(cell["col-span"] || 1);
-    });
-  });
-  return grid;
-}
+import { tableGrid, type CellPosition } from "../src/table-edit";
+export { tableGrid, editTableStructure } from "../src/table-edit";
 export function mergeCells(
   rows: TableCell[][],
   width: number,

@@ -9,13 +9,18 @@ import { buildStandaloneHtml } from "../dist/export/html.js";
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "slidex-react-"));
 const file = path.join(temp, "deck.slx");
+const cropImage =
+  "data:image/svg+xml;base64," +
+  Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#60a5fa"/><circle cx="100" cy="150" r="60" fill="#fbbf24"/></svg>',
+  ).toString("base64");
 const fixture = `<deck version="1" title="React regression" width="960" height="540">
 <slide id="one" transition="fade"><animation target="text" effect="fade-in" trigger="onClick" duration="30"/><animation target="shape" effect="pulse" trigger="afterPrevious" duration="30"/>
 <text id="text" x="60" y="70" w="400" h="90"><ul><li>Hello <strong>world</strong></li></ul><p>Formula \\(x^2\\)</p></text>
 <shape id="shape" x="500" y="60" w="150" h="100" fill="#6366f1"/>
 <table id="table" x="60" y="230" w="400" h="150"><cols>0.5 0.5</cols><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>
 <chart id="chart" x="520" y="230" w="350" h="230"><data cols="label,value"><row>A,10</row><row>B,20</row></data><series type="bar" x="label" y="value"/></chart></slide>
-<slide id="two"><text id="last" x="50" y="50" w="400" h="80">Second slide</text></slide></deck>`;
+<slide id="two"><text id="last" x="50" y="50" w="400" h="80">Second slide</text><image id="photo" src="${cropImage}" x="500" y="150" w="160" h="240"/></slide></deck>`;
 fs.writeFileSync(file, fixture);
 const chrome =
   process.env.CHROME_PATH ||
@@ -50,6 +55,13 @@ const check = (name, condition) => {
 const clickText = async (text) => {
   await page.locator(`button::-p-text(${text})`).click();
 };
+const setBatchField = async (label, value) => {
+  const field = await page.$(`.multi-inspector [aria-label="${label}"]`);
+  await field.click({ clickCount: 3 });
+  await page.keyboard.press("Backspace");
+  await field.type(String(value));
+  await page.keyboard.press("Enter");
+};
 const xml = () => page.evaluate(() => window.__slxGetXml());
 const select = async (id) => {
   await page.$eval(`#canvasHost .slx-el[data-id="${id}"]`, (el) =>
@@ -66,6 +78,39 @@ const select = async (id) => {
 try {
   await page.goto(base, { waitUntil: "networkidle0" });
   await page.waitForSelector("#canvasHost .slx-slide");
+  const languageXml = await xml();
+  await page.click('[aria-label="Language / 语言"]');
+  check(
+    "language switch translates editor controls",
+    !!(await page.$('[aria-label="Insert object"]')) &&
+      (await page.$eval(".notes-panel summary", (el) => el.textContent)) ===
+        "Speaker notes",
+  );
+  check("language switch preserves document", (await xml()) === languageXml);
+  await page.reload({ waitUntil: "networkidle0" });
+  check(
+    "language preference survives reload",
+    !!(await page.$('[aria-label="Insert object"]')),
+  );
+  await page.screenshot({ path: path.join(temp, "editor-en.png") });
+  await page.click('[aria-label="Language / 语言"]');
+  check(
+    "speaker notes are collapsed by default",
+    await page.$eval(".notes-panel", (el) => !el.open),
+  );
+  check(
+    "insert tools are above the canvas",
+    await page.$eval(
+      ".insert-toolbar",
+      (el) =>
+        el.getBoundingClientRect().bottom <=
+        document.querySelector("#canvasHost").getBoundingClientRect().top,
+    ),
+  );
+  check(
+    "paste button allows system clipboard on fresh load",
+    !(await page.$eval('[aria-label="粘贴"]', (el) => el.disabled)),
+  );
   check(
     "formula renders with external network blocked",
     !!(await page.$("#canvasHost .katex")),
@@ -87,15 +132,167 @@ try {
     "initial DSL preserved",
     (await xml()).includes("<ul><li>Hello <strong>world</strong></li></ul>"),
   );
+  const beforeText = await xml();
   await page.click('#canvasHost .slx-el[data-id="text"]', { clickCount: 2 });
   await page.waitForSelector(".ProseMirror");
+  check(
+    "text edits inside the actual slide, without a dialog",
+    !!(await page.$("#canvasHost .slx-text .ProseMirror")) &&
+      !(await page.$('[role="dialog"]')),
+  );
+  check(
+    "inline formula retains rendered math",
+    !!(await page.$(".ProseMirror .katex")),
+  );
+  await page.screenshot({ path: path.join(temp, "inline.png") });
   await clickText("完成");
-  await page.waitForSelector('[role="dialog"]', { hidden: true });
+  await page.waitForSelector(".ProseMirror", { hidden: true });
+  check(
+    "opening and closing text preserves original DSL exactly",
+    (await xml()) === beforeText,
+  );
   const rich = await xml();
   check(
     "ProseMirror roundtrip preserves lists and inline math",
     rich.includes("<li>") && rich.includes("\\(x^2\\)"),
   );
+  await page.click('#canvasHost .slx-el[data-id="text"]', { clickCount: 2 });
+  await page.waitForSelector(".ProseMirror");
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  await page.$eval(".ProseMirror", (el) => {
+    const data = new DataTransfer();
+    data.setData(
+      "text/html",
+      '<p><span style="color:#ff0000;font-size:20px;font-family:Georgia">Red</span><span style="color:#0000ff;font-size:24px;font-family:Arial">Blue</span></p>',
+    );
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  });
+  await page.keyboard.down("Control");
+  await page.keyboard.press("a");
+  await page.keyboard.up("Control");
+  check(
+    "mixed selection shows mixed font and size",
+    (await page.$eval(
+      '.rich-toolbar [aria-label="字号"]',
+      (el) => el.value === "",
+    )) &&
+      (
+        await page.$eval(
+          '.rich-toolbar [aria-label="字体"]',
+          (el) => el.textContent,
+        )
+      ).includes("混合字体"),
+  );
+  await page.type('.rich-toolbar [aria-label="字号"]', "30");
+  await page.keyboard.press("Enter");
+  await clickText("完成");
+  const mixedContent = parseSlideX(await xml()).deck.slides[0].elements.find(
+    (el) => el.id === "text",
+  ).content;
+  check(
+    "changing size preserves per-run colors and fonts",
+    /rgb\(255, 0, 0\)|#ff0000/.test(mixedContent) &&
+      /rgb\(0, 0, 255\)|#0000ff/.test(mixedContent) &&
+      mixedContent.includes("Georgia") &&
+      mixedContent.includes("Arial") &&
+      mixedContent.includes("30px"),
+  );
+  await page.click('[aria-label="撤销"]');
+  check(
+    "formatted text transaction undoes as one edit",
+    (await xml()) === beforeText,
+  );
+  await page.click('#canvasHost .slx-el[data-id="text"]', { clickCount: 2 });
+  await page.waitForSelector(".ProseMirror");
+  await page.keyboard.type("Cancelled draft");
+  await page.keyboard.press("Escape");
+  check("Escape discards inline draft", (await xml()) === beforeText);
+  await page.click('#canvasHost .slx-el[data-id="text"]', { clickCount: 2 });
+  await page.waitForSelector(".ProseMirror");
+  await page.keyboard.type("Committed draft");
+  await page.click('[aria-label="第 2 页"]');
+  check(
+    "page navigation commits inline draft",
+    (await xml()).includes("Committed draft"),
+  );
+  await page.click('[aria-label="撤销"]');
+  check("one undo restores entire inline edit", (await xml()) === beforeText);
+  await page.click('[aria-label="第 2 页"]');
+  await page.click('#canvasHost .slx-el[data-id="photo"]');
+  await page.waitForSelector(".crop-window");
+  const imgRect = await page.$eval(".crop-preview", (el) => {
+    const r = el.getBoundingClientRect();
+    return { width: r.width, height: r.height };
+  });
+  check(
+    "portrait crop preview uses natural image ratio without letterboxing",
+    Math.abs(imgRect.height / imgRect.width - 1.5) < 0.01,
+  );
+  const grip = await page.$eval('[aria-label="裁剪手柄 nw"]', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(
+    grip.x + imgRect.width * 0.2,
+    grip.y + imgRect.height * 0.15,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  const getCrop = async () =>
+    parseSlideX(await xml()).deck.slides[1].elements.find(
+      (e) => e.id === "photo",
+    ).crop || "";
+  const cropped = await getCrop();
+  check(
+    "crop handles write normalized source coordinates",
+    Math.abs(Number(cropped.split(",")[0]) - 0.2) < 0.01 &&
+      Math.abs(Number(cropped.split(",")[1]) - 0.15) < 0.01,
+  );
+  await page.click('[aria-label="撤销"]');
+  check("one undo restores entire crop gesture", (await getCrop()) === "");
+  await page.click('[aria-label="重做"]');
+  check("redo restores crop rectangle", (await getCrop()) === cropped);
+  await page.click('#canvasHost .slx-el[data-id="photo"]');
+  await page.waitForSelector(".crop-window");
+  await page.$eval('[aria-label="裁剪手柄 se"]', (el) =>
+    el.scrollIntoView({ block: "center" }),
+  );
+  const grip2 = await page.$eval('[aria-label="裁剪手柄 se"]', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(grip2.x, grip2.y);
+  await page.mouse.down();
+  await page.mouse.move(grip2.x - 30, grip2.y - 30, { steps: 5 });
+  check(
+    "crop resize is active before cancellation",
+    (await getCrop()) !== cropped,
+  );
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  check(
+    "Escape cancels crop without changing history result",
+    (await getCrop()) === cropped,
+  );
+  check(
+    "cancelling crop keeps selected image and handles",
+    !!(await page.$(".crop-window")),
+  );
+  await page.screenshot({ path: path.join(temp, "crop.png") });
+  await page.evaluate(() => window.__slxSave());
+  await page.reload({ waitUntil: "networkidle0" });
+  check("crop persists after save and reload", (await getCrop()) === cropped);
+  await page.click('[aria-label="第 1 页"]');
   await page.click('[aria-label="插入对象"] button');
   await page.waitForFunction(
     () => document.querySelectorAll("#canvasHost .slx-el").length === 5,
@@ -126,8 +323,64 @@ try {
     "table rectangular merge persists to DSL",
     (await xml()).includes('col-span="2"'),
   );
+  const tableState = async () =>
+    parseSlideX(await xml()).deck.slides[0].elements.find(
+      (el) => el.id === "table",
+    );
+  await clickText("右侧插入列");
+  check(
+    "inserting within merged columns extends span",
+    Number((await tableState()).rowsData[0][0]["col-span"]) === 3 &&
+      (await tableState()).cols.length === 3,
+  );
+  await page.click('[aria-label="撤销"]');
+  check(
+    "one undo restores merged table structure",
+    (await tableState()).cols.length === 2 &&
+      Number((await tableState()).rowsData[0][0]["col-span"]) === 2,
+  );
+  await page.click('[aria-label="重做"]');
+  check(
+    "redo restores merged column insertion",
+    (await tableState()).cols.length === 3,
+  );
+  await page.evaluate(() => window.__slxSave());
+  await page.reload({ waitUntil: "networkidle0" });
+  check(
+    "merged structure saves and reloads",
+    Number((await tableState()).rowsData[0][0]["col-span"]) === 3,
+  );
+  await page.click('#canvasHost .slx-el[data-id="table"]');
+  await clickText("删除列");
+  check(
+    "deleting merged anchor column preserves content",
+    (await tableState()).rowsData[0][0].text === "A B" &&
+      Number((await tableState()).rowsData[0][0]["col-span"]) === 2,
+  );
   await clickText("拆分单元格");
   check("table split persists to DSL", !(await xml()).includes('col-span="2"'));
+  await page.click('[aria-label="单元格 1,1"]');
+  await page.keyboard.down("Shift");
+  await page.click('[aria-label="单元格 2,1"]');
+  await page.keyboard.up("Shift");
+  await clickText("合并单元格");
+  await clickText("下方插入行");
+  check(
+    "inserting within merged rows extends span",
+    Number((await tableState()).rowsData[0][0]["row-span"]) === 3 &&
+      (await tableState()).rowsData.length === 3,
+  );
+  await clickText("删除行");
+  check(
+    "deleting merged anchor row retains content and span",
+    (await tableState()).rowsData[0][0].text === "A B" &&
+      Number((await tableState()).rowsData[0][0]["row-span"]) === 2,
+  );
+  await clickText("拆分单元格");
+  check(
+    "split remains usable after structural edits",
+    !(await tableState()).rowsData[0][0]["row-span"],
+  );
   await page.click('#canvasHost .slx-el[data-id="chart"]');
   const input = await page.$('[aria-label="图表数据 1,2"]');
   await input.click({ clickCount: 3 });
@@ -171,6 +424,65 @@ try {
       (e) => e.id === "shape",
     ).x === beforeDrag,
   );
+  await page.click('#canvasHost .slx-el[data-id="shape"]');
+  await clickText("锁定对象");
+  check(
+    "locked inspector disables object properties",
+    await page.$eval(".object-fields", (el) => el.disabled),
+  );
+  const lockedShape = parseSlideX(await xml()).deck.slides[0].elements.find(
+    (el) => el.id === "shape",
+  );
+  await page.click('[aria-label="左对齐"]');
+  await page.keyboard.press("Delete");
+  check(
+    "locked object survives alignment and deletion commands",
+    JSON.stringify(
+      parseSlideX(await xml()).deck.slides[0].elements.find(
+        (el) => el.id === "shape",
+      ),
+    ) === JSON.stringify(lockedShape),
+  );
+  await page.click('#canvasHost .slx-el[data-id="shape"]');
+  await page.keyboard.down("Shift");
+  await page.click('#canvasHost .slx-el[data-id="text"]');
+  await page.keyboard.up("Shift");
+  check(
+    "multi selection reports locked objects",
+    (await page.$eval(".selection-summary", (el) => el.textContent)).includes(
+      "1 个已锁定",
+    ),
+  );
+  const beforeBatchLocked = await xml();
+  await setBatchField("不透明度", 0.6);
+  const afterBatchLocked = parseSlideX(await xml()).deck.slides[0].elements;
+  check(
+    "batch edit skips locked objects",
+    afterBatchLocked.find((el) => el.id === "shape").opacity ===
+      lockedShape.opacity &&
+      afterBatchLocked.find((el) => el.id === "text").opacity === 0.6,
+  );
+  await page.click('[aria-label="撤销"]');
+  check(
+    "one undo restores partial-lock batch",
+    (await xml()) === beforeBatchLocked,
+  );
+  await page.click('#canvasHost .slx-el[data-id="shape"]');
+  await clickText("解锁对象");
+  check(
+    "explicit unlock restores editing",
+    !(await page.$eval(".object-fields", (el) => el.disabled)),
+  );
+  const beforeLockedPage = await xml();
+  await page.click('[aria-label="新增页面"]');
+  await page.click('[aria-label="插入对象"] button');
+  await clickText("锁定对象");
+  await page.click('[aria-label="删除页面"]');
+  check(
+    "deleting a slide with locked objects does not move them to another slide",
+    (await xml()) === beforeLockedPage,
+  );
+  await page.click('[aria-label="第 1 页"]');
   await page.evaluate(() => window.__slxSave());
   const saved = await xml();
   await page.reload({ waitUntil: "networkidle0" });
@@ -194,6 +506,59 @@ try {
       return window.__slxCommand("selectAll");
     }),
   );
+  check(
+    "mixed widths are explicitly shown",
+    await page.$eval(
+      '.multi-inspector [aria-label="宽度"]',
+      (el) => el.value === "" && el.placeholder === "混合",
+    ),
+  );
+  check(
+    "cross-type selection excludes unsupported text properties",
+    !(await page.$('.multi-inspector [aria-label="字体"]')),
+  );
+  const beforeBatch = await xml();
+  const positions = parseSlideX(beforeBatch).deck.slides[0].elements.map(
+    (el) => el.x,
+  );
+  await setBatchField("水平位移", 12);
+  check(
+    "relative move preserves spacing across types",
+    parseSlideX(await xml()).deck.slides[0].elements.every(
+      (el, i) => el.x === positions[i] + 12,
+    ),
+  );
+  await page.click('[aria-label="Language / 语言"]');
+  check(
+    "batch panel translates without losing selection",
+    (await page.$eval(".multi-inspector", (el) => el.innerText)).includes(
+      "Batch properties",
+    ) && !!(await page.$('.multi-inspector [aria-label="Width"]')),
+  );
+  await page.click('[aria-label="Language / 语言"]');
+  await page.screenshot({ path: path.join(temp, "multi-inspector.png") });
+  await page.click('[aria-label="撤销"]');
+  check(
+    "one undo restores whole selection offset",
+    (await xml()) === beforeBatch,
+  );
+  await page.click('[aria-label="重做"]');
+  const batchSaved = await xml();
+  await page.evaluate(() => window.__slxSave());
+  await page.reload({ waitUntil: "networkidle0" });
+  check(
+    "batch geometry persists after save and reload",
+    (await xml()) === batchSaved,
+  );
+  await page.evaluate(() => {
+    document.activeElement?.blur();
+    window.__slxCommand("selectAll");
+  });
+  await setBatchField("水平位移", -12);
+  await page.evaluate(() => {
+    document.activeElement?.blur();
+    window.__slxCommand("selectAll");
+  });
   await page.evaluate(() => {
     window.__slxCommand("copy");
     window.__slxCommand("paste");
@@ -226,12 +591,25 @@ try {
   await page.keyboard.up("Control");
   await page.keyboard.type("Edited with ProseMirror");
   await page.click('[aria-label="加粗"]');
+  check(
+    "text toolbar reflects stored bold mark",
+    await page.$eval(
+      '[aria-label="加粗"]',
+      (el) => el.getAttribute("aria-pressed") === "true",
+    ),
+  );
   await page.keyboard.type(" bold");
   await page.evaluate(() => window.__slxSave());
   await page.waitForSelector('[role="dialog"]', { hidden: true });
   check(
     "native save commits active ProseMirror transaction",
     fs.readFileSync(file, "utf8").includes("Edited with ProseMirror"),
+  );
+  check(
+    "committed text is visible on the canvas immediately",
+    await page.$eval('#canvasHost .slx-el[data-id="text"]', (el) =>
+      el.textContent.includes("Edited with ProseMirror"),
+    ),
   );
   check(
     "ProseMirror toolbar produces semantic strong mark",
@@ -406,6 +784,17 @@ try {
     ),
   );
   await page.screenshot({ path: path.join(temp, "mobile-player.png") });
+  await page.evaluate(() => localStorage.setItem("slidex-language", "en"));
+  await page.goto(`${base}/player`, { waitUntil: "networkidle0" });
+  check(
+    "standalone Player uses saved English language",
+    !!(await page.$('[aria-label="Previous slide"]')),
+  );
+  await page.goto(`${base}/present-speaker`, { waitUntil: "networkidle0" });
+  check(
+    "presenter uses English interface",
+    (await page.$eval("body", (el) => el.innerText)).includes("Current slide"),
+  );
   check("no errors after all routes", errors.length === 0);
   console.log(
     `React regression: ${passed} passed. Screenshot: ${path.join(temp, "editor.png")}`,

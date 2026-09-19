@@ -17,7 +17,7 @@ export function RenderResources({ deck }: { deck: Deck }) {
     const links = urls.map((href) => {
       const link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = href;
+      link.href = /^(https?:|data:|\/)/i.test(href) ? href : "/f/" + href;
       link.dataset.slxFont = "";
       document.head.append(link);
       return link;
@@ -34,10 +34,19 @@ export function Thumbnail({
   slide: SlideContainer;
 }) {
   const ref = useRef<HTMLDivElement>(null),
+    [visible, setVisible] = useState(false),
     [width, setWidth] = useState(150);
   useEffect(() => {
     const observer = new ResizeObserver((entries) =>
       setWidth(entries[0].contentRect.width),
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { rootMargin: "200px" },
     );
     if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
@@ -54,7 +63,7 @@ export function Thumbnail({
           transformOrigin: "top left",
         }}
       >
-        <SlideSurface deck={deck} slide={slide} />
+        {visible && <SlideSurface deck={deck} slide={slide} />}
       </div>
     </div>
   );

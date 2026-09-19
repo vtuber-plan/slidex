@@ -86,7 +86,7 @@ function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): 
   let bgChild = '';
   if (c.background) {
     if (c.background.type === 'solid') attrs.push(`background="${esc(c.background.color)}"`);
-    else bgChild = fillChild(c.background, pad + IND);
+    else bgChild = fillChild(c.background, pad + IND, 'background');
   }
   if (!isMaster && c.notes) attrs.push(`notes="${esc(c.notes)}"`);
   const head = attrs.length ? `<${isMaster ? 'master' : 'slide'} ${attrs.join(' ')}` : `<${isMaster ? 'master' : 'slide'}`;
@@ -124,7 +124,8 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
       return;
     }
     if (typeof value === 'number') {
-      if (value === dflt) return;
+      // Geometry remains mandatory even when a coordinate equals its default.
+      if (value === dflt && !['x', 'y', 'w', 'h'].includes(name)) return;
       parts.push(`${name}="${fmt(value)}"`);
       return;
     }
@@ -163,8 +164,11 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
     }
     case 'code': return withCodeContent(open, el.content || '', pad);
     case 'table': {
-      if (el.cols?.length) children.push(`${pad}${IND}<cols>${el.cols.map(fmt).join(' ')}</cols>`);
-      if (el.rowsRatio?.length) children.push(`${pad}${IND}<rows>${el.rowsRatio.map(fmt).join(' ')}</rows>`);
+      // Ratios need more precision than pixel geometry: six rounded 1/6 values
+      // already exceed the validator's sum tolerance at three decimal places.
+      const ratio = (n: number) => String(Number(n.toPrecision(12)));
+      if (el.cols?.length) children.push(`${pad}${IND}<cols>${el.cols.map(ratio).join(' ')}</cols>`);
+      if (el.rowsRatio?.length) children.push(`${pad}${IND}<rows>${el.rowsRatio.map(ratio).join(' ')}</rows>`);
       for (const row of el.rowsData || []) {
         const tds = row.map(c => {
           const a: string[] = [];
@@ -205,15 +209,15 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
   return `${pad}${open}>\n${children.join('\n')}\n${pad}</${el.type}>`;
 }
 
-function fillChild(fill: Fill, pad: string): string {
+function fillChild(fill: Fill, pad: string, tag = 'fill'): string {
   if (fill.type === 'gradient') {
     const stops = fill.stops.map(s => `${pad}${IND}<stop pos="${fmt(s.pos)}" color="${esc(s.color)}"/>`).join('\n');
-    return `${pad}<fill type="gradient" angle="${fmt(fill.angle || 0)}">\n${stops}\n${pad}</fill>`;
+    return `${pad}<${tag} type="gradient" angle="${fmt(fill.angle || 0)}">\n${stops}\n${pad}</${tag}>`;
   }
   if (fill.type === 'image') {
-    return `${pad}<fill type="image" src="${esc(fill.src)}" fit="${esc(fill.fit || 'cover')}"${fill.opacity !== undefined && fill.opacity !== 1 ? ` opacity="${fmt(fill.opacity)}"` : ''}/>`;
+    return `${pad}<${tag} type="image" src="${esc(fill.src)}" fit="${esc(fill.fit || 'cover')}"${fill.opacity !== undefined && fill.opacity !== 1 ? ` opacity="${fmt(fill.opacity)}"` : ''}/>`;
   }
-  return `${pad}<fill type="solid" color="${esc(fill.color)}"/>`;
+  return `${pad}<${tag} type="solid" color="${esc(fill.color)}"/>`;
 }
 
 function withRichContent(open: string, content: string | undefined, pad: string): string {

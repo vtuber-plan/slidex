@@ -1,3 +1,4 @@
+import { t, useLocale, optionLabel } from "./i18n";
 import { useState } from "react";
 import { Button, Checkbox, Tabs, TextArea, Dialog } from "@radix-ui/themes";
 import {
@@ -21,7 +22,11 @@ import {
 import type { SlideElement, TableCell, AttrSpec } from "../src/types";
 import { useEditor, container, clone, uid, uploadImage } from "./store";
 import { Field, Choice, Tool } from "./ui";
-import { mergeCells, splitCell, tableGrid } from "./table";
+import { mergeCells, splitCell, tableGrid, editTableStructure } from "./table";
+import { ImageCrop } from "./ImageCrop";
+import { MultiInspector } from "./MultiInspector";
+import { resolveTextStyle } from "../src/render/render";
+import { Appearance, FillPanel, ColorControl } from "./Appearance";
 
 const labels: Record<string, string> = {
   x: "X",
@@ -75,6 +80,7 @@ const labels: Record<string, string> = {
 const camel = (s: string) =>
   s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 export function Inspector({ preview }: { preview: () => void }) {
+  useLocale();
   const s = useEditor(),
     slide = container(s),
     el = slide.elements.find((e) => e.id === s.selection[0]);
@@ -83,87 +89,123 @@ export function Inspector({ preview }: { preview: () => void }) {
     <aside className="inspector">
       <Tabs.Root value={tab} onValueChange={setTab}>
         <Tabs.List>
-          <Tabs.Trigger value="design">设计</Tabs.Trigger>
-          <Tabs.Trigger value="layers">图层</Tabs.Trigger>
-          <Tabs.Trigger value="animation">动画</Tabs.Trigger>
+          <Tabs.Trigger value="design">{t("设计")}</Tabs.Trigger>
+          <Tabs.Trigger value="layers">{t("图层")}</Tabs.Trigger>
+          <Tabs.Trigger value="animation">{t("动画")}</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="design">
           <div className="panel-body">
             {el && s.selection.length === 1 ? (
               <>
                 <div className="panel-heading">
-                  <strong>{ELEMENT_SCHEMA[el.type].label}</strong>
+                  <strong>{t(ELEMENT_SCHEMA[el.type].label)}</strong>
                   <span>{el.id}</span>
                 </div>
                 {el.type === "text" && (
                   <Button
                     className="w-full"
+                    disabled={el.locked}
                     onClick={() => useEditor.setState({ editing: el.id })}
                   >
-                    编辑富文本
+                    {t("编辑富文本")}
                   </Button>
                 )}
-                <ElementFields element={el} />
-                {el.type === "image" && <ImagePanel element={el} />}
-                {el.type === "table" && <TablePanel key={el.id} element={el} />}
-                {el.type === "chart" && <ChartPanel element={el} />}
-                {["text", "code", "formula"].includes(el.type) && (
-                  <label className="field">
-                    <span>{el.type === "text" ? "富文本源码" : "内容"}</span>
-                    <TextArea
-                      aria-label="元素内容"
-                      value={el.content || ""}
-                      onChange={(e) =>
-                        s.patch(el.id, { content: e.target.value })
-                      }
-                      rows={5}
-                    />
-                  </label>
-                )}
-                {["path", "viewBox", "points"]
-                  .filter(
-                    (k) =>
-                      el[k] !== undefined ||
-                      (el.type === "shape" && el.name === "custom"),
-                  )
-                  .map((k) => (
-                    <Field
-                      key={k}
-                      label={k}
-                      value={el[k]}
-                      onChange={(v) => s.patch(el.id, { [k]: v })}
-                    />
-                  ))}
-                {el.fillObj && (
-                  <JsonField
-                    label="渐变 / 图片填充"
-                    value={el.fillObj}
-                    onChange={(value) =>
-                      s.patch(el.id, {
-                        fillObj: value as SlideElement["fillObj"],
-                      })
-                    }
-                  />
-                )}
+                <div className="object-state">
+                  <span>{el.locked ? t("对象已锁定") : t("对象属性")}</span>
+                  <Button
+                    size="1"
+                    variant="soft"
+                    onClick={() => s.patch(el.id, { locked: !el.locked })}
+                  >
+                    {el.locked ? t("解锁对象") : t("锁定对象")}
+                  </Button>
+                </div>
                 {el.type === "group" && (
-                  <JsonField
-                    label="组合子元素"
-                    value={el.elements}
-                    onChange={(value) => {
-                      if (!Array.isArray(value))
-                        throw Error("子元素必须是数组");
-                      s.patch(el.id, { elements: value });
-                    }}
-                  />
+                  <Button
+                    disabled={el.locked}
+                    onClick={() => s.enterGroup(el.id)}
+                  >
+                    {t("进入组合")}
+                  </Button>
                 )}
+                <fieldset className="object-fields" disabled={el.locked}>
+                  {el.type === "image" && <ImagePanel element={el} />}
+                  {el.type === "table" && (
+                    <TablePanel key={el.id} element={el} />
+                  )}
+                  {el.type === "chart" && <ChartPanel element={el} />}
+                  <ElementFields element={el} />
+                  <Appearance key={`appearance-${el.id}`} element={el} />
+                  {["text", "code", "formula"].includes(el.type) && (
+                    <details
+                      className="advanced-fields"
+                      open={el.type !== "text"}
+                    >
+                      <summary>
+                        {el.type === "text"
+                          ? t("文本源码（高级）")
+                          : t("内容编辑")}
+                      </summary>
+                      <label className="field">
+                        <span>
+                          {el.type === "text" ? t("富文本源码") : t("内容")}
+                        </span>
+                        <TextArea
+                          aria-label={t("元素内容")}
+                          value={el.content || ""}
+                          onChange={(e) =>
+                            s.patch(el.id, { content: e.target.value })
+                          }
+                          rows={5}
+                        />
+                      </label>
+                    </details>
+                  )}
+                  {["path", "viewBox", "points"]
+                    .filter(
+                      (k) =>
+                        el[k] !== undefined ||
+                        (el.type === "shape" && el.name === "custom"),
+                    )
+                    .map((k) => (
+                      <Field
+                        key={k}
+                        label={k}
+                        value={el[k]}
+                        onChange={(v) => s.patch(el.id, { [k]: v })}
+                      />
+                    ))}
+                  {el.fillObj && (
+                    <JsonField
+                      label={t("渐变 / 图片填充")}
+                      value={el.fillObj}
+                      onChange={(value) =>
+                        s.patch(el.id, {
+                          fillObj: value as SlideElement["fillObj"],
+                        })
+                      }
+                    />
+                  )}
+                  {el.type === "group" && (
+                    <JsonField
+                      label={t("组合子元素")}
+                      value={el.elements}
+                      onChange={(value) => {
+                        if (!Array.isArray(value))
+                          throw Error(t("子元素必须是数组"));
+                        s.patch(el.id, { elements: value });
+                      }}
+                    />
+                  )}
+                </fieldset>
               </>
             ) : s.selection.length > 1 ? (
+              <MultiInspector />
+            ) : s.groupPath.length ? (
               <>
-                <strong>已选择 {s.selection.length} 个对象</strong>
-                <Button onClick={s.group}>组合对象</Button>
-                <Button color="red" variant="soft" onClick={s.remove}>
-                  删除选中对象
-                </Button>
+                <strong>{t("组内编辑")}</strong>
+                <p>{t("选择组合内的对象进行编辑；Esc 返回上一级。")}</p>
+                <Button onClick={() => s.leaveGroup()}>{t("退出组合")}</Button>
               </>
             ) : (
               <PagePanel />
@@ -173,8 +215,11 @@ export function Inspector({ preview }: { preview: () => void }) {
         <Tabs.Content value="layers">
           <div className="panel-body">
             <div className="panel-heading">
-              <strong>对象图层</strong>
-              <span>{slide.elements.length} 个</span>
+              <strong>{t("对象图层")}</strong>
+              <span>
+                {slide.elements.length}
+                {t("个")}
+              </span>
             </div>
             {[...slide.elements].reverse().map((el) => (
               <div
@@ -206,7 +251,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                   <small>{el.id}</small>
                 </button>
                 <Tool
-                  label={el.locked ? "解锁" : "锁定"}
+                  label={el.locked ? t("解锁") : t("锁定")}
                   onClick={() => s.patch(el.id, { locked: !el.locked })}
                 >
                   {el.locked ? <Lock size={14} /> : <Unlock size={14} />}
@@ -218,9 +263,12 @@ export function Inspector({ preview }: { preview: () => void }) {
         <Tabs.Content value="animation">
           <div className="panel-body">
             <Choice
-              label="页面切换"
+              label={t("页面切换")}
               value={slide.transition}
-              choices={[...TRANSITIONS]}
+              choices={[...TRANSITIONS].map((value) => [
+                value,
+                optionLabel(value),
+              ])}
               onChange={(value) =>
                 s.edit((_, slide) => {
                   slide.transition = value;
@@ -230,7 +278,7 @@ export function Inspector({ preview }: { preview: () => void }) {
             <div className="flex gap-2">
               <Button size="2" variant="soft" onClick={preview}>
                 <Play size={14} />
-                整页预览
+                {t("整页预览")}
               </Button>
               <Button
                 size="2"
@@ -250,7 +298,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                 }
               >
                 <Plus size={14} />
-                动画
+                {t("动画")}
               </Button>
             </div>
             {slide.animations.map((a, i) => (
@@ -275,10 +323,13 @@ export function Inspector({ preview }: { preview: () => void }) {
                 }}
               >
                 <div className="panel-heading">
-                  <strong>步骤 {i + 1}</strong>
+                  <strong>
+                    {t("步骤")}
+                    {i + 1}
+                  </strong>
                   <div className="flex">
                     <Tool
-                      label="上移动画"
+                      label={t("上移动画")}
                       disabled={!i}
                       onClick={() =>
                         s.edit((_, slide) => {
@@ -292,7 +343,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                       <ArrowUp size={14} />
                     </Tool>
                     <Tool
-                      label="下移动画"
+                      label={t("下移动画")}
                       disabled={i === slide.animations.length - 1}
                       onClick={() =>
                         s.edit((_, slide) => {
@@ -306,7 +357,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                       <ArrowDown size={14} />
                     </Tool>
                     <Tool
-                      label="删除动画"
+                      label={t("删除动画")}
                       onClick={() =>
                         s.edit((_, slide) => {
                           slide.animations.splice(i, 1);
@@ -318,7 +369,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                   </div>
                 </div>
                 <Choice
-                  label="目标"
+                  label={t("目标")}
                   value={a.target}
                   choices={slide.elements.map((e) => [e.id, e.id])}
                   onChange={(target) =>
@@ -329,16 +380,19 @@ export function Inspector({ preview }: { preview: () => void }) {
                 />
                 {(
                   [
-                    ["effect", "效果", [...ANIM_EFFECTS]],
-                    ["trigger", "触发", [...ANIM_TRIGGERS]],
-                    ["direction", "方向", ["up", "down", "left", "right"]],
+                    ["effect", t("效果"), [...ANIM_EFFECTS]],
+                    ["trigger", t("触发"), [...ANIM_TRIGGERS]],
+                    ["direction", t("方向"), ["up", "down", "left", "right"]],
                   ] as [string, string, string[]][]
                 ).map(([key, label, choices]) => (
                   <Choice
                     key={key}
                     label={label}
                     value={String(a[key as keyof typeof a])}
-                    choices={choices}
+                    choices={choices.map((value) => [
+                      value,
+                      optionLabel(value),
+                    ])}
                     onChange={(value) =>
                       s.edit((_, slide) => {
                         Object.assign(slide.animations[i], { [key]: value });
@@ -350,7 +404,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                   {(["duration", "delay"] as const).map((key) => (
                     <Field
                       key={key}
-                      label={key === "duration" ? "时长 ms" : "延迟 ms"}
+                      label={key === "duration" ? t("时长 ms") : t("延迟 ms")}
                       type="number"
                       min={0}
                       value={a[key]}
@@ -372,7 +426,13 @@ export function Inspector({ preview }: { preview: () => void }) {
 }
 
 function ElementFields({ element: el }: { element: SlideElement }) {
+  useLocale();
   const patch = useEditor((s) => s.patch);
+  const deck = useEditor((s) => s.deck);
+  const effective =
+    el.type === "text"
+      ? (resolveTextStyle(el, deck) as unknown as Record<string, unknown>)
+      : {};
   const layout = ["x", "y", "w", "h", "rotation", "opacity"];
   const advanced = [
     "href",
@@ -386,10 +446,20 @@ function ElementFields({ element: el }: { element: SlideElement }) {
     "flip-v",
     "line-height-px",
   ];
-  const excluded = ["path", "view-box", "points", "crop", "src"];
+  const excluded = [
+    "path",
+    "view-box",
+    "points",
+    "crop",
+    "src",
+    ...(["shape", "text"].includes(el.type) ? ["fill"] : []),
+    ...(["shape", "line"].includes(el.type)
+      ? ["stroke", "stroke-width", "stroke-dash"]
+      : []),
+  ];
   const field = ([key, kind, def]: AttrSpec) => {
-    const value = el[camel(key)] ?? el[key] ?? def,
-      label = labels[key] || key;
+    const value = effective[camel(key)] ?? el[camel(key)] ?? el[key] ?? def,
+      label = t(labels[key] || key);
     const change = (v: string) =>
       patch(el.id, {
         [camel(key)]: kind === "num" ? (v === "" ? undefined : Number(v)) : v,
@@ -424,13 +494,44 @@ function ElementFields({ element: el }: { element: SlideElement }) {
       ],
     };
     if (key === "name" && el.type === "shape") enums.name = [...SHAPE_NAMES];
+    if (key === "align" && el.type === "text")
+      return (
+        <div className="text-alignment" key={key}>
+          <span>{label}</span>
+          <div role="group" aria-label={label}>
+            {enums.align.map((align, i) => (
+              <button
+                type="button"
+                key={align}
+                aria-label={t(
+                  [
+                    "左上",
+                    "上中",
+                    "右上",
+                    "左中",
+                    "正中",
+                    "右中",
+                    "左下",
+                    "下中",
+                    "右下",
+                  ][i],
+                )}
+                aria-pressed={value === align}
+                onClick={() => change(align)}
+              >
+                {["↖", "↑", "↗", "←", "•", "→", "↙", "↓", "↘"][i]}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
     if (enums[key])
       return (
         <Choice
           key={key}
           label={label}
           value={String(value || "")}
-          choices={enums[key]}
+          choices={enums[key].map((value) => [value, optionLabel(value)])}
           onChange={change}
         />
       );
@@ -438,7 +539,7 @@ function ElementFields({ element: el }: { element: SlideElement }) {
       return (
         <div key={key} className="color-field">
           <input
-            aria-label={`${label}选色`}
+            aria-label={t(`${label}选色`)}
             type="color"
             value={
               /^#[\da-f]{6}$/i.test(String(value)) ? String(value) : "#6366f1"
@@ -461,11 +562,13 @@ function ElementFields({ element: el }: { element: SlideElement }) {
   const attrs = ELEMENT_SCHEMA[el.type].attrs;
   return (
     <>
-      <strong className="section-caption">位置与尺寸</strong>
-      <div className="field-grid">
-        {attrs.filter(([k]) => layout.includes(k)).map(field)}
-      </div>
-      <strong className="section-caption">外观</strong>
+      <details className="advanced-fields geometry-fields">
+        <summary>{t("位置与尺寸")}</summary>
+        <div className="field-grid">
+          {attrs.filter(([k]) => layout.includes(k)).map(field)}
+        </div>
+      </details>
+      <strong className="section-caption">{t("外观")}</strong>
       <div className="field-grid">
         {attrs
           .filter(
@@ -477,9 +580,18 @@ function ElementFields({ element: el }: { element: SlideElement }) {
           .map(field)}
       </div>
       <details className="advanced-fields">
-        <summary>排列、链接与高级设置</summary>
+        <summary>{t("排列、链接与高级设置")}</summary>
         <div className="field-grid">
-          {attrs.filter(([k]) => advanced.includes(k)).map(field)}
+          {attrs
+            .filter(
+              ([k]) =>
+                advanced.includes(k) &&
+                !(
+                  k === "shadow" &&
+                  ["shape", "text", "line", "image"].includes(el.type)
+                ),
+            )
+            .map(field)}
         </div>
       </details>
     </>
@@ -487,17 +599,18 @@ function ElementFields({ element: el }: { element: SlideElement }) {
 }
 
 function PagePanel() {
+  useLocale();
   const s = useEditor(),
     slide = container(s),
     bg = slide.background;
   return (
     <>
       <div className="panel-heading">
-        <strong>{s.master ? "母版设计" : "页面设计"}</strong>
+        <strong>{s.master ? t("母版设计") : t("页面设计")}</strong>
         <span>{slide.id}</span>
       </div>
       <Field
-        label="文档标题"
+        label={t("文档标题")}
         value={s.deck.title}
         onChange={(title) =>
           s.edit((d) => {
@@ -507,7 +620,7 @@ function PagePanel() {
       />
       <div className="field-grid">
         <Field
-          label="画幅宽度"
+          label={t("画幅宽度")}
           type="number"
           min={1}
           value={s.deck.width}
@@ -518,7 +631,7 @@ function PagePanel() {
           }
         />
         <Field
-          label="画幅高度"
+          label={t("画幅高度")}
           type="number"
           min={1}
           value={s.deck.height}
@@ -529,42 +642,18 @@ function PagePanel() {
           }
         />
       </div>
-      <Choice
-        label="背景类型"
-        value={bg?.type || "solid"}
-        choices={["solid", "gradient", "image"]}
-        onChange={(type) =>
+      <FillPanel
+        label="背景"
+        value={bg}
+        onChange={(value) =>
           s.edit((_, slide) => {
-            slide.background =
-              type === "gradient"
-                ? {
-                    type,
-                    angle: 90,
-                    stops: [
-                      { pos: 0, color: "#ffffff" },
-                      { pos: 1, color: "#c7d2fe" },
-                    ],
-                  }
-                : type === "image"
-                  ? { type, src: "", fit: "cover", opacity: 1 }
-                  : { type: "solid", color: "#ffffff" };
+            slide.background = value;
           })
         }
       />
-      {(!bg || bg.type === "solid") && (
-        <Field
-          label="背景颜色"
-          value={bg?.color || "#ffffff"}
-          onChange={(color) =>
-            s.edit((_, slide) => {
-              slide.background = { type: "solid", color };
-            })
-          }
-        />
-      )}
       {bg && bg.type !== "solid" && (
         <JsonField
-          label="背景设置"
+          label={t("背景设置")}
           value={bg}
           onChange={(value) =>
             s.edit((_, slide) => {
@@ -583,14 +672,14 @@ function PagePanel() {
           })
         }
       >
-        背景应用到全部页面
+        {t("背景应用到全部页面")}
       </Button>
       {!s.master && (
         <Choice
-          label="应用母版"
+          label={t("应用母版")}
           value={slide.master}
           choices={[
-            ["", "无母版"],
+            ["", t("无母版")],
             ...s.deck.masters.map((m) => [m.id, m.id] as [string, string]),
           ]}
           onChange={(master) =>
@@ -601,7 +690,7 @@ function PagePanel() {
         />
       )}
       <div className="panel-heading">
-        <strong>母版</strong>
+        <strong>{t("母版")}</strong>
         <Button
           size="1"
           variant="soft"
@@ -620,17 +709,19 @@ function PagePanel() {
                 line: 0,
               }),
             );
-            useEditor.setState({ master: id, selection: [] });
+            useEditor.setState({ master: id, selection: [], groupPath: [] });
           }}
         >
-          新增
+          {t("新增")}
         </Button>
       </div>
       {s.deck.masters.map((m) => (
         <Button
           key={m.id}
           variant={s.master === m.id ? "solid" : "soft"}
-          onClick={() => useEditor.setState({ master: m.id, selection: [] })}
+          onClick={() =>
+            useEditor.setState({ master: m.id, selection: [], groupPath: [] })
+          }
         >
           {m.id}
         </Button>
@@ -638,19 +729,22 @@ function PagePanel() {
       {s.master && (
         <Button
           variant="outline"
-          onClick={() => useEditor.setState({ master: "", selection: [] })}
+          onClick={() =>
+            useEditor.setState({ master: "", selection: [], groupPath: [] })
+          }
         >
-          返回幻灯片
+          {t("返回幻灯片")}
         </Button>
       )}
       <div className="panel-heading">
-        <strong>主题颜色</strong>
+        <strong>{t("主题颜色")}</strong>
       </div>
       {Object.entries(s.deck.theme.colors).map(([name, color]) => (
-        <Field
+        <ColorControl
           key={name}
           label={name}
           value={color}
+          theme={false}
           onChange={(value) =>
             s.edit((d) => {
               d.theme.colors[name] = value;
@@ -659,7 +753,7 @@ function PagePanel() {
         />
       ))}
       <JsonField
-        label="主题样式"
+        label={t("主题样式")}
         value={s.deck.theme}
         onChange={(value) =>
           s.edit((d) => {
@@ -668,11 +762,11 @@ function PagePanel() {
         }
       />
       <JsonField
-        label="字体资源"
+        label={t("字体资源")}
         value={s.deck.fonts}
         onChange={(value) =>
           s.edit((d) => {
-            if (!Array.isArray(value)) throw Error("字体必须是数组");
+            if (!Array.isArray(value)) throw Error(t("字体必须是数组"));
             d.fonts = value;
           })
         }
@@ -689,6 +783,7 @@ function JsonField({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  useLocale();
   const [open, setOpen] = useState(false),
     [draft, setDraft] = useState(""),
     [error, setError] = useState("");
@@ -708,7 +803,7 @@ function JsonField({
       <Dialog.Content>
         <Dialog.Title>{label}</Dialog.Title>
         <Dialog.Description size="2" mb="3">
-          高级结构化设置。应用前会验证文档。
+          {t("高级结构化设置。应用前会验证文档。")}
         </Dialog.Description>
         <TextArea
           value={draft}
@@ -719,7 +814,7 @@ function JsonField({
         {error && <p role="alert">{error}</p>}
         <div className="dialog-actions">
           <Dialog.Close>
-            <Button variant="soft">取消</Button>
+            <Button variant="soft">{t("取消")}</Button>
           </Dialog.Close>
           <Button
             onClick={() => {
@@ -730,7 +825,7 @@ function JsonField({
                 const after = useEditor.getState();
                 try {
                   const xml = window.__slxGetXml!();
-                  if (!xml) throw Error("无效文档");
+                  if (!xml) throw Error(t("无效文档"));
                   const result = parseSlideX(xml);
                   if (result.errors.length)
                     throw Error(result.errors.map((e) => e.message).join("\n"));
@@ -748,7 +843,7 @@ function JsonField({
               }
             }}
           >
-            应用
+            {t("应用")}
           </Button>
         </div>
       </Dialog.Content>
@@ -757,6 +852,7 @@ function JsonField({
 }
 
 function TablePanel({ element }: { element: SlideElement }) {
+  useLocale();
   const s = useEditor(),
     [anchor, setAnchor] = useState<[number, number]>([0, 0]),
     [focus, setFocus] = useState<[number, number]>([0, 0]);
@@ -778,16 +874,27 @@ function TablePanel({ element }: { element: SlideElement }) {
         }),
       );
     });
-  const merged = rows.some((r) =>
-    r.some(
-      (c) => Number(c["row-span"] || 1) > 1 || Number(c["col-span"] || 1) > 1,
-    ),
-  );
+  const structure = (
+    axis: "row" | "col",
+    operation: "insert" | "delete",
+    at: number,
+  ) => {
+    if (element.locked) return;
+    try {
+      update((el) =>
+        Object.assign(el, editTableStructure(el, axis, operation, at)),
+      );
+      setAnchor([0, 0]);
+      setFocus([0, 0]);
+    } catch (e) {
+      useEditor.setState({ error: String(e) });
+    }
+  };
   return (
     <>
       <div className="panel-heading">
-        <strong>单元格</strong>
-        <span>Shift 扩选</span>
+        <strong>{t("单元格")}</strong>
+        <span>{t("Shift 扩选")}</span>
       </div>
       <div className="data-grid-scroll">
         <table className="data-grid">
@@ -806,7 +913,7 @@ function TablePanel({ element }: { element: SlideElement }) {
                       className={selected(r, pos.col) ? "selected" : ""}
                     >
                       <input
-                        aria-label={`单元格 ${r + 1},${pos.col + 1}`}
+                        aria-label={t(`单元格 ${r + 1},${pos.col + 1}`)}
                         value={cell.text || ""}
                         onClick={(e) => {
                           if (!e.shiftKey) setAnchor([r, pos.col]);
@@ -839,7 +946,7 @@ function TablePanel({ element }: { element: SlideElement }) {
             }
           }}
         >
-          合并单元格
+          {t("合并单元格")}
         </Button>
         <Button
           size="1"
@@ -850,86 +957,80 @@ function TablePanel({ element }: { element: SlideElement }) {
             })
           }
         >
-          拆分单元格
+          {t("拆分单元格")}
         </Button>
+        {(["row", "col"] as const).flatMap((axis) =>
+          [false, true].map((after) => (
+            <Button
+              key={`${axis}-${after}`}
+              size="1"
+              variant="soft"
+              disabled={element.locked}
+              onClick={() =>
+                structure(
+                  axis,
+                  "insert",
+                  Math.min(
+                    anchor[axis === "row" ? 0 : 1],
+                    (axis === "row" ? rows.length : width) - 1,
+                  ) + Number(after),
+                )
+              }
+            >
+              {axis === "row"
+                ? after
+                  ? t("下方插入行")
+                  : t("上方插入行")
+                : after
+                  ? t("右侧插入列")
+                  : t("左侧插入列")}
+            </Button>
+          )),
+        )}
         <Button
           size="1"
           variant="soft"
-          onClick={() =>
-            update((el) => {
-              el.rowsData!.push(
-                Array.from({ length: width }, () => ({ text: "" })),
-              );
-              if (el.rowsRatio) el.rowsRatio = el.rowsData!.map(() => 1);
-            })
-          }
-        >
-          新增行
-        </Button>
-        <Button
-          size="1"
-          variant="soft"
-          onClick={() =>
-            update((el) => {
-              el.rowsData!.forEach((row) => row.push({ text: "" }));
-              el.cols = Array(width + 1).fill(1 / (width + 1));
-            })
-          }
-        >
-          新增列
-        </Button>
-        <Button
-          size="1"
-          variant="soft"
-          disabled={merged || rows.length < 2}
+          disabled={element.locked || rows.length < 2}
           onClick={() => {
-            update((el) => {
-              el.rowsData!.splice(anchor[0], 1);
-              if (el.rowsRatio) el.rowsRatio.splice(anchor[0], 1);
-            });
-            setAnchor([0, 0]);
-            setFocus([0, 0]);
+            structure("row", "delete", Math.min(anchor[0], rows.length - 1));
           }}
         >
-          删除行
+          {t("删除行")}
         </Button>
         <Button
           size="1"
           variant="soft"
-          disabled={merged || width < 2}
+          disabled={element.locked || width < 2}
           onClick={() => {
-            update((el) => {
-              el.rowsData!.forEach((row) => row.splice(anchor[1], 1));
-              el.cols = Array(width - 1).fill(1 / (width - 1));
-            });
-            setAnchor([0, 0]);
-            setFocus([0, 0]);
+            structure("col", "delete", Math.min(anchor[1], width - 1));
           }}
         >
-          删除列
+          {t("删除列")}
         </Button>
       </div>
-      {merged && <small>含合并单元格时，请先拆分再删除行列。</small>}
+      <small>
+        {t("以选中单元格的起始行列为准；跨越插入位置的合并格会自动扩展。")}
+      </small>
       <Field
-        label="单元格填充"
+        label={t("单元格填充")}
         value={grid[anchor[0]]?.[anchor[1]]?.cell.fill || ""}
         onChange={(fill) => applyCell({ fill })}
       />
       <Field
-        label="单元格文字颜色"
+        label={t("单元格文字颜色")}
         value={grid[anchor[0]]?.[anchor[1]]?.cell.color || ""}
         onChange={(color) => applyCell({ color })}
       />
       {["top", "right", "bottom", "left"].map((side) => (
         <Field
           key={side}
-          label={`边框 ${side}`}
+          label={t(`边框 ${side}`)}
           value={grid[anchor[0]]?.[anchor[1]]?.cell[`border-${side}`] || ""}
           onChange={(value) => applyCell({ [`border-${side}`]: value })}
         />
       ))}
       <Field
-        label="列宽比例"
+        label={t("列宽比例")}
         value={element.cols?.join(" ")}
         onChange={(v) => {
           const cols = v.trim().split(/\s+/).map(Number);
@@ -942,6 +1043,7 @@ function TablePanel({ element }: { element: SlideElement }) {
 }
 
 function ChartPanel({ element }: { element: SlideElement }) {
+  useLocale();
   const s = useEditor(),
     data = element.chartData || { cols: [], rows: [] };
   const update = (fn: (el: SlideElement) => void) =>
@@ -949,7 +1051,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
   return (
     <>
       <div className="panel-heading">
-        <strong>图表数据</strong>
+        <strong>{t("图表数据")}</strong>
       </div>
       <div className="data-grid-scroll">
         <table className="data-grid">
@@ -958,7 +1060,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
               {data.cols.map((col, i) => (
                 <th key={i}>
                   <input
-                    aria-label={`数据列 ${i + 1}`}
+                    aria-label={t(`数据列 ${i + 1}`)}
                     value={col}
                     onChange={(e) =>
                       update((el) => {
@@ -981,7 +1083,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
                 {data.cols.map((_, c) => (
                   <td key={c}>
                     <input
-                      aria-label={`图表数据 ${r + 1},${c + 1}`}
+                      aria-label={t(`图表数据 ${r + 1},${c + 1}`)}
                       value={String(row[c] ?? "")}
                       onChange={(e) =>
                         update((el) => {
@@ -1010,19 +1112,19 @@ function ChartPanel({ element }: { element: SlideElement }) {
             })
           }
         >
-          添加数据行
+          {t("添加数据行")}
         </Button>
         <Button
           size="1"
           variant="soft"
           onClick={() =>
             update((el) => {
-              el.chartData!.cols.push(`数据${data.cols.length + 1}`);
+              el.chartData!.cols.push(t(`数据${data.cols.length + 1}`));
               el.chartData!.rows.forEach((row) => row.push(0));
             })
           }
         >
-          添加数据列
+          {t("添加数据列")}
         </Button>
         <Button
           size="1"
@@ -1034,15 +1136,18 @@ function ChartPanel({ element }: { element: SlideElement }) {
             })
           }
         >
-          删除末行
+          {t("删除末行")}
         </Button>
       </div>
       {(element.seriesList || []).map((series, i) => (
         <div className="animation-card" key={i}>
           <div className="panel-heading">
-            <strong>系列 {i + 1}</strong>
+            <strong>
+              {t("系列")}
+              {i + 1}
+            </strong>
             <Tool
-              label="删除系列"
+              label={t("删除系列")}
               onClick={() =>
                 update((el) => {
                   el.seriesList!.splice(i, 1);
@@ -1053,9 +1158,12 @@ function ChartPanel({ element }: { element: SlideElement }) {
             </Tool>
           </div>
           <Choice
-            label="图表类型"
+            label={t("图表类型")}
             value={series.type}
-            choices={[...CHART_TYPES]}
+            choices={[...CHART_TYPES].map((value) => [
+              value,
+              optionLabel(value),
+            ])}
             onChange={(type) =>
               update((el) => {
                 el.seriesList![i].type = type;
@@ -1065,7 +1173,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
           {(["x", "y"] as const).map((key) => (
             <Choice
               key={key}
-              label={`${key.toUpperCase()} 数据`}
+              label={t(`${key.toUpperCase()} 数据`)}
               value={series[key] || ""}
               choices={data.cols}
               onChange={(value) =>
@@ -1105,22 +1213,22 @@ function ChartPanel({ element }: { element: SlideElement }) {
               type: "bar",
               x: data.cols[0],
               y: data.cols[1],
-              name: "新系列",
+              name: t("新系列"),
             });
           })
         }
       >
-        添加系列
+        {t("添加系列")}
       </Button>
       <JsonField
-        label="X 轴设置"
+        label={t("X 轴设置")}
         value={element.xAxis || {}}
         onChange={(value) =>
           s.patch(element.id, { xAxis: value as SlideElement["xAxis"] })
         }
       />
       <JsonField
-        label="Y 轴设置"
+        label={t("Y 轴设置")}
         value={element.yAxis || {}}
         onChange={(value) =>
           s.patch(element.id, { yAxis: value as SlideElement["yAxis"] })
@@ -1131,17 +1239,17 @@ function ChartPanel({ element }: { element: SlideElement }) {
 }
 
 function ImagePanel({ element }: { element: SlideElement }) {
-  const s = useEditor(),
-    crop = (element.crop || "0,0,0,0").split(/[,\s]+/).map(Number);
+  useLocale();
+  const s = useEditor();
   return (
     <>
       <Field
-        label="图片地址"
+        label={t("图片地址")}
         value={element.src}
         onChange={(src) => s.patch(element.id, { src })}
       />
       <label className="upload-button">
-        替换图片
+        {t("替换图片")}
         <input
           type="file"
           accept="image/*"
@@ -1151,49 +1259,7 @@ function ImagePanel({ element }: { element: SlideElement }) {
           }}
         />
       </label>
-      <strong>裁剪预览</strong>
-      <div className="crop-preview">
-        <img
-          src={
-            /^(https?:|data:)/.test(element.src || "")
-              ? element.src
-              : `/f/${element.src}`
-          }
-          alt="裁剪预览"
-        />
-        <div
-          className="crop-window"
-          style={{
-            left: `${crop[0] * 100}%`,
-            top: `${crop[1] * 100}%`,
-            right: `${crop[2] * 100}%`,
-            bottom: `${crop[3] * 100}%`,
-          }}
-        />
-      </div>
-      {["左", "上", "右", "下"].map((label, i) => (
-        <label className="field" key={label}>
-          <span>
-            裁剪{label} {Math.round(crop[i] * 100)}%
-          </span>
-          <input
-            type="range"
-            aria-label={`裁剪${label}`}
-            min={0}
-            max={Math.max(0, 0.98 - crop[(i + 2) % 4])}
-            step={0.01}
-            value={crop[i]}
-            onChange={(e) => {
-              const next = [...crop];
-              next[i] = +e.target.value;
-              s.patch(element.id, { crop: next.join(",") });
-            }}
-          />
-        </label>
-      ))}
-      <Button variant="soft" onClick={() => s.patch(element.id, { crop: "" })}>
-        重置裁剪
-      </Button>
+      <ImageCrop key={element.id} element={element} />
     </>
   );
 }

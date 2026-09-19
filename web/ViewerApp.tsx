@@ -1,9 +1,11 @@
+import { t, useLocale } from "./i18n";
 import { useEffect, useState } from "react";
 import { Theme, Button } from "@radix-ui/themes";
 import { Player, Presenter, PreviewGrid } from "./Player";
 import { parseSlideX } from "../src/ir";
 import type { Deck } from "../src/types";
 export default function ViewerApp() {
+  useLocale();
   const [deck, setDeck] = useState<Deck | null>(null),
     [error, setError] = useState(""),
     [page, setPage] = useState(
@@ -14,7 +16,7 @@ export default function ViewerApp() {
     let cancelled = false;
     fetch("/api/deck")
       .then((r) => {
-        if (!r.ok) throw Error("无法读取文档");
+        if (!r.ok) throw Error(t("无法读取文档"));
         return r.json();
       })
       .then((data) => {
@@ -36,14 +38,16 @@ export default function ViewerApp() {
     >
       <div className="studio-shell">
         {!deck ? (
-          <main className="loading">{error || "正在载入演示文稿…"}</main>
+          <main className="loading">{error || t("正在载入演示文稿…")}</main>
         ) : location.pathname === "/present-speaker" ? (
           <Presenter initialDeck={deck} session={session} />
         ) : !playing ? (
           <div className="preview-overlay">
             <header>
               <h2>{deck.title}</h2>
-              <Button onClick={() => location.assign("/")}>返回编辑器</Button>
+              <Button onClick={() => location.assign("/")}>
+                {t("返回编辑器")}
+              </Button>
             </header>
             <PreviewGrid
               deck={deck}
