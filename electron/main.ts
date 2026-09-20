@@ -43,16 +43,11 @@ async function openDeckDialog(): Promise<void> {
     properties: ['openFile'],
   });
   if (r.canceled || !r.filePaths[0]) return;
-  const res = await fetch(`${baseUrl}/api/open`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: r.filePaths[0] }),
-  }).then(x => x.json() as Promise<{ ok: boolean; path?: string; error?: string }>);
-  if (res.ok && res.path) {
-    deckFile = res.path;
+  const opened = await win.webContents.executeJavaScript(`window.__slxOpenDocument?.(${JSON.stringify(r.filePaths[0])})`).catch(() => false);
+  if (opened) {
+    deckFile = r.filePaths[0];
     app.addRecentDocument(deckFile);
-    win.loadURL(baseUrl + '/');
-  } else {
-    dialog.showErrorBox(M('打开失败', 'Open failed'), res.error || M('未知错误', 'Unknown error'));
+    win.setTitle(`SlideX — ${deckFile}`);
   }
 }
 
@@ -215,10 +210,12 @@ function createWindow(): void {
     minWidth: 980, minHeight: 600,
     backgroundColor: '#1B2027',
     title: 'SlideX',
+    autoHideMenuBar: true,
+    icon: path.join(ROOT, 'app', 'icon.png'),
     show: false,
     webPreferences: { contextIsolation: true, sandbox: true },
   });
-  win.setMenuBarVisibility(true);
+  win.setMenuBarVisibility(false);
   if (!app.commandLine.hasSwitch('slidex-smoke-test')) win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(baseUrl)) return { action: 'allow' };
@@ -270,7 +267,15 @@ app.whenReady().then(async () => {
   const argDeck = process.argv.slice(1).find(a => a.toLowerCase().endsWith('.slx') && !a.startsWith('--'));
   deckFile = await ensureDeck(argDeck);
   const { startServer } = await import('../dist/server.js');
-  server = await startServer(deckFile, { port: 0 });
+  server = await startServer(deckFile, { port: 0, onOpen: file => {
+    deckFile = file;
+    win?.setTitle(`SlideX — ${file}`);
+    app.addRecentDocument(file);
+  }, pickDeck: async () => {
+    if (!win) return undefined;
+    const result = await dialog.showOpenDialog(win, { title: M('打开 SlideX 演示', 'Open SlideX deck'), filters: [{ name: 'SlideX', extensions: ['slx'] }], properties: ['openFile'] });
+    return result.canceled ? undefined : result.filePaths[0];
+  } });
   baseUrl = `http://127.0.0.1:${server.port}`;
   createWindow();
   buildMenu();

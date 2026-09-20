@@ -1,6 +1,6 @@
 import { t, useLocale } from "./i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Button, Select, TextField } from "@radix-ui/themes";
 import {
   Schema,
@@ -9,7 +9,7 @@ import {
   type MarkSpec,
   type NodeSpec,
 } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { schema as basic } from "prosemirror-schema-basic";
 import {
@@ -146,11 +146,13 @@ export function RichText({
   deck,
   onDone,
   canvas,
+  entryPoint,
 }: {
   element: SlideElement;
   deck: Deck;
   onDone: (content?: string) => void;
   canvas: React.RefObject<HTMLDivElement | null>;
+  entryPoint?: {left:number;top:number};
 }) {
   useLocale();
   const view = useRef<EditorView | null>(null),
@@ -314,6 +316,10 @@ export function RichText({
       }
       return false;
     };
+    if (entryPoint) {
+      const position = editor.posAtCoords(entryPoint);
+      if (position) editor.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(position.pos))));
+    }
     editor.focus();
     return () => {
       delete window.__slxCommitText;
@@ -416,13 +422,63 @@ export function RichText({
   };
   const [sizeDraft, setSizeDraft] = useState(size);
   useEffect(() => setSizeDraft(size), [size]);
-  return (
+  return createPortal(
     <div
       className="rich-editor"
       data-revision={revision}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      <div className="text-panel-heading"><strong>{t("文本格式")}</strong><span>{t("正在原位编辑")}</span></div>
       <div className="rich-toolbar" role="toolbar" aria-label={t("文本格式")}>
+        <div className="text-section-label">{t("字体")} / {t("字号")}</div>
+        <div className="text-font-row">
+        <Select.Root
+          value={font || "__mixed"}
+          onValueChange={(fontFamily) => format({ fontFamily })}
+        >
+          <Select.Trigger aria-label={t("字体")} />
+          <Select.Content data-rich-editor-ui>
+            {!font && (
+              <Select.Item value="__mixed" disabled>
+                {t("混合字体")}
+              </Select.Item>
+            )}
+            {[
+              ...new Set([
+                ...(font ? [font] : []),
+                "Segoe UI",
+                "Microsoft YaHei",
+                "Arial",
+                "Georgia",
+                "Consolas",
+              ]),
+            ].map((f) => (
+              <Select.Item key={f} value={f}>
+                {f}
+              </Select.Item>
+            ))}
+          </Select.Content>
+        </Select.Root>
+        <TextField.Root
+          aria-label={t("字号")}
+          type="number"
+          min="1"
+          max="300"
+          value={sizeDraft}
+          placeholder={t("混合")}
+          onChange={(e) => setSizeDraft(e.target.value)}
+          onBlur={() => {
+            if (+sizeDraft > 0 && +sizeDraft <= 300 && sizeDraft !== size)
+              format({ fontSize: `${sizeDraft}px` });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          style={{ width: 68 }}
+        />
+        </div>
+        <div className="text-section-label">{t("文字样式")}</div>
+        <div className="text-style-row">
         {(
           [
             "strong",
@@ -530,33 +586,9 @@ export function RichText({
         >
           {t("1. 列表")}
         </Button>
-        <Select.Root
-          value={font || "__mixed"}
-          onValueChange={(fontFamily) => format({ fontFamily })}
-        >
-          <Select.Trigger aria-label={t("字体")} />
-          <Select.Content data-rich-editor-ui>
-            {!font && (
-              <Select.Item value="__mixed" disabled>
-                {t("混合字体")}
-              </Select.Item>
-            )}
-            {[
-              ...new Set([
-                ...(font ? [font] : []),
-                "Segoe UI",
-                "Microsoft YaHei",
-                "Arial",
-                "Georgia",
-                "Consolas",
-              ]),
-            ].map((f) => (
-              <Select.Item key={f} value={f}>
-                {f}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
+        </div>
+        <div className="text-section-label">{t("文字颜色")} / {t("文字背景")}</div>
+        <div className="text-color-row">
         <input
           aria-label={t("文字颜色")}
           type="color"
@@ -572,23 +604,10 @@ export function RichText({
           )}
           onChange={(e) => format({ backgroundColor: e.target.value })}
         />
-        <TextField.Root
-          aria-label={t("字号")}
-          type="number"
-          min="1"
-          max="300"
-          value={sizeDraft}
-          placeholder={t("混合")}
-          onChange={(e) => setSizeDraft(e.target.value)}
-          onBlur={() => {
-            if (+sizeDraft > 0 && +sizeDraft <= 300 && sizeDraft !== size)
-              format({ fontSize: `${sizeDraft}px` });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-          }}
-          style={{ width: 68 }}
-        />
+        </div>
+      </div>
+      <TextContentTools view={view.current} revision={revision} />
+      <div className="text-finish-row">
         <Button size="1" onClick={() => finishRef.current(true)}>
           {t("完成")}
         </Button>
@@ -600,10 +619,10 @@ export function RichText({
           {t("取消")}
         </Button>
       </div>
-      <TextContentTools view={view.current} revision={revision} />
       <span className="rich-hint">
         {t("Ctrl+Enter 完成 · Esc 取消 · Ctrl+Z 撤销文字修改")}
       </span>
-    </div>
+    </div>,
+    document.getElementById("text-format-dock")!,
   );
 }

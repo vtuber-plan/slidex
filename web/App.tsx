@@ -21,7 +21,6 @@ import {
   Grid2X2,
   Group,
   Image,
-  Layers,
   Moon,
   Play,
   Plus,
@@ -53,6 +52,7 @@ import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
 import { EditingTools } from "./EditingTools";
 import { Diagnostic, ErrorMessage } from "./Diagnostics";
+import { PanelResize, usePanelSize } from "./PanelResize";
 import { serializeDeck } from "../src/serializer";
 import { parseSlideX, SHAPE_NAMES } from "../src/ir";
 import { shapeSvg as shapePath } from "../src/render/shapes";
@@ -64,6 +64,7 @@ declare global {
     __slxDirty?: boolean;
     __slxCommand?: (command: string) => boolean;
     __slxTextCommand?: (command: string) => boolean;
+    __slxOpenDocument?: (path: string) => Promise<boolean>;
   }
 }
 function shapeSvg(name: string, w: number, h: number) {
@@ -71,6 +72,35 @@ function shapeSvg(name: string, w: number, h: number) {
   return `<svg viewBox="${shape.viewBox}"><path d="${shape.d}" fill-rule="${shape.fillRule}"/></svg>`;
 }
 export default function App() {
+  const [leftWidth, setLeftWidth] = usePanelSize("left", 168);
+  const [rightWidth, setRightWidth] = usePanelSize("right", 300);
+  const [openFile, setOpenFile] = useState(false), [filePath, setFilePath] = useState("");
+  const [viewport, setViewport] = useState(window.innerWidth);
+  useEffect(() => {
+    const resize = () => setViewport(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("slidex-panel-left", String(leftWidth));
+    localStorage.setItem("slidex-panel-right", String(rightWidth));
+  }, [leftWidth, rightWidth]);
+  const rightSize = Math.min(rightWidth, Math.max(240, viewport - 480));
+  const leftSize = Math.min(leftWidth, Math.max(120, viewport - rightSize - 340));
+  async function openDocument(path: string) {
+    try {
+      window.__slxCommitText?.();
+      const state = useEditor.getState();
+      if (serializeDeck(state.deck) !== state.saved && !(await state.save())) return false;
+      const response = await fetch("/api/open", {method:"POST", headers:{"Content-Type":"application/json"},body:JSON.stringify({path:path.trim()})});
+      const data = await response.json();
+      if (!data.ok) throw Error(data.error);
+      await useEditor.getState().load();
+      setOpenFile(false);
+      return true;
+    } catch (error) { useEditor.setState({error:String(error)}); return false; }
+  }
+  useEffect(() => { window.__slxOpenDocument = openDocument; return () => { delete window.__slxOpenDocument; }; }, []);
   const language = useLocale();
   const s = useEditor(),
     [dark, setDark] = useState(
@@ -349,9 +379,7 @@ export default function App() {
             <RenderResources deck={s.deck} />
             <header className="app-header">
               <a href="/" className="brand">
-                <div className="brand-icon">
-                  <Layers size={19} />
-                </div>
+                <img className="brand-icon" src="/app/brand.svg" alt="" />
                 <span>
                   SlideX <small>STUDIO</small>
                 </span>
@@ -452,18 +480,10 @@ export default function App() {
                 <DropdownMenu.Content>
                   <DropdownMenu.Item
                     onSelect={async () => {
-                      const path = prompt(t("输入 .slx 文件的完整路径"));
-                      if (!path) return;
-                      if (dirty && !(await s.save())) return;
                       try {
-                        const r = await fetch("/api/open", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ path }),
-                        });
-                        const data = await r.json();
-                        if (!data.ok) throw Error(data.error);
-                        await s.load();
+                        const data = await (await fetch("/api/pick-file", {method:"POST"})).json();
+                        if (!data.native) setOpenFile(true);
+                        else if (data.path) await openDocument(data.path);
                       } catch (e) {
                         useEditor.setState({ error: String(e) });
                       }
@@ -581,7 +601,7 @@ export default function App() {
                 </Badge>
               </div>
             </div>
-            <div className="editor-layout">
+            <div className="editor-layout" style={{gridTemplateColumns: `${leftSize}px 6px minmax(230px, 1fr) 6px ${rightSize}px`}}>
               <aside className="filmstrip">
                 <div className="filmstrip-title">
                   <strong>{t("幻灯片")}</strong>
@@ -642,6 +662,7 @@ export default function App() {
                   </div>
                 </div>
               </aside>
+              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-rightSize-340)} />
               <div className="canvas-and-tools">
                 <Canvas />
                 <div
@@ -714,7 +735,11 @@ export default function App() {
                   </DropdownMenu.Root>
                 </div>
               </div>
-              <Inspector preview={() => setPresent(true)} />
+              <PanelResize name="调整属性面板宽度" value={rightSize} onChange={setRightWidth} min={240} max={Math.min(560, viewport-leftSize-340)} reverse />
+              <div className={`properties-dock ${s.editing ? "is-text-editing" : ""}`}>
+                <div className="object-inspector"><Inspector preview={() => setPresent(true)} /></div>
+                <div id="text-format-dock" data-rich-editor-ui />
+              </div>
             </div>
             <footer className="statusbar">
               <span>
@@ -743,6 +768,16 @@ export default function App() {
                 </Button>
               </div>
             )}
+            <Dialog.Root open={openFile} onOpenChange={setOpenFile}>
+              <Dialog.Content maxWidth="540px">
+                <Dialog.Title>{t("打开本地文件")}</Dialog.Title>
+                <Dialog.Description>{t("输入 .slx 文件的完整路径")}</Dialog.Description>
+                <form onSubmit={e => { e.preventDefault(); void openDocument(filePath); }}>
+                  <TextField.Root aria-label={t("文件路径")} value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="G:\\slides\\deck.slx" />
+                  <div className="dialog-actions"><Dialog.Close><Button type="button" variant="soft">{t("取消")}</Button></Dialog.Close><Button type="submit" disabled={!filePath.trim()}>{t("打开")}</Button></div>
+                </form>
+              </Dialog.Content>
+            </Dialog.Root>
             <Dialog.Root open={source} onOpenChange={setSource}>
               <Dialog.Content maxWidth="1000px">
                 <Dialog.Title>{t("文档源码")}</Dialog.Title>

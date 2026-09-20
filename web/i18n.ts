@@ -205,6 +205,13 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 替换为…|Replace with…
 第|Slide
 页|\u0020
+调整幻灯片面板宽度|Resize slides panel
+调整属性面板宽度|Resize properties panel
+调整备注面板高度|Resize notes panel
+文件路径|File path
+正在原位编辑|Editing on canvas
+文字样式|Text style
+打开|Open
 替换全部|Replace all
 本地版本历史|Local history
 保存时记录最近 20 个版本，仅保存在当前浏览器。恢复会产生一条可撤销的编辑记录。|Keeps the last 20 saved versions in this browser. Restoring a version can be undone.

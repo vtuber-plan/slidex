@@ -15,6 +15,7 @@ import {
 } from "../src/group-scope";
 import { SlideSurface } from "./SlideSurface";
 import { RichText } from "./RichText";
+import { PanelResize, usePanelSize } from "./PanelResize";
 import { TextOverflow } from "./TextOverflow";
 import type { SlideElement } from "../src/types";
 import { resizeElement } from "../src/geometry";
@@ -28,6 +29,7 @@ export function Canvas() {
     area = useRef<HTMLDivElement>(null),
     board = useRef<HTMLDivElement>(null);
   const cancelPointer = useRef<(() => void) | null>(null);
+  const textEntryPoint = useRef<{left:number;top:number} | undefined>(undefined);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancelPointer.current?.();
@@ -39,6 +41,8 @@ export function Canvas() {
     () => () => cancelPointer.current?.(),
     [s.page, s.master, s.groupPath.join("/")],
   );
+  const [notesHeight, setNotesHeight] = usePanelSize("notes", 120);
+  useEffect(() => { localStorage.setItem("slidex-panel-notes", String(notesHeight)); }, [notesHeight]);
   const [size, setSize] = useState({ w: 900, h: 600 }),
     [box, setBox] = useState<{
       x: number;
@@ -292,7 +296,9 @@ export function Canvas() {
               element={edited}
               deck={s.deck}
               canvas={board}
+              entryPoint={textEntryPoint.current}
               onDone={(content) => {
+                textEntryPoint.current = undefined;
                 if (content !== undefined) s.patch(edited.id, { content });
                 useEditor.setState({ editing: "" });
               }}
@@ -350,8 +356,10 @@ export function Canvas() {
                     s.enterGroup(el.id);
                     return;
                   }
-                  if (el?.type === "text" && !el.locked)
+                  if (el?.type === "text" && !el.locked) {
+                    textEntryPoint.current = {left:e.clientX,top:e.clientY};
                     useEditor.setState({ editing: el.id });
+                  }
                 }}
               >
                 <SlideSurface deck={s.deck} slide={rootContainer(s)} />
@@ -485,7 +493,8 @@ export function Canvas() {
           </div>
           <details className="notes-panel">
             <summary>{t("演讲者备注")}</summary>
-            <label className="notes-label">
+            <PanelResize name="调整备注面板高度" value={notesHeight} onChange={setNotesHeight} min={60} max={Math.min(360, window.innerHeight * .4)} horizontal reverse />
+            <label className="notes-label" style={{height: Math.min(notesHeight, window.innerHeight * .4)}}>
               <textarea
                 aria-label={t("演讲者备注")}
                 value={slide.notes}

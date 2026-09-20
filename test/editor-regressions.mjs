@@ -65,8 +65,11 @@ try {
   await page.$eval('[data-amove="down"][data-ai="0"]', el => el.click());
   const reorderedAnimations = await page.evaluate(() => window.__slxGetXml?.() || '');
   check('动画可调整顺序', reorderedAnimations.indexOf('target="s"') < reorderedAnimations.indexOf('target="t"'), reorderedAnimations);
-  await page.$eval('[data-apreview="0"]', el => el.click());
-  check('动画可在画布预览', await page.$eval('#canvasHost .slx-el[data-id="s"]', el => el.getAnimations().length > 0));
+  // Check in the same browser task: the 300 ms animation can finish between CDP calls on a busy host.
+  check('动画可在画布预览', await page.$eval('[data-apreview="0"]', el => {
+    el.click();
+    return document.querySelector('#canvasHost .slx-el[data-id="s"]').getAnimations().length > 0;
+  }));
 
   await page.click('#canvasHost .slx-el[data-id="img"]');
   await page.$eval('[data-crop="0"]', el => { el.value = '0.2'; el.dispatchEvent(new Event('input', { bubbles: true })); });

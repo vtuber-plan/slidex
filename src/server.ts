@@ -41,7 +41,7 @@ export interface ServerHandle {
   close: () => void;
 }
 
-export function startServer(deckPath: string, opts: { port?: number; host?: string } = {}): Promise<ServerHandle> {
+export function startServer(deckPath: string, opts: { port?: number; host?: string; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
   let deckFile = path.resolve(deckPath);
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
@@ -141,12 +141,19 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       send(res, 200, { errors: r.errors, warnings: r.warnings });
       return;
     }
+    if (req.method === 'POST' && p === '/api/pick-file') {
+      send(res, 200, opts.pickDeck ? { native: true, path: await opts.pickDeck() } : { native: false });
+      return;
+    }
     if (req.method === 'POST' && p === '/api/open') {
       const { path: newPath } = await readBody(req);
       const abs2 = path.resolve(newPath || '');
-      if (!fs.existsSync(abs2) || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
+      if (!fs.existsSync(abs2) || !fs.statSync(abs2).isFile() || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
+      const parsed = parseSlideX(fs.readFileSync(abs2, 'utf8'));
+      if (parsed.errors.length) { send(res, 200, { ok: false, error: parsed.errors.map(e => e.message).join('\n') }); return; }
       deckFile = abs2;
       deckDir = path.dirname(abs2);
+      opts.onOpen?.(deckFile);
       send(res, 200, { ok: true, path: deckFile, dir: deckDir });
       return;
     }

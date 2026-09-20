@@ -20,7 +20,7 @@
 .paragraph-controls input {width:68px;}
 .text-content-panel [role=alert] {color:var(--red-11);}
 .formula-preview {max-width:100%;overflow:auto;}
-.text-overflow-warning {font-size:12px;color:var(--amber-11);padding:4px 18px;}
+.text-overflow-warning {position:absolute;left:20px;right:20px;bottom:76px;z-index:4;font-size:12px;color:var(--amber-11);background:var(--amber-3);border:1px solid var(--amber-6);border-radius:6px;padding:8px 12px;pointer-events:none;}
 .group-navigation {display:flex; align-items:center; gap:6px; padding:4px 18px 8px; font-size:12px; overflow-x:auto; flex-shrink:0;}
 .group-navigation button {border:0; background:transparent; color:var(--gray-11); cursor:pointer; white-space:nowrap;}
 .group-navigation button[aria-current] {color:var(--accent-11);font-weight:600;}
@@ -41,10 +41,35 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.canvas-column > .rich-editor {
-  padding: 10px 16px;
-  background: var(--gray-2);
-}
+.properties-dock {min-width:0;min-height:0;background:var(--color-panel-solid);overflow:auto;}
+.object-inspector,.object-inspector > .inspector {height:100%;}
+.properties-dock.is-text-editing .object-inspector {display:none;}
+#text-format-dock:empty {display:none;}
+.rich-editor {padding:0 18px 20px;}
+.text-panel-heading {display:flex;flex-direction:column;gap:6px;padding:20px 0 18px;border-bottom:1px solid var(--gray-5);margin-bottom:18px;}
+.text-panel-heading strong {font-size:14px;}
+.text-panel-heading span {font-size:11px;color:var(--gray-9);}
+.properties-dock .rich-toolbar {gap:8px;row-gap:12px;padding-bottom:18px;}
+.properties-dock .rich-editor > .rich-toolbar {display:flex;flex-direction:column;align-items:stretch;gap:10px;}
+.text-section-label {font-size:11px;color:var(--gray-10);margin-top:6px;}
+.text-font-row,.text-style-row,.text-color-row,.text-finish-row {display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.text-font-row > .rt-SelectTrigger {flex:1;min-width:0;}
+.text-font-row > .rt-TextFieldRoot {flex:0 0 68px;}
+.text-style-row .rt-Button {min-width:28px;}
+.text-style-row .rt-Button:nth-child(1) {font-weight:800;}
+.text-style-row .rt-Button:nth-child(2) {font-style:italic;}
+.text-style-row .rt-Button:nth-child(3) {text-decoration:underline;}
+.text-finish-row {margin-top:22px;}
+.text-finish-row > .rt-Button:first-child {flex:1;}
+.properties-dock .rich-toolbar > .rt-SelectTrigger {max-width:100%;}
+.properties-dock .text-content-tools {margin-top:18px;}
+.properties-dock .text-content-tools details {width:100%;padding-top:12px;}
+.properties-dock .text-content-tools summary {cursor:pointer;font-weight:600;}
+.properties-dock .paragraph-controls {display:grid;gap:12px;}
+.properties-dock .paragraph-controls label {justify-content:space-between;}
+.properties-dock .paragraph-controls input {width:80px;}
+.properties-dock .text-content-panel input {width:100%;}
+.properties-dock .rich-hint {display:block;margin-top:20px;font-size:11px;line-height:1.8;color:var(--gray-9);}
 .inline-text-host {
   outline: 1px solid #6366f1;
   outline-offset: -1px;
@@ -157,7 +182,7 @@ button:focus-visible {
   overflow: hidden;
 }
 .app-header {
-  height: 54px;
+  height: 62px;
   display: flex;
   align-items: center;
   gap: 28px;
@@ -179,7 +204,7 @@ button:focus-visible {
 .brand small {
   display: block;
   font-size: 8px;
-  letter-spacing: 3px;
+  letter-spacing: 2.5px;
   color: var(--gray-9);
   margin-top: 1px;
 }
@@ -189,11 +214,13 @@ button:focus-visible {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: var(--accent-9);
+  background: transparent;
   color: white;
-  box-shadow: 0 3px 8px #6366f133;
+  box-shadow: none;
 }
 .document-title {
+  border-left: 1px solid var(--gray-5);
+  padding-left: 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -217,7 +244,7 @@ button:focus-visible {
   align-items: center;
 }
 .command-bar {
-  height: 45px;
+  height: 42px;
   background: var(--color-panel-solid);
   display: flex;
   align-items: center;
@@ -267,7 +294,7 @@ button:focus-visible {
   padding: 4px;
 }
 .filmstrip-item.active {
-  border-color: var(--accent-8);
+  border-color: var(--accent-9);
   background: var(--accent-2);
 }
 .filmstrip-item > button {
@@ -310,6 +337,7 @@ button:focus-visible {
   min-height: 0;
 }
 .canvas-column {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -333,8 +361,7 @@ button:focus-visible {
   align-items: safe center;
   justify-content: safe center;
   padding: 24px;
-  background: radial-gradient(var(--gray-5) 0.7px, transparent 0.7px) 0 0/14px
-    14px;
+  background: var(--gray-3);
 }
 .canvas-size {
   position: relative;
@@ -458,9 +485,10 @@ button:focus-visible {
   gap: 6px;
 }
 .notes-label textarea {
-  resize: vertical;
+  resize: none;
+  flex: 1;
   min-height: 40px;
-  max-height: 140px;
+  max-height: none;
   border: 0;
   outline: 0;
   background: transparent;
@@ -498,9 +526,15 @@ button:focus-visible {
   color: var(--gray-11);
 }
 .notes-panel {
+  flex-shrink: 0;
   border-top: 1px solid var(--gray-5);
   background: var(--color-panel-solid);
 }
+.panel-resize {background:var(--gray-3);touch-action:none;user-select:none;position:relative;z-index:3;}
+.panel-resize:hover,.panel-resize:focus-visible {background:var(--accent-8);outline:none;}
+.panel-resize.vertical {cursor:col-resize;width:6px;}
+.panel-resize.horizontal {cursor:row-resize;height:6px;}
+.notes-label {box-sizing:border-box;}
 .notes-panel > summary {
   padding: 8px 18px;
   cursor: pointer;
@@ -989,9 +1023,10 @@ button:focus-visible {
 }
 @media (max-width: 800px) {
   .editor-layout {
-    grid-template-columns: 155px minmax(230px, 1fr);
+    grid-template-columns: 120px 6px minmax(230px, 1fr) !important;
   }
-  .inspector {
+  .editor-layout > .panel-resize:nth-last-child(2) {display:none;}
+  .properties-dock {
     position: absolute;
     right: 0;
     top: 115px;
@@ -1001,8 +1036,8 @@ button:focus-visible {
     z-index: 10;
     transition: transform 0.2s;
   }
-  .inspector:focus-within,
-  .inspector:hover {
+  .properties-dock:focus-within,
+  .properties-dock:hover {
     transform: translateX(0);
   }
   .filmstrip-item {

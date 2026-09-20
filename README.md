@@ -56,9 +56,9 @@ npm run test:react   # 新编辑器真实浏览器回归
 npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
-## 桌面应用与分发（v1.7.0-rc.1）
+## 桌面应用与分发（v1.7.0-rc.3）
 
-本轮为候选版本：Windows 原生输入法候选窗仍待人工验收，详见 [发布验收记录](docs/release-1.7.0-rc.1.md)。
+本轮为候选版本：文字格式固定在右侧，编辑时画布不移动；面板尺寸可拖动调整，桌面文件菜单支持系统选择器。启动 `release/1.7.0-rc.3/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [界面验收记录](docs/release-1.7.0-rc.3.md)。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
 - **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：
