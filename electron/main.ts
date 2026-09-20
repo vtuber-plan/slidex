@@ -85,26 +85,6 @@ async function saveAs(): Promise<void> {
   win.loadURL(baseUrl + '/');
 }
 
-async function exportAs(format: string, editable = false): Promise<void> {
-  if (!win) return;
-  const saved = await win.webContents.executeJavaScript('window.__slxDirty === true ? window.__slxSave() : Promise.resolve(true)').catch(() => false) as boolean;
-  if (!saved) { dialog.showErrorBox(M('导出失败', 'Export failed'), M('当前文稿保存失败，已取消导出。', 'The current deck could not be saved; export was cancelled.')); return; }
-  win.webContents.send?.('slidex-exporting');
-  const res = await fetch(`${baseUrl}/api/export`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ format, editable }),
-  }).then(x => x.json() as Promise<{ ok: boolean; files?: string[]; error?: string }>);
-  if (!res.ok || !res.files) { dialog.showErrorBox(M('导出失败', 'Export failed'), res.error || M('未知错误', 'Unknown error')); return; }
-  const last = res.files[res.files.length - 1];
-  const r = await dialog.showMessageBox(win, {
-    type: 'info',
-    message: M(`导出完成（${res.files.length} 个文件）`, `Export done (${res.files.length} files)`),
-    detail: res.files.join('\n'),
-    buttons: [M('打开所在文件夹', 'Open folder'), M('关闭', 'Close')],
-  });
-  if (r.response === 0) shell.showItemInFolder(last);
-}
-
 async function openPresentWindow(): Promise<void> {
   if (!win) return;
   const saved = await win.webContents.executeJavaScript('window.__slxDirty === true ? window.__slxSave() : Promise.resolve(true)').catch(() => false) as boolean;
@@ -137,16 +117,8 @@ function buildMenu(): void {
         { label: M('保存', 'Save'), accelerator: 'CmdOrCtrl+S', click: () => { win?.webContents.executeJavaScript('__slxSave && __slxSave()').catch(() => {}); } },
         { label: M('另存为…', 'Save as…'), accelerator: 'CmdOrCtrl+Shift+S', click: () => void saveAs() },
         { type: 'separator' },
-        {
-          label: M('导出', 'Export'),
-          submenu: [
-            { label: M('PNG 图片（每页）', 'PNG images (per slide)'), click: () => void exportAs('png') },
-            { label: M('PDF（矢量文本）', 'PDF (vector text)'), click: () => void exportAs('pdf') },
-            { label: M('PPTX（一比一）', 'PPTX (pixel-true)'), click: () => void exportAs('pptx') },
-            { label: M('PPTX（可编辑混合）', 'PPTX (editable hybrid)'), click: () => void exportAs('pptx', true) },
-            { label: M('HTML（自包含放映）', 'HTML (self-contained)'), click: () => void exportAs('html') },
-          ],
-        },
+        { label: M('导出…', 'Export…'), click: () => { void win?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('slidex-menu',{detail:'export'}))"); } },
+        { label: M('偏好设置…', 'Preferences…'), accelerator: 'CmdOrCtrl+,', click: () => { void win?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('slidex-menu',{detail:'preferences'}))"); } },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit', label: M('退出', 'Quit') },
       ],
@@ -159,6 +131,10 @@ function buildMenu(): void {
         { label: M('剪切', 'Cut'), accelerator: 'CmdOrCtrl+X', click: edit('cut') }, { label: M('复制', 'Copy'), accelerator: 'CmdOrCtrl+C', click: edit('copy') }, { label: M('粘贴', 'Paste'), accelerator: 'CmdOrCtrl+V', click: edit('paste') },
         { label: M('全选', 'Select All'), accelerator: 'CmdOrCtrl+A', click: edit('selectAll') },
       ],
+    },
+    {
+      label: M('工具', 'Tools'),
+      submenu: [{label: M('DSL 源码与检查…', 'DSL source and diagnostics…'), click: () => { void win?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('slidex-menu',{detail:'source'}))"); }}],
     },
     {
       label: M('视图', 'View'),
@@ -192,12 +168,12 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/** 跟随编辑器语言（localStorage 'slidex-lang'，缺省按系统语言） */
+/** 跟随 React 编辑器当前语言。 */
 async function syncLang(): Promise<void> {
   if (!win || win.isDestroyed()) return;
   try {
     const v = await win.webContents.executeJavaScript(
-      `localStorage.getItem('slidex-lang') || (navigator.language.startsWith('zh') ? 'zh-CN' : 'en')`
+      `localStorage.getItem('slidex-language') || 'zh'`
     ) as string;
     const next: 'zh-CN' | 'en' = v === 'en' ? 'en' : 'zh-CN';
     if (next !== uiLang) { uiLang = next; buildMenu(); }
@@ -267,7 +243,7 @@ app.whenReady().then(async () => {
   const argDeck = process.argv.slice(1).find(a => a.toLowerCase().endsWith('.slx') && !a.startsWith('--'));
   deckFile = await ensureDeck(argDeck);
   const { startServer } = await import('../dist/server.js');
-  server = await startServer(deckFile, { port: 0, onOpen: file => {
+  server = await startServer(deckFile, { port: 0, preferencesFile:path.join(userDataDir(),'preferences.json'), onOpen: file => {
     deckFile = file;
     win?.setTitle(`SlideX — ${file}`);
     app.addRecentDocument(file);

@@ -41,7 +41,7 @@ export interface ServerHandle {
   close: () => void;
 }
 
-export function startServer(deckPath: string, opts: { port?: number; host?: string; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
+export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
   let deckFile = path.resolve(deckPath);
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
@@ -145,6 +145,21 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       send(res, 200, opts.pickDeck ? { native: true, path: await opts.pickDeck() } : { native: false });
       return;
     }
+    if (p === '/api/preferences') {
+      if (!opts.preferencesFile) { send(res, 200, {native:false}); return; }
+      if (req.method === 'GET') {
+        const values=fs.existsSync(opts.preferencesFile)?JSON.parse(fs.readFileSync(opts.preferencesFile,'utf8')):{};
+        send(res,200,{native:true,values});return;
+      }
+      if (req.method === 'POST') {
+        const {language,appearance,autosave}=await readBody(req);
+        if (!['zh','en'].includes(String(language)) || !['light','dark'].includes(String(appearance)) || typeof autosave!=='boolean') {send(res,400,{error:'偏好设置无效'});return;}
+        fs.mkdirSync(path.dirname(opts.preferencesFile),{recursive:true});
+        fs.writeFileSync(opts.preferencesFile+'.tmp',JSON.stringify({language,appearance,autosave},null,2));
+        fs.renameSync(opts.preferencesFile+'.tmp',opts.preferencesFile);
+        send(res,200,{ok:true});return;
+      }
+    }
     if (req.method === 'POST' && p === '/api/open') {
       const { path: newPath } = await readBody(req);
       const abs2 = path.resolve(newPath || '');
@@ -195,9 +210,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2, editable = false } = await readBody(req);
+      const { format = 'png', scale = 2, editable = false, pages, manifest = false } = await readBody(req);
       try {
-        const result = await exportDeck(deckFile, { format, scale, editable });
+        if (pages !== undefined && typeof pages !== 'string') throw Error('pages 必须是页码范围字符串');
+        if (typeof manifest !== 'boolean') throw Error('manifest 必须是布尔值');
+        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest });
         send(res, 200, { ok: true, ...result });
       } catch (e) {
         send(res, 200, { ok: false, error: String(e && (e as Error).message || e) });

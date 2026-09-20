@@ -4,7 +4,7 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import puppeteer from 'puppeteer-core';
-const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.4/win-unpacked/SlideX.exe');
+const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.5/win-unpacked/SlideX.exe');
 const uiOnly=process.argv.includes('--ui-only');
 assert.ok(fs.existsSync(executable),'Packaged executable must exist');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-package-')),file=path.join(dir,'deck.slx');

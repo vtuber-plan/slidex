@@ -67,25 +67,39 @@ async function main() {
       openBrowser(url);
       break;
     }
+    case 'format': {
+      const file = args[1];
+      if (!file || file.startsWith('-')) die('用法: slidex format <deck.slx> [--write | --check]');
+      if (hasFlag('--write') && hasFlag('--check')) die('--write 和 --check 不能同时使用');
+      const { formatSlideX } = await import('./format.js');
+      const abs = path.resolve(file), original = fs.readFileSync(abs, 'utf8'), formatted = formatSlideX(original);
+      if (hasFlag('--check')) { if (formatted !== original) die('需要格式化：' + abs); }
+      else if (hasFlag('--write')) { if (formatted !== original) fs.writeFileSync(abs, formatted, 'utf8'); }
+      else process.stdout.write(formatted);
+      break;
+    }
     case 'validate': {
       const file = args[1];
       if (!file) die('用法: slidex validate <deck.slx>');
       const { parseSlideX } = await import('./ir.js');
       const r = parseSlideX(fs.readFileSync(path.resolve(file), 'utf8'));
-      for (const e of r.errors) console.log(`  ✗ L${e.line || '?'}:${e.col || '?'} ${e.code}  ${e.message}`);
-      for (const w of r.warnings) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
+      const json = hasFlag('--json');
+      if (!json) for (const e of r.errors) console.log(`  ✗ L${e.line || '?'}:${e.col || '?'} ${e.code}  ${e.message}`);
+      if (!json) for (const w of r.warnings) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
       const extra: Array<{ code: string; message: string; line?: number }> = [];
       // 本地媒体存在性（W_MEDIA_MISSING）
       const deckDir = path.dirname(path.resolve(file));
       const checkMedia = (el: SlideElement) => {
+        if (el.type === 'group') (el.elements || []).forEach(checkMedia);
         if (el.type === 'image' && el.src && !/^(https?:|data:)/i.test(el.src)) {
           if (!fs.existsSync(path.resolve(deckDir, el.src))) extra.push({ code: 'W_MEDIA_MISSING', message: `图片不存在：${el.src}`, line: el.line });
         }
       };
-      r.deck.slides.forEach(s => s.elements.forEach(checkMedia));
-      for (const w of extra) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
+      [...r.deck.slides, ...r.deck.masters].forEach(s => s.elements.forEach(checkMedia));
+      if (!json) for (const w of extra) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
       const total = r.errors.length + r.warnings.length + extra.length;
-      console.log(total ? `${total} 条诊断（${r.errors.length} 错误）` : '✓ 无错误无警告');
+      if (json) console.log(JSON.stringify({ok: !r.errors.length, errors: r.errors, warnings: [...r.warnings, ...extra]}, null, 2));
+      else console.log(total ? `${total} 条诊断（${r.errors.length} 错误）` : '✓ 无错误无警告');
       if (r.errors.length) process.exit(1);
       break;
     }
@@ -95,10 +109,12 @@ async function main() {
       const format = flag('-f', flag('--format', 'png'))!;
       const scale = Number(flag('--scale', '2'));
       const editable = hasFlag('--editable') || hasFlag('-e');
+      const pages = flag('--pages');
+      if (hasFlag('--pages') && (!pages || pages.startsWith('--'))) die('--pages 需要页码，例如 1,3-5');
       const { exportDeck } = await import('./export/export.js');
       console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
       const t0 = Date.now();
-      const r = await exportDeck(path.resolve(file), { format, scale, editable });
+      const r = await exportDeck(path.resolve(file), { format, scale, editable, pages, manifest: hasFlag('--manifest') });
       for (const f of r.files) console.log('  → ' + f);
       console.log(`完成，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
       break;
@@ -123,8 +139,12 @@ async function main() {
   slidex serve  <deck.slx> [--port N]  打开编辑器（默认 4870）
   slidex present <deck.slx>            打开放映模式
   slidex validate <deck.slx>           校验（错误/警告，带行号）
+                          [--json]    输出机器可读诊断
+  slidex format <deck.slx>            格式化到标准输出，保留富文本和代码
+                 [--write | --check] 写回文件或检查格式
   slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
                                         导出（输出到 deck 同目录 out/）
+                 [--pages 1,3-5] [--manifest] PNG 页码范围及 LLM 图片清单
   slidex app [deck.slx]                以 Electron 桌面应用打开编辑器
 环境变量:
   CHROME_PATH   导出用浏览器路径（默认自动探测 Chrome/Edge）`);

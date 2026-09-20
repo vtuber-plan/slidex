@@ -75,11 +75,18 @@ const select = async (id) => {
   );
   await page.mouse.up();
 };
+const changeLanguage = async (locale) => {
+  const english = await page.evaluate(()=>document.documentElement.lang==='en');
+  await page.locator(`.command-bar button::-p-text(${english?'File':'文件'})`).click();
+  await page.locator(`[role="menuitem"]::-p-text(${english?'Preferences':'偏好设置'})`).click();
+  await page.select('[aria-label="Language / 语言"]',locale);
+  await page.locator(`button::-p-text(${locale==='en'?'Done':'完成'})`).click();
+};
 try {
   await page.goto(base, { waitUntil: "networkidle0" });
   await page.waitForSelector("#canvasHost .slx-slide");
   const languageXml = await xml();
-  await page.click('[aria-label="Language / 语言"]');
+  await changeLanguage('en');
   check(
     "language switch translates editor controls",
     !!(await page.$('[aria-label="Insert object"]')) &&
@@ -93,7 +100,7 @@ try {
     !!(await page.$('[aria-label="Insert object"]')),
   );
   await page.screenshot({ path: path.join(temp, "editor-en.png") });
-  await page.click('[aria-label="Language / 语言"]');
+  await changeLanguage('zh');
   check(
     "speaker notes are collapsed by default",
     await page.$eval(".notes-panel", (el) => !el.open),
@@ -528,14 +535,14 @@ try {
       (el, i) => el.x === positions[i] + 12,
     ),
   );
-  await page.click('[aria-label="Language / 语言"]');
+  await changeLanguage('en');
   check(
     "batch panel translates without losing selection",
     (await page.$eval(".multi-inspector", (el) => el.innerText)).includes(
       "Batch properties",
     ) && !!(await page.$('.multi-inspector [aria-label="Width"]')),
   );
-  await page.click('[aria-label="Language / 语言"]');
+  await changeLanguage('zh');
   await page.screenshot({ path: path.join(temp, "multi-inspector.png") });
   await page.click('[aria-label="撤销"]');
   check(
@@ -616,7 +623,8 @@ try {
     fs.readFileSync(file, "utf8").includes("<strong> bold</strong>"),
   );
   await page.click('[aria-label="撤销"]');
-  await page.click('[aria-label="源码"]');
+  await page.locator('.command-bar button::-p-text(工具)').click();
+  await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
   await page.waitForSelector('[aria-label="XML 源码"]');
   await page.$eval('[aria-label="XML 源码"]', (el) => {
     const setter = Object.getOwnPropertyDescriptor(

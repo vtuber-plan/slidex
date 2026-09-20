@@ -67,15 +67,16 @@ async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
 export async function capturePngs(
   baseUrl: string,
   slideCount: number,
-  { scale = 2, outDir, deckW, deckH, base = 'slide' }: { scale?: number; outDir: string; deckW: number; deckH: number; base?: string },
+  { scale = 2, outDir, deckW, deckH, base = 'slide', pages }: { scale?: number; outDir: string; deckW: number; deckH: number; base?: string; pages?: number[] },
 ): Promise<string[]> {
   fs.mkdirSync(outDir, { recursive: true });
   const files: string[] = [];
   await withBrowser(async (browser) => {
     const page = await browser.newPage();
     await page.setViewport({ width: Math.round(deckW), height: Math.round(deckH), deviceScaleFactor: scale });
-    for (let i = 0; i < slideCount; i++) {
-      await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+    for (const i of pages || Array.from({length: slideCount}, (_, index) => index)) {
+      const response = await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 });
+      if (!response?.ok()) throw Error(`无法渲染第 ${i + 1} 页`);
       await waitReady(page);
       const file = path.join(outDir, `${base}-${String(i + 1).padStart(2, '0')}.png`);
       await page.screenshot({ path: file, clip: { x: 0, y: 0, width: deckW, height: deckH } });

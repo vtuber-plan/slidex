@@ -29,6 +29,16 @@ const wait=async(fn)=>{for(let i=0;i<200;i++){if(await fn())return;await new Pro
     picked=undefined;menu.click();
     await new Promise(r=>setTimeout(r,200));
     if(!await win.webContents.executeJavaScript('window.__slxGetXml().includes("Opened")'))throw Error('Cancel changed document');
+    const fileMenu=Menu.getApplicationMenu().items[0].submenu.items;
+    fileMenu.find(item=>item.accelerator==='CmdOrCtrl+,').click();
+    await wait(()=>win.webContents.executeJavaScript('!!document.querySelector("[aria-label=\\"Language / 语言\\"]")'));
+    await win.webContents.executeJavaScript('const select=document.querySelector("[aria-label=\\"Language / 语言\\"]");select.value="en";select.dispatchEvent(new Event("change",{bubbles:true}));');
+    await wait(()=>fs.existsSync(path.join(dir,'profile','preferences.json'))&&JSON.parse(fs.readFileSync(path.join(dir,'profile','preferences.json'),'utf8')).language==='en');
+    await wait(()=>Menu.getApplicationMenu().items[0].label==='File');
+    await win.webContents.executeJavaScript('Array.from(document.querySelectorAll("[role=dialog] button")).find(b=>["完成","Done"].includes(b.textContent.trim())).click()');
+    fileMenu.find(item=>['导出…','Export…'].includes(item.label)).click();
+    await wait(()=>win.webContents.executeJavaScript('!!document.querySelector("[aria-label=导出格式],[aria-label=\\"Export format\\"]")'));
+    console.log('PASS Electron preferences and unified export menu');
     console.log('PASS Electron native open menu, picker bridge, title and cancellation');
     clearTimeout(timer);app.exit(0);
   }catch(error){console.error(error);clearTimeout(timer);app.exit(1);}

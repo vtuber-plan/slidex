@@ -28,6 +28,33 @@ export function useLocale() {
 }
 const en: Record<string, string> = Object.fromEntries(
  `
+偏好设置…|Preferences…
+偏好设置|Preferences
+设置自动保存，仅影响当前设备的编辑器。|Preferences are saved automatically for this device.
+语言|Language
+外观|Appearance
+工具|Tools
+导出…|Export…
+DSL 源码与检查…|DSL source and diagnostics…
+语法检查|Check syntax
+格式化 DSL…|Format DSL…
+导出图片给 LLM…|Export images for LLM…
+格式化|Format
+格式化完成|Formatting complete
+诊断已更新|Diagnostics updated
+无错误无警告|No errors or warnings
+导出文档|Export document
+导出前保存当前文档。文件生成在文档旁的 out 文件夹。|Saves the document before exporting into the adjacent out folder.
+格式|Format
+导出格式|Export format
+导出页面|Export pages
+全部页面|All pages
+当前页面|Current page
+页码范围|Page range
+附带图片清单（LLM）|Include image manifest (LLM)
+图片倍率|Image scale
+此格式导出全部页面。|This format exports all pages.
+开始导出|Start export
 原始诊断详情|Original diagnostic details
 操作未完成，请查看详细信息。|The operation could not be completed. See the details below.
 无法读取文档|Unable to read the document

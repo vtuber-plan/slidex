@@ -12,23 +12,19 @@ import {
 import {
   ArrowDown,
   ArrowUp,
-  Braces,
   ChevronDown,
   Copy,
-  Download,
   FilePlus,
   FolderOpen,
   Grid2X2,
   Group,
   Image,
-  Moon,
   Play,
   Plus,
   Redo2,
   Save,
   Shapes,
   Sparkles,
-  Sun,
   Table2,
   Trash2,
   Type,
@@ -57,6 +53,8 @@ import { Diagnostic, ErrorMessage } from "./Diagnostics";
 import { PanelResize, usePanelSize } from "./PanelResize";
 import { serializeDeck } from "../src/serializer";
 import { parseSlideX, SHAPE_NAMES } from "../src/ir";
+import { formatSlideX } from "../src/format";
+import { parsePages } from "../src/export/pages";
 import { shapeSvg as shapePath } from "../src/render/shapes";
 import type { ElementType } from "../src/types";
 
@@ -107,6 +105,14 @@ export default function App() {
   }
   useEffect(() => { window.__slxOpenDocument = openDocument; return () => { delete window.__slxOpenDocument; }; }, []);
   const language = useLocale();
+  const [preferences,setPreferences]=useState(false);
+  const [exportOptions,setExportOptions]=useState(false);
+  const [exportFormat,setExportFormat]=useState('png');
+  const [pageMode,setPageMode]=useState('all');
+  const [pageRange,setPageRange]=useState('');
+  const [exportScale,setExportScale]=useState(2);
+  const [imageManifest,setImageManifest]=useState(true);
+  const [sourceMessage,setSourceMessage]=useState('');
   const s = useEditor(),
     [dark, setDark] = useState(
       localStorage.getItem("slidex-appearance") === "dark",
@@ -122,6 +128,11 @@ export default function App() {
   const [autosave, setAutosave] = useState(
     localStorage.getItem("slidex-autosave") !== "false",
   );
+  useEffect(()=>{
+    void fetch('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language,appearance:dark?'dark':'light',autosave})})
+      .then(response=>{if(!response.ok)throw Error('偏好设置保存失败');})
+      .catch(error=>useEditor.setState({error:String(error)}));
+  },[language,dark,autosave]);
   const session = useMemo(() => uid("present"), []),
     committedDeck = s.gesture || s.deck,
     serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
@@ -130,6 +141,12 @@ export default function App() {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
   }, [serialized]);
+  const sourceDiagnostics=useMemo(()=>{const r=parseSlideX(xml);return [...r.errors,...r.warnings];},[xml]);
+  const openSource=()=>{window.__slxCommitText?.();setXml(serializeDeck(useEditor.getState().deck));setSourceMessage('');setSource(true);};
+  useEffect(()=>{
+    const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
+    window.addEventListener('slidex-menu',handler);return()=>window.removeEventListener('slidex-menu',handler);
+  },[]);
   useEffect(() => {
     void useEditor.getState().load();
     window.__slxCommand = (command) => {
@@ -286,15 +303,19 @@ export default function App() {
   }, [present, preview, source, library]);
   const exportDeck = async (format: string, editable = false) => {
     setExporting(true);
+    useEditor.setState({error:''});
     try {
+      const pages = format==='png' ? (pageMode==='current'?String(useEditor.getState().page+1):pageMode==='range'?pageRange:undefined) : undefined;
+      if(format==='png')parsePages(pages,useEditor.getState().deck.slides.length);
       if (!(await s.save())) return;
       const r = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, editable }),
+        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest }),
       });
       const data = await r.json();
       if (!data.ok) throw Error(data.error);
+      setExportOptions(false);
       setExports(data.files || []);
     } catch (e) {
       useEditor.setState({ error: String(e) });
@@ -407,29 +428,7 @@ export default function App() {
                 </span>
               </div>
               <div className="header-actions">
-                <Button
-                  variant="ghost"
-                  aria-label="Language / 语言"
-                  onClick={() => setLocale(language === "zh" ? "en" : "zh")}
-                >
-                  {language === "zh" ? "EN" : "中文"}
-                </Button>
                 <HistoryDialog />
-                <Tool
-                  label={dark ? t("浅色界面") : t("深色界面")}
-                  onClick={() => setDark(!dark)}
-                >
-                  {dark ? <Sun size={17} /> : <Moon size={17} />}
-                </Tool>
-                <Tool
-                  label={t("源码")}
-                  onClick={() => {
-                    setXml(serialized);
-                    setSource(true);
-                  }}
-                >
-                  <Braces size={18} />
-                </Tool>
                 <Tool label={t("预览网格")} onClick={() => setPreview(true)}>
                   <Grid2X2 size={18} />
                 </Tool>
@@ -437,37 +436,6 @@ export default function App() {
                   <Save size={15} />
                   {t("保存")}
                 </Button>
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger>
-                    <Button variant="soft" disabled={exporting}>
-                      <Download size={15} />
-                      {exporting ? t("导出中…") : t("导出")}
-                      <ChevronDown size={13} />
-                    </Button>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content>
-                    <DropdownMenu.CheckboxItem
-                      checked={autosave}
-                      onCheckedChange={setAutosave}
-                    >
-                      {t("自动保存")}
-                    </DropdownMenu.CheckboxItem>
-                    <DropdownMenu.Separator />
-                    {["png", "pdf", "pptx", "html"].map((f) => (
-                      <DropdownMenu.Item
-                        key={f}
-                        onSelect={() => void exportDeck(f)}
-                      >
-                        {f.toUpperCase()}
-                      </DropdownMenu.Item>
-                    ))}
-                    <DropdownMenu.Item
-                      onSelect={() => void exportDeck("pptx", true)}
-                    >
-                      {t("可编辑 PPTX")}
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
                 <Button onClick={() => setPresent(true)}>
                   <Play size={15} />
                   {t("放映")}
@@ -499,9 +467,10 @@ export default function App() {
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={() => {
+                      window.__slxCommitText?.();
                       const a = document.createElement("a");
                       const url = URL.createObjectURL(
-                        new Blob([serialized], { type: "application/xml" }),
+                        new Blob([serializeDeck(useEditor.getState().deck)], { type: "application/xml" }),
                       );
                       a.href = url;
                       a.download = `${s.deck.title || "deck"}.slx`;
@@ -511,6 +480,20 @@ export default function App() {
                   >
                     {t("下载 XML 文档")}
                   </DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>void s.save()}>{t("保存")}</DropdownMenu.Item>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item disabled={exporting} onSelect={()=>{window.__slxCommitText?.();setExportOptions(true);}}>{t("导出…")}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setPreferences(true);}}>{t("偏好设置…")}</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger><Button variant="ghost">{t("工具")}<ChevronDown size={13}/></Button></DropdownMenu.Trigger>
+                <DropdownMenu.Content>
+                  <DropdownMenu.Item onSelect={openSource}>{t("DSL 源码与检查…")}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>{openSource();setSourceMessage(t("诊断已更新"));}}>{t("语法检查")}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>{openSource();setXml(formatSlideX(serializeDeck(useEditor.getState().deck)));}}>{t("格式化 DSL…")}</DropdownMenu.Item>
+                  <DropdownMenu.Separator/>
+                  <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setExportFormat('png');setPageMode('current');setImageManifest(true);setExportOptions(true);}}>{t("导出图片给 LLM…")}</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
               <span className="separator" />
@@ -784,6 +767,36 @@ export default function App() {
                 </form>
               </Dialog.Content>
             </Dialog.Root>
+            <Dialog.Root open={preferences} onOpenChange={setPreferences}>
+              <Dialog.Content maxWidth="460px">
+                <Dialog.Title>{t("偏好设置")}</Dialog.Title>
+                <Dialog.Description mb="4">{t("设置自动保存，仅影响当前设备的编辑器。")}</Dialog.Description>
+                <div className="settings-fields">
+                  <label>{t("语言")}<select aria-label="Language / 语言" value={language} onChange={e=>setLocale(e.target.value as 'zh'|'en')}><option value="zh">简体中文</option><option value="en">English</option></select></label>
+                  <label>{t("外观")}<select aria-label={t("外观")} value={dark?'dark':'light'} onChange={e=>setDark(e.target.value==='dark')}><option value="light">{t("浅色界面")}</option><option value="dark">{t("深色界面")}</option></select></label>
+                  <label><span>{t("自动保存")}</span><input type="checkbox" aria-label={t("自动保存")} checked={autosave} onChange={e=>setAutosave(e.target.checked)}/></label>
+                </div>
+                <div className="dialog-actions"><Dialog.Close><Button>{t("完成")}</Button></Dialog.Close></div>
+              </Dialog.Content>
+            </Dialog.Root>
+            <Dialog.Root open={exportOptions} onOpenChange={open=>{if(!exporting)setExportOptions(open);}}>
+              <Dialog.Content maxWidth="500px">
+                <Dialog.Title>{t("导出文档")}</Dialog.Title>
+                <Dialog.Description mb="4">{t("导出前保存当前文档。文件生成在文档旁的 out 文件夹。")}</Dialog.Description>
+                <div className="settings-fields">
+                  <label>{t("格式")}<select aria-label={t("导出格式")} disabled={exporting} value={exportFormat} onChange={e=>setExportFormat(e.target.value)}>{['png','pdf','pptx','pptx-editable','html'].map(f=><option key={f} value={f}>{f==='pptx-editable'?t('可编辑 PPTX'):f.toUpperCase()}</option>)}</select></label>
+                  {exportFormat==='png' && <>
+                    <label>{t("页面")}<select aria-label={t("导出页面")} disabled={exporting} value={pageMode} onChange={e=>setPageMode(e.target.value)}><option value="all">{t("全部页面")}</option><option value="current">{t("当前页面")}</option><option value="range">{t("页码范围")}</option></select></label>
+                    {pageMode==='range'&&<label>{t("页码范围")}<input aria-label={t("页码范围")} disabled={exporting} placeholder="1,3-5" value={pageRange} onChange={e=>setPageRange(e.target.value)}/></label>}
+                    <label>{t("附带图片清单（LLM）")}<input type="checkbox" disabled={exporting} checked={imageManifest} onChange={e=>setImageManifest(e.target.checked)}/></label>
+                  </>}
+                  {['png','pptx','pptx-editable'].includes(exportFormat)&&<label>{t("图片倍率")}<select aria-label={t("图片倍率")} disabled={exporting} value={exportScale} onChange={e=>setExportScale(+e.target.value)}>{[1,2,3,4].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>}
+                  {exportFormat!=='png'&&<p>{t("此格式导出全部页面。")}</p>}
+                </div>
+                {s.error&&<div role="alert"><ErrorMessage message={s.error}/></div>}
+                <div className="dialog-actions"><Dialog.Close><Button variant="soft" disabled={exporting}>{t("取消")}</Button></Dialog.Close><Button disabled={exporting} onClick={()=>void exportDeck(exportFormat==='pptx-editable'?'pptx':exportFormat,exportFormat==='pptx-editable')}>{t(exporting?'导出中…':'开始导出')}</Button></div>
+              </Dialog.Content>
+            </Dialog.Root>
             <Dialog.Root open={source} onOpenChange={setSource}>
               <Dialog.Content maxWidth="1000px">
                 <Dialog.Title>{t("文档源码")}</Dialog.Title>
@@ -793,7 +806,7 @@ export default function App() {
                 <TextArea
                   className="source-editor"
                   value={xml}
-                  onChange={(e) => setXml(e.target.value)}
+                  onChange={(e) => {setXml(e.target.value);setSourceMessage('');}}
                   rows={22}
                   aria-label={t("XML 源码")}
                 />
@@ -802,15 +815,18 @@ export default function App() {
                     <ErrorMessage message={s.error} />
                   </div>
                 )}
-                {diagnostics.length > 0 && (
-                  <details>
+                <p role="status">{sourceMessage || (sourceDiagnostics.length ? t("文档诊断") : t("无错误无警告"))}</p>
+                {sourceDiagnostics.length > 0 && (
+                  <details open>
                     <summary>{t("文档诊断")}</summary>
-                    {diagnostics.map((d, i) => (
+                    {sourceDiagnostics.map((d, i) => (
                       <Diagnostic key={i} value={d} />
                     ))}
                   </details>
                 )}
                 <div className="dialog-actions">
+                  <Button variant="soft" onClick={()=>{try{setXml(formatSlideX(xml));setSourceMessage(t('格式化完成'));}catch(e){setSourceMessage(String(e));}}}>{t("格式化")}</Button>
+                  <Button variant="soft" onClick={()=>setSourceMessage(t('诊断已更新'))}>{t("语法检查")}</Button>
                   <Dialog.Close>
                     <Button variant="soft">{t("取消")}</Button>
                   </Dialog.Close>

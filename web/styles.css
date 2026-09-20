@@ -271,6 +271,9 @@ button:focus-visible {
 .editor-layout > .panel-resize:nth-child(4) {grid-column:4;grid-row:1;}
 .editor-layout > .properties-dock {grid-column:5;grid-row:1;}
 .left-collapsed > .filmstrip,.left-collapsed > .panel-resize:nth-child(2),.right-collapsed > .properties-dock,.right-collapsed > .panel-resize:nth-child(4) {display:none;}
+.settings-fields {display:flex;flex-direction:column;gap:18px;}
+.settings-fields label {display:flex;align-items:center;justify-content:space-between;gap:24px;}
+.settings-fields select,.settings-fields input:not([type=checkbox]) {min-width:170px;max-width:240px;padding:8px;border:1px solid var(--gray-7);border-radius:6px;color:var(--gray-12);background:var(--color-panel-solid);font:inherit;}
 .zoom-entry {display:flex;align-items:center;gap:2px;white-space:nowrap;}
 .zoom-entry input {width:54px;padding:3px;border:1px solid var(--gray-6);border-radius:4px;background:var(--color-panel-solid);color:var(--gray-12);font:inherit;}
 .filmstrip {

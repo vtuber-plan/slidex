@@ -1,4 +1,4 @@
-import { t, useLocale } from "./i18n";
+import { t, setLocale } from "./i18n";
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "@radix-ui/themes/styles.css";
@@ -25,7 +25,18 @@ class ErrorBoundary extends Component<
     );
   }
 }
-createRoot(document.getElementById("root")!).render(
+async function boot() {
+  try {
+    const response=await fetch('/api/preferences');
+    if(!response.ok)throw Error('Unable to load preferences');
+    const {native,values}=await response.json();
+    if(native&&values){
+      if(values.language==='zh'||values.language==='en')setLocale(values.language);
+      if(values.appearance==='light'||values.appearance==='dark')localStorage.setItem('slidex-appearance',values.appearance);
+      if(typeof values.autosave==='boolean')localStorage.setItem('slidex-autosave',String(values.autosave));
+    }
+  } catch (error) { console.warn('Preferences unavailable; using local settings.',error); }
+  createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <Suspense
       fallback={<main className="loading">{t("正在加载 SlideX…")}</main>}
@@ -40,3 +51,5 @@ createRoot(document.getElementById("root")!).render(
     </Suspense>
   </ErrorBoundary>,
 );
+}
+void boot();

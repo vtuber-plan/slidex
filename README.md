@@ -56,9 +56,9 @@ npm run test:react   # 新编辑器真实浏览器回归
 npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
-## 桌面应用与分发（v1.7.0-rc.4）
+## 桌面应用与分发（v1.7.0-rc.5）
 
-本轮为候选版本：支持鼠标锚点缩放、空格／中键平移、实际尺寸与适应画布、左右面板折叠；文字编辑保留稳定的右侧标签。启动 `release/1.7.0-rc.4/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [工作区验收记录](docs/release-1.7.0-rc.4.md)。
+本轮为候选版本：文件菜单集中偏好设置与导出；工具菜单提供 DSL 格式化、语法检查、单页／范围图片导出。启动 `release/1.7.0-rc.5/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [桌面菜单与 DSL 工具](docs/release-1.7.0-rc.5.md)。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
 - **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：
