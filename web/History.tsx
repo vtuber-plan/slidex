@@ -8,6 +8,7 @@ export function HistoryDialog() {
   useLocale();
   const s = useEditor(),
     [open, setOpen] = useState(false),
+    [loading,setLoading]=useState(false),
     [list, setList] = useState<Revision[]>([]);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -15,7 +16,7 @@ export function HistoryDialog() {
         <Button
           aria-label={t("本地版本历史")}
           variant="ghost"
-          onClick={() => setList(readRevisions(s.file))}
+          onClick={() => {setList([]);setLoading(true);void readRevisions(s.file).then(setList).catch(e=>useEditor.setState({error:String(e)})).finally(()=>setLoading(false));}}
         >
           <History size={17} />
         </Button>
@@ -24,13 +25,13 @@ export function HistoryDialog() {
         <Dialog.Title>{t("本地版本历史")}</Dialog.Title>
         <Dialog.Description mb="4">
           {t(
-            "保存时记录最近 20 个版本，仅保存在当前浏览器。恢复会产生一条可撤销的编辑记录。",
+            "版本与恢复草稿保存在本机，跨应用重启保留。恢复会产生一条可撤销的编辑记录。",
           )}
         </Dialog.Description>
-        {list.length ? (
+        {loading ? <p role="status">{t('正在读取版本历史…')}</p> : list.length ? (
           list.map((revision, i) => (
             <div key={i} className="history-row">
-              <span>{new Date(revision.time).toLocaleString()}</span>
+              <span>{revision.draft?t('未保存的恢复草稿')+' · ':''}{new Date(revision.time).toLocaleString()}</span>
               <Button
                 size="1"
                 variant="soft"

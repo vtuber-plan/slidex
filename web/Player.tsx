@@ -1,5 +1,6 @@
 import { t, useLocale } from "./i18n";
 import { useEffect, useRef, useState } from "react";
+import {flushSync} from 'react-dom';
 import { Button } from "@radix-ui/themes";
 import {
   ChevronLeft,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import type { Deck } from "../src/types";
 import { createPlayer } from "../src/player";
-import { SlideSurface, RenderResources } from "./SlideSurface";
+import { SlideSurface, RenderResources, Thumbnail } from "./SlideSurface";
 import { Tool } from "./ui";
 
 export function Player({
@@ -32,6 +33,7 @@ export function Player({
     holders = useRef<(HTMLDivElement | null)[]>([]),
     controller = useRef<ReturnType<typeof createPlayer> | null>(null);
   const [current, setCurrent] = useState(start),
+    [mounted,setMounted]=useState(()=>[start-1,start,start+1]),
     [scale, setScale] = useState(1),
     [grid, setGrid] = useState(false),
     [notes, setNotes] = useState(false);
@@ -70,9 +72,10 @@ export function Player({
             location.origin,
           );
       },
+      i=>{const next=[i-1,i,i+1];flushSync(()=>setMounted(previous=>previous.join()===next.join()?previous:next));},
     );
     controller.current = player;
-    player.show(Math.min(start, deck.slides.length - 1), false);
+    queueMicrotask(()=>{if(controller.current===player)player.show(Math.min(start, deck.slides.length - 1), false);});
     const message = (e: MessageEvent) => {
       if (e.origin !== location.origin || e.source !== window.parent) return;
       if (e.data?.type === "slidex:next") player.next();
@@ -164,7 +167,7 @@ export function Player({
                 display: i === start ? "" : "none",
               }}
             >
-              <SlideSurface deck={deck} slide={slide} />
+              {mounted.includes(i)&&<SlideSurface deck={deck} slide={slide} />}
             </div>
           ))}
         </div>
@@ -250,14 +253,7 @@ export function PreviewGrid({
               overflow: "hidden",
             }}
           >
-            <div
-              style={{
-                transform: `scale(${240 / deck.width})`,
-                transformOrigin: "top left",
-              }}
-            >
-              <SlideSurface deck={deck} slide={slide} />
-            </div>
+            <Thumbnail deck={deck} slide={slide}/>
           </div>
           <span>
             {String(i + 1).padStart(2, "0")} / {slide.id}

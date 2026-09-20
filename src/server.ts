@@ -3,6 +3,7 @@
 import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {randomUUID} from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseSlideX } from './ir.js';
@@ -10,6 +11,10 @@ import type { Deck } from './types.js';
 import { slidePageHtml, renderSlide, slideCss, cdnLinks, runtimeJs } from './render/render.js';
 import {offlineResources} from './export/resources.js';
 import { exportDeck } from './export/export.js';
+import {loadProject,saveProject,type Project} from './project.js';
+import {historyStore} from './revisions.js';
+import {languageInfo} from './language.js';
+import {serializeDeck} from './serializer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'app');
@@ -47,6 +52,12 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
   const exportDownloads=new Map<string,string>();
+  const history=historyStore(path.join(opts.preferencesFile?path.dirname(opts.preferencesFile):path.join(os.homedir(),'.slidex'),'history'));
+  let cached:Project|undefined;
+  const currentProject=()=>{
+    if(cached?.path===deckFile&&!cached.errors.length&&cached.files.every(file=>{try{const stat=fs.statSync(file.path);return stat.mtimeMs===file.mtimeMs&&stat.size===file.size;}catch{return false;}}))return cached;
+    return cached=loadProject(deckFile);
+  };
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -70,10 +81,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     });
   }
 
-  function serveFile(res: ServerResponse, file: string, download?: boolean) {
+  function serveFile(res: ServerResponse, file: string, download?: boolean,request?:IncomingMessage) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { send(res, 404, { error: 'not found: ' + file }); return; }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store', ...(download ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}` } : {}) });
+    if(request){const stat=fs.statSync(file),etag=`"${stat.size}-${stat.mtimeMs}"`;res.setHeader('ETag',etag);if(request.headers['if-none-match']===etag){res.writeHead(304,{'Cache-Control':'private, max-age=0, must-revalidate'});res.end();return;}}
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': request?'private, max-age=0, must-revalidate':'no-store', ...(download ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}` } : {}) });
     fs.createReadStream(file).pipe(res);
   }
 
@@ -88,6 +100,23 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   async function route(req: IncomingMessage, res: ServerResponse) {
     const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
+    if(p==='/api/language'&&req.method==='POST'){const body=await readBody(req);if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}send(res,200,languageInfo(String(body.xml||''),Number(body.offset)||0));return;}
+    if(p==='/api/revisions'&&req.method==='GET'){
+      if(u.searchParams.get('path')&&path.resolve(u.searchParams.get('path')!)!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      const h=history.read(deckFile);send(res,200,{version:1,revisions:[...(h.draft?[h.draft]:[]),...h.revisions]});return;
+    }
+    if(['/api/revisions','/api/draft'].includes(p)&&req.method==='POST'){
+      const body=await readBody(req);if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}
+      if(body.path!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      if(p==='/api/draft'){
+        if(typeof body.xml!=='string'||parseSlideX(body.xml).errors.length){send(res,400,{error:'草稿无效'});return;}
+        history.draft(deckFile,body.xml);
+      }else{
+        const list=Array.isArray(body.revisions)?body.revisions.slice(0,20):[];
+        history.import(deckFile,list.filter(r=>typeof r?.xml==='string'&&Number.isFinite(r?.time)&&!parseSlideX(r.xml).errors.length));
+      }
+      send(res,200,{ok:true});return;
+    }
     if(req.method==='GET'&&p.startsWith('/api/export-file/')){
       const file=exportDownloads.get(p.slice('/api/export-file/'.length));
       if(!file){send(res,404,{error:'Unknown export'});return;}
@@ -107,7 +136,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     if (req.method === 'GET' && p.startsWith('/f/')) {
       const f = safeJoin(deckDir, decodeURIComponent(p.slice(3)));
       if (!f) { send(res, 403, {}); return; }
-      serveFile(res, f);
+      serveFile(res, f,false,req);
       return;
     }
     if (req.method === 'GET' && p.startsWith('/out/')) {
@@ -117,28 +146,28 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'GET' && p === '/api/deck') {
-      const xml = fs.readFileSync(deckFile, 'utf8');
+      const project=currentProject(),xml=project.xml;
+      let historyWarning='';
+      try{if(!project.errors.length)history.record(deckFile,serializeDeck(project.deck));}catch(error){historyWarning='历史记录暂不可用：'+String((error as Error).message);}
       const stat = fs.statSync(deckFile);
-      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml, mtimeMs: stat.mtimeMs });
+      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml, mtimeMs: stat.mtimeMs,version:project.version,multiFile:project.multiFile,files:project.files.map(f=>f.path),errors:project.errors,warnings:project.warnings,historyWarning });
       return;
     }
     if (req.method === 'GET' && p === '/api/stat') {
       const stat = fs.statSync(deckFile);
-      send(res, 200, { path: deckFile, mtimeMs: stat.mtimeMs, size: stat.size });
+      send(res, 200, { path: deckFile, mtimeMs: stat.mtimeMs, size: stat.size,version:currentProject().version });
       return;
     }
     if (req.method === 'GET' && /^\/render\/\d+$/.test(p)) {
       const i = Number(p.slice(8));
-      const xml = fs.readFileSync(deckFile, 'utf8');
-      const { deck, errors } = parseSlideX(xml);
+      const { deck, errors } = currentProject();
       if (!deck.slides[i]) { send(res, 404, { error: 'slide ' + i + ' 不存在' }); return; }
       send(res, 200, offlineResources(slidePageHtml(deck, i, { mediaBase: '/f/' })), { 'Content-Type': MIME['.html'] });
       return;
     }
     if (req.method === 'GET' && p === '/api/print') {
       // 全部页拼接的打印视图（PDF 抓取用）
-      const xml = fs.readFileSync(deckFile, 'utf8');
-      const { deck } = parseSlideX(xml);
+      const { deck } = currentProject();
       send(res, 200, offlineResources(printHtml(deck)), { 'Content-Type': MIME['.html'] });
       return;
     }
@@ -172,7 +201,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const { path: newPath } = await readBody(req);
       const abs2 = path.resolve(newPath || '');
       if (!fs.existsSync(abs2) || !fs.statSync(abs2).isFile() || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
-      const parsed = parseSlideX(fs.readFileSync(abs2, 'utf8'));
+      const parsed = loadProject(abs2);
       if (parsed.errors.length) { send(res, 200, { ok: false, error: parsed.errors.map(e => e.message).join('\n') }); return; }
       deckFile = abs2;
       deckDir = path.dirname(abs2);
@@ -181,20 +210,21 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/save') {
-      const { xml = '', expectedMtime, expectedPath } = await readBody(req);
+      const { xml = '', expectedMtime, expectedPath,expectedVersion } = await readBody(req);
+      const project=loadProject(deckFile);
+      if((typeof expectedVersion==='string'&&expectedVersion!==project.version)||(project.multiFile&&typeof expectedVersion!=='string')){send(res,409,{ok:false,error:'项目依赖已变化，请重新打开文档后保存。'});return;}
       if ((typeof expectedPath === 'string' && path.resolve(expectedPath) !== deckFile) || (typeof expectedMtime === 'number' && expectedMtime !== fs.statSync(deckFile).mtimeMs)) {
         send(res, 409, { ok: false, error: '文档已在其他窗口或外部程序中修改。请先下载当前 XML 备份，再重新打开文件。' });
         return;
       }
       const r = parseSlideX(xml);
-      if (r.errors.some(e => e.code.startsWith('E_XML'))) {
+      if (r.errors.length) {
         send(res, 200, { ok: false, errors: r.errors });
         return;
       }
-      const tmp = deckFile + '.tmp';
-      fs.writeFileSync(tmp, xml, 'utf8');
-      fs.renameSync(tmp, deckFile);
-      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, mtimeMs: fs.statSync(deckFile).mtimeMs });
+      const saved=saveProject(project,xml);cached=saved;
+      let historyWarning='';try{history.saved(deckFile,xml);}catch(error){historyWarning='文档已保存，但历史记录写入失败：'+String((error as Error).message);}
+      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, mtimeMs: fs.statSync(deckFile).mtimeMs,version:saved.version,historyWarning });
       return;
     }
     if (req.method === 'POST' && p === '/api/media') {
@@ -233,7 +263,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
         send(res, 200, { ok: true, ...result, downloads });
       } catch (e) {
-        send(res, 200, { ok: false, status:'failed', error: String(e && (e as Error).message || e) });
+        send(res, 200, { ok: false, status:'failed',...(e as {details?:object}).details, error: String(e && (e as Error).message || e) });
       }
       return;
     }

@@ -202,6 +202,7 @@ export interface Deck {
 }
 
 export interface Diag {
+  file?: string;
   code: string;
   message: string;
   line?: number;

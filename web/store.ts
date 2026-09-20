@@ -51,6 +51,8 @@ interface EditorState {
   saved: string;
   file: string;
   mtime: number;
+  version:string;
+  multiFile:boolean;
   status: string;
   error: string;
   ready: boolean;
@@ -179,6 +181,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   saved: "",
   file: "",
   mtime: 0,
+  version:'',multiFile:false,
   status: "",
   error: "",
   ready: false,
@@ -193,11 +196,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (!r.ok) throw Error("无法读取文档");
       const data = await r.json();
       const parsed = parseSlideX(data.xml);
-      recordRevision(data.path, data.xml);
+      recordRevision(data.path, serializeDeck(parsed.deck));
       set({
         deck: parsed.deck,
         file: data.path,
         mtime: data.mtimeMs,
+        version:data.version||'',multiFile:!!data.multiFile,
         saved: serializeDeck(parsed.deck),
         ready: true,
         page: 0,
@@ -208,7 +212,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         future: [],
         master: "",
         groupPath: [],
-        error: parsed.errors.map((e) => e.message).join("\n"),
+        error: [(data.errors||parsed.errors).map((e:{message:string;file?:string;line?:number}) => `${e.file?e.file+':'+e.line+' ':''}${e.message}`).join("\n"),data.historyWarning].filter(Boolean).join('\n'),
       });
     } catch (e) {
       set({ error: String(e) });
@@ -228,6 +232,7 @@ export const useEditor = create<EditorState>((set, get) => ({
             xml,
             expectedPath: file,
             expectedMtime: get().mtime,
+            expectedVersion:get().version,
           }),
         });
         const data = await r.json();
@@ -240,7 +245,7 @@ export const useEditor = create<EditorState>((set, get) => ({
               "保存失败",
           );
         if (get().file === file)
-          set({ saved: xml, status: "已保存", error: "", mtime: data.mtimeMs });
+          set({ saved: xml, status: "已保存", error: data.historyWarning||"", mtime: data.mtimeMs,version:data.version||get().version });
         recordRevision(file, xml);
         return true;
       } catch (e) {

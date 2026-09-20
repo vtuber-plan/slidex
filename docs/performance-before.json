@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-20T15:17:32.382Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26100",
+    "cpu": "Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz",
+    "cores": 16,
+    "memoryGiB": 64,
+    "node": "v22.16.0",
+    "chrome": "Chrome/153.0.8010.48"
+  },
+  "version": "1.7.0-rc.6",
+  "method": "One cold Viewer navigation per deck, 10 next-page switches, Chrome JS heap, PNG export of page 1 at 1x; 24 text/shape objects per page",
+  "samples": [
+    {
+      "pages": 20,
+      "openMs": 576,
+      "switchP95Ms": 16,
+      "heapMiB": 6.3,
+      "domNodes": 2910,
+      "mountedSlides": 20,
+      "exportFirstPageMs": 4017
+    },
+    {
+      "pages": 100,
+      "openMs": 913,
+      "switchP95Ms": 51,
+      "heapMiB": 10.1,
+      "domNodes": 14190,
+      "mountedSlides": 100,
+      "exportFirstPageMs": 4020
+    },
+    {
+      "pages": 300,
+      "openMs": 933,
+      "switchP95Ms": 70,
+      "heapMiB": 21.4,
+      "domNodes": 42390,
+      "mountedSlides": 300,
+      "exportFirstPageMs": 4184
+    }
+  ]
+}

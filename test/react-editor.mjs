@@ -584,6 +584,7 @@ try {
     parseSlideX(await xml()).deck.slides[0].elements.length === 4,
   );
   await page.click('[aria-label="本地版本历史"]');
+  await page.waitForFunction(()=>document.querySelectorAll('.history-row').length>=2);
   check(
     "saved versions are available",
     (await page.$$(".history-row")).length >= 2,

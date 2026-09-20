@@ -707,6 +707,9 @@ button:focus-visible {
 .filmstrip-item.active.page-selected {box-shadow:inset 0 0 0 2px var(--accent-9);}
 .page-selection-count {text-align:center;color:var(--gray-11);}
 .page-move-actions {display:flex;gap:4px;justify-content:center;}
+.source-tools {display:flex;gap:8px;align-items:center;margin:8px 0;font-size:12px;}
+.source-completions {display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow:auto;}
+.source-completions button,.diagnostic-location {background:var(--gray-3);border:1px solid var(--gray-6);border-radius:4px;color:var(--gray-12);padding:3px 7px;cursor:pointer;font-size:12px;}
 .animation-timeline {display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--gray-6);border-radius:6px;margin:12px 0;}
 .animation-timeline small {font-size:10px;color:var(--gray-11);}
 .animation-timeline button {text-align:left;border:0;background:var(--gray-3);color:var(--gray-12);padding:4px;cursor:pointer;overflow:hidden;font-size:11px;}

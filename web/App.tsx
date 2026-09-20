@@ -60,6 +60,7 @@ import { formatSlideX } from "../src/format";
 import { parsePages } from "../src/export/pages";
 import { shapeSvg as shapePath } from "../src/render/shapes";
 import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
+import {SourceEditor} from './SourceEditor';
 import type { ElementType } from "../src/types";
 
 declare global {
@@ -151,6 +152,11 @@ export default function App() {
     return [...r.errors, ...r.warnings];
   }, [serialized]);
   const sourceDiagnostics=useMemo(()=>{const r=parseSlideX(xml);return [...r.errors,...r.warnings];},[xml]);
+  useEffect(()=>{
+    if(!s.ready||serialized===s.saved||s.gesture)return;
+    const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized})}).catch(()=>{});},800);
+    return()=>clearTimeout(timer);
+  },[serialized,s.saved,s.file,s.ready,!!s.gesture]);
   const openSource=()=>{window.__slxCommitText?.();setXml(serializeDeck(useEditor.getState().deck));setSourceMessage('');setSource(true);};
   useEffect(()=>{
     const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
@@ -787,18 +793,13 @@ export default function App() {
               </Dialog.Content>
             </Dialog.Root>
             <Dialog.Root open={source} onOpenChange={setSource}>
-              <Dialog.Content maxWidth="1000px">
+              <Dialog.Content maxWidth="1000px" onEscapeKeyDown={e=>{if(document.querySelector('.source-completions'))e.preventDefault();}}>
                 <Dialog.Title>{t("文档源码")}</Dialog.Title>
                 <Dialog.Description size="2" mb="3">
                   {t("编辑 XML 后验证并应用。保存和撤销与画布共享。")}
                 </Dialog.Description>
-                <TextArea
-                  className="source-editor"
-                  value={xml}
-                  onChange={(e) => {setXml(e.target.value);setSourceMessage('');}}
-                  rows={22}
-                  aria-label={t("XML 源码")}
-                />
+                <SourceEditor value={xml} onChange={value=>{setXml(value);setSourceMessage('');}}/>
+                {s.multiFile&&<p>{t('多文件项目：此处编辑合并视图；保存会原子更新页面引用。')}</p>}
                 {s.error && (
                   <div role="alert">
                     <ErrorMessage message={s.error} />
@@ -809,7 +810,7 @@ export default function App() {
                   <details open>
                     <summary>{t("文档诊断")}</summary>
                     {sourceDiagnostics.map((d, i) => (
-                      <Diagnostic key={i} value={d} />
+                      <div key={i}><button className="diagnostic-location" onClick={()=>{const area=document.querySelector<HTMLTextAreaElement>('[aria-label="'+t('XML 源码')+'"]');const pos=xml.split('\n').slice(0,Math.max(0,(d.line||1)-1)).reduce((n,line)=>n+line.length+1,0)+Math.max(0,(d.col||1)-1);area?.focus();area?.setSelectionRange(pos,pos+1);}}>{t('定位')} {d.line||1}:{d.col||1}</button><Diagnostic value={d}/></div>
                     ))}
                   </details>
                 )}

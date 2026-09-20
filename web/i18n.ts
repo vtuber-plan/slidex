@@ -28,6 +28,16 @@ export function useLocale() {
 }
 const en: Record<string, string> = Object.fromEntries(
  `
+补全|Complete
+跳转定义|Go to definition
+定义位置|Definition
+未找到引用定义|No definition found
+补全建议|Completions
+定位|Locate
+多文件项目：此处编辑合并视图；保存会原子更新页面引用。|Multi-file project: edits use the merged view; saving atomically updates page references.
+版本与恢复草稿保存在本机，跨应用重启保留。恢复会产生一条可撤销的编辑记录。|Versions and recovery drafts are stored locally across restarts. Restoring creates an undoable edit.
+未保存的恢复草稿|Unsaved recovery draft
+正在读取版本历史…|Loading version history…
 高级形状参数|Advanced shape parameters
 形状分类|Shape category
 全部形状|All shapes

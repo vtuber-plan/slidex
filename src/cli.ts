@@ -30,6 +30,11 @@ const hasFlag = (name: string): boolean => args.includes(name);
 
 async function main() {
   switch (cmd) {
+    case 'language':{
+      const file=args[1];if(!file)die('用法: slidex language <deck.slx> [--offset N]');
+      const {languageInfo}=await import('./language.js');
+      console.log(JSON.stringify(languageInfo(fs.readFileSync(path.resolve(file),'utf8'),Number(flag('--offset','0'))),null,2));break;
+    }
     case 'init': {
       const name = args[1] || 'my-deck';
       const dir = path.resolve(name);
@@ -81,10 +86,10 @@ async function main() {
     case 'validate': {
       const file = args[1];
       if (!file) die('用法: slidex validate <deck.slx>');
-      const { parseSlideX } = await import('./ir.js');
-      const r = parseSlideX(fs.readFileSync(path.resolve(file), 'utf8'));
+      const {loadProject}=await import('./project.js');
+      const r = loadProject(file);
       const json = hasFlag('--json');
-      if (!json) for (const e of r.errors) console.log(`  ✗ L${e.line || '?'}:${e.col || '?'} ${e.code}  ${e.message}`);
+      if (!json) for (const e of r.errors) console.log(`  ✗ ${e.file||file}:L${e.line || '?'}:${e.col || '?'} ${e.code}  ${e.message}`);
       if (!json) for (const w of r.warnings) console.log(`  ⚠ L${w.line || '?'} ${w.code}  ${w.message}`);
       const extra: Array<{ code: string; message: string; line?: number }> = [];
       // 本地媒体存在性（W_MEDIA_MISSING）
@@ -117,7 +122,7 @@ async function main() {
       const t0 = Date.now();
       let r;
       try { r = await exportDeck(path.resolve(file), { format, scale, editable, pages, manifest: hasFlag('--manifest') }); }
-      catch(error){if(json){console.log(JSON.stringify({status:'failed',error:String((error as Error).message)}));process.exitCode=1;break;}throw error;}
+      catch(error){if(json){console.log(JSON.stringify({version:1,status:'failed',source:path.resolve(file),...(error as {details?:object}).details,error:String((error as Error).message)}));process.exitCode=1;break;}throw error;}
       if(json){console.log(JSON.stringify(r));break;}
       for (const f of r.files) console.log('  → ' + f);
       console.log(`完成，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -147,6 +152,7 @@ async function main() {
                           [--json]    输出机器可读诊断
   slidex format <deck.slx>            格式化到标准输出，保留富文本和代码
                  [--write | --check] 写回文件或检查格式
+  slidex language <deck.slx> --offset N  JSON 补全、诊断和引用定义（UTF-16 偏移）
   slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
                                         导出（输出到 deck 同目录 out/）
                  [--pages 1,3-5] [--manifest] PNG 页码范围及 LLM 图片清单

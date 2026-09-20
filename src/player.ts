@@ -5,6 +5,7 @@ export function createPlayer(
   deck: Deck,
   holders: HTMLElement[],
   changed: (index: number) => void = () => {},
+  prepare: (index:number)=>void = ()=>{},
 ) {
   let current = 0,
     cursor = 0,
@@ -119,6 +120,7 @@ export function createPlayer(
   const show = (index: number, animate = true) => {
     if (!Number.isInteger(index) || index < 0 || index >= holders.length)
       return;
+    prepare(index);
     stop();
     holders.forEach((h, i) => {
       h.style.display = i === index ? "" : "none";

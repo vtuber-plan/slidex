@@ -14,15 +14,25 @@ import type { Deck, ParseResult, SlideElement } from '../types.js';
 import { parsePages } from './pages.js';
 import { createExportReport, type ExportReport } from './report.js';
 import { publishExport, ExportRecoveryError } from './publish.js';
+import {loadProject} from '../project.js';
 
 interface ExportOptions { format?:string;scale?:number;editable?:boolean;pages?:string;manifest?:boolean;directory?:string;outputFile?:string }
+export class ExportFailure extends Error {
+  constructor(message:string,public details:{version:1;status:'failed';source:string;diagnostics:unknown[];failure:{code:string;message:string}}){super(message);}
+}
 
 export async function exportDeck(deckFile:string, options:ExportOptions={}):Promise<{files:string[];outDir:string;status:'success'|'degraded';report:ExportReport}> {
+  try{return await executeExport(deckFile,options);}catch(error){
+    if(error instanceof ExportFailure)throw error;
+    const message=String((error as Error).message);
+    throw new ExportFailure(message,{version:1,status:'failed',source:path.resolve(deckFile),diagnostics:[],failure:{code:'EXPORT_FAILED',message}});
+  }
+}
+async function executeExport(deckFile:string, options:ExportOptions={}):Promise<{files:string[];outDir:string;status:'success'|'degraded';report:ExportReport}> {
   const abs=path.resolve(deckFile), format=options.format||'png';
   if(!['png','pdf','pptx','html'].includes(format))throw Error(`不支持的导出格式：${format}`);
-  const source=fs.readFileSync(abs,'utf8');
-  const parsed=parseSlideX(source) as ParseResult;
-  if(parsed.errors.some(e=>!e.code.startsWith('W_')))throw Error('文档存在错误，请先运行 slidex validate');
+  const parsed=loadProject(abs);
+  if(parsed.errors.some(e=>!e.code.startsWith('W_')))throw new ExportFailure('文档存在错误，请先运行 slidex validate',{version:1,status:'failed',source:abs,diagnostics:parsed.errors,failure:{code:'DOCUMENT_INVALID',message:'文档校验失败'}});
   const pages=parsePages(options.pages,parsed.deck.slides.length);
   const outDir=options.outputFile?path.dirname(path.resolve(options.outputFile)):path.resolve(options.directory||path.join(path.dirname(abs),'out'));
   fs.mkdirSync(outDir,{recursive:true});
@@ -31,16 +41,23 @@ export async function exportDeck(deckFile:string, options:ExportOptions={}):Prom
   try {
     const report=createExportReport(parsed.deck,format,!!options.editable,pages);
     const result=await renderDeck(abs,{...options,directory:scratch,outputFile:options.outputFile?path.join(scratch,path.basename(options.outputFile)):undefined},report);
+    if(format==='png'&&options.manifest){
+      const file=result.files.find(f=>f.endsWith('-images.json'))!;
+      const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
+      Object.assign(manifest,{status:report.status,diagnostics:[...parsed.errors,...parsed.warnings],failure:null});
+      manifest.pages.forEach((p:{image:string})=>Object.assign(p,{path:path.join(outDir,p.image),width:Math.round(parsed.deck.width*(options.scale??2)),height:Math.round(parsed.deck.height*(options.scale??2)),status:'success',diagnostics:[]}));
+      fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
+    }
     const reportName=(options.outputFile?path.basename(options.outputFile):path.basename(abs,path.extname(abs))+'.'+format)+'.report.json';
     const reportFile=path.join(scratch,reportName);
     fs.writeFileSync(reportFile,JSON.stringify(report,null,2)+'\n');
     const staged=[...result.files,reportFile];
     const files=staged.map(file=>path.join(outDir,path.basename(file)));
     if(files.includes(abs))throw Error('导出不能覆盖源文档');
-    if(fs.readFileSync(abs,'utf8')!==source)throw Error('导出期间源文档发生变化，请重新导出');
+    if(loadProject(abs).version!==parsed.version)throw Error('导出期间项目文件发生变化，请重新导出');
     publishExport(staged,files,scratch);
     return {files,outDir,status:report.status,report};
-  } catch(error){preserveRecovery=error instanceof ExportRecoveryError;throw error;}
+  } catch(error){preserveRecovery=error instanceof ExportRecoveryError;if(error instanceof ExportFailure)throw error;const message=String((error as Error).message);throw new ExportFailure(message,{version:1,status:'failed',source:abs,diagnostics:[...parsed.errors,...parsed.warnings],failure:{code:preserveRecovery?'RECOVERY_REQUIRED':'EXPORT_FAILED',message}});}
   finally { if(!preserveRecovery)fs.rmSync(scratch,{recursive:true,force:true}); }
 }
 
@@ -50,9 +67,8 @@ async function renderDeck(
   report?: ExportReport,
 ): Promise<{ files: string[]; outDir: string }> {
   const abs = path.resolve(deckFile);
-  const xml = fs.readFileSync(abs, 'utf8');
   // ir.js 暂为 JS（推断类型过宽），在边界收敛到共享 ParseResult；ir 转 .ts 后为恒等断言
-  const { deck, errors } = parseSlideX(xml) as ParseResult;
+  const { deck, errors } = loadProject(abs);
   const blockers = errors.filter(e => !e.code.startsWith('W_'));
   if (blockers.length) {
     throw new Error(`deck 存在 ${blockers.length} 个错误，请先修复（slidex validate）:\n` + blockers.slice(0, 5).map(e => `  L${e.line || '?'} ${e.code}: ${e.message}`).join('\n'));
