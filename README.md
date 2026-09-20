@@ -33,11 +33,11 @@
 - **文档可靠性**：串行自动保存、外部修改冲突检查、当前浏览器最近 20 个保存版本、源码校验和桌面保存桥。
 - **动画与切换**：`<animation>` 编排入场/强调/退出（onClick / withPrevious / afterPrevious），页面 `transition` 切换；放映模式完整播放；导出 PNG/PDF/PPTX 为最终态。
 - **母版**：`<master>` 定义页骨架（logo/页脚等），页面一行引用。
-- **布局一比一导出**：
+- **多格式导出**（[保真边界](docs/release-1.7.0-rc.6.md)）：
   - `PNG` — 每页一张高清位图（2x）；
   - `PDF` — 矢量文本、可选中复制；
-  - `PPTX` — 每页嵌入整页高清图，与编辑器**像素级一致**（备注为真文本备注）；
-  - `PPTX --editable` — **可编辑混合导出**：文本、内置形状、图片、直线箭头映射为原生 PPT 对象可直接改，图表/公式/代码等复杂元素按边界裁图保持视觉；
+  - `PPTX` — CLI 默认每页嵌入整页高清图，保持布局，不能逐个编辑对象；Office 图片重采样可能产生像素差异（备注为真文本备注）；
+  - `PPTX --editable` — **可编辑混合导出**：文本、内置形状、受支持的图片、直线箭头映射为原生对象，复杂元素转图片；字体和排版可能存在差异。桌面窗口默认选择此模式；
   - `HTML` — 单文件放映包（内联本地媒体、KaTeX、图标及内置字体；项目内字体 CSS/字体文件可内联，用户配置的远程字体和图片仍需网络）。
 - **富文本 + LaTeX 公式**：`<p>/<strong>/<span style>` 富文本子集，行内 `\( ... \)` KaTeX 公式，独立 `<formula>` 块级公式。
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
@@ -56,9 +56,9 @@ npm run test:react   # 新编辑器真实浏览器回归
 npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
-## 桌面应用与分发（v1.7.0-rc.5）
+## 桌面应用与分发（v1.7.0-rc.6）
 
-本轮为候选版本：文件菜单集中偏好设置与导出；工具菜单提供 DSL 格式化、语法检查、单页／范围图片导出。启动 `release/1.7.0-rc.5/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [桌面菜单与 DSL 工具](docs/release-1.7.0-rc.5.md)。
+本轮为候选版本：修复 PPTX 文件结构与 PowerPoint 兼容性；桌面导出弹出保存位置选择。PPTX 统一入口，默认可编辑优先，也可选整页图片保留视觉。启动 `release/1.7.0-rc.6/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [导出修复与保真边界](docs/release-1.7.0-rc.6.md)。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
 - **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：

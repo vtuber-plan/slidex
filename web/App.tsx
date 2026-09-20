@@ -108,6 +108,8 @@ export default function App() {
   const [preferences,setPreferences]=useState(false);
   const [exportOptions,setExportOptions]=useState(false);
   const [exportFormat,setExportFormat]=useState('png');
+  const [pptxEditable,setPptxEditable]=useState(true);
+  const [exportDownloads,setExportDownloads]=useState<string[]>([]);
   const [pageMode,setPageMode]=useState('all');
   const [pageRange,setPageRange]=useState('');
   const [exportScale,setExportScale]=useState(2);
@@ -311,10 +313,12 @@ export default function App() {
       const r = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest }),
+        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true }),
       });
       const data = await r.json();
       if (!data.ok) throw Error(data.error);
+      if(data.canceled)return;
+      setExportDownloads(data.downloads||[]);
       setExportOptions(false);
       setExports(data.files || []);
     } catch (e) {
@@ -782,19 +786,23 @@ export default function App() {
             <Dialog.Root open={exportOptions} onOpenChange={open=>{if(!exporting)setExportOptions(open);}}>
               <Dialog.Content maxWidth="500px">
                 <Dialog.Title>{t("导出文档")}</Dialog.Title>
-                <Dialog.Description mb="4">{t("导出前保存当前文档。文件生成在文档旁的 out 文件夹。")}</Dialog.Description>
+                <Dialog.Description mb="4">{t("导出前保存文档。桌面版随后选择保存位置；浏览器版输出到文档旁的 out 文件夹。")}</Dialog.Description>
                 <div className="settings-fields">
-                  <label>{t("格式")}<select aria-label={t("导出格式")} disabled={exporting} value={exportFormat} onChange={e=>setExportFormat(e.target.value)}>{['png','pdf','pptx','pptx-editable','html'].map(f=><option key={f} value={f}>{f==='pptx-editable'?t('可编辑 PPTX'):f.toUpperCase()}</option>)}</select></label>
+                  <label>{t("格式")}<select aria-label={t("导出格式")} disabled={exporting} value={exportFormat} onChange={e=>setExportFormat(e.target.value)}>{['png','pdf','pptx','html'].map(f=><option key={f} value={f}>{f.toUpperCase()}</option>)}</select></label>
+                  {exportFormat==='pptx'&&<>
+                    <label>{t("PPTX 模式")}<select aria-label={t("PPTX 模式")} disabled={exporting} value={pptxEditable?'editable':'image'} onChange={e=>setPptxEditable(e.target.value==='editable')}><option value="editable">{t("可编辑优先")}</option><option value="image">{t("视觉保真（整页图片）")}</option></select></label>
+                    <p className="export-mode-help">{t(pptxEditable?'文字、基础形状和部分图片可编辑；复杂内容转为图片，字体与排版可能有差异。':'每页是一张图片，优先保留视觉；无法在 PowerPoint 中逐个编辑文字和对象。')}</p>
+                  </>}
                   {exportFormat==='png' && <>
                     <label>{t("页面")}<select aria-label={t("导出页面")} disabled={exporting} value={pageMode} onChange={e=>setPageMode(e.target.value)}><option value="all">{t("全部页面")}</option><option value="current">{t("当前页面")}</option><option value="range">{t("页码范围")}</option></select></label>
                     {pageMode==='range'&&<label>{t("页码范围")}<input aria-label={t("页码范围")} disabled={exporting} placeholder="1,3-5" value={pageRange} onChange={e=>setPageRange(e.target.value)}/></label>}
                     <label>{t("附带图片清单（LLM）")}<input type="checkbox" disabled={exporting} checked={imageManifest} onChange={e=>setImageManifest(e.target.checked)}/></label>
                   </>}
-                  {['png','pptx','pptx-editable'].includes(exportFormat)&&<label>{t("图片倍率")}<select aria-label={t("图片倍率")} disabled={exporting} value={exportScale} onChange={e=>setExportScale(+e.target.value)}>{[1,2,3,4].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>}
+                  {['png','pptx'].includes(exportFormat)&&<label>{t("图片倍率")}<select aria-label={t("图片倍率")} disabled={exporting} value={exportScale} onChange={e=>setExportScale(+e.target.value)}>{[1,2,3,4].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>}
                   {exportFormat!=='png'&&<p>{t("此格式导出全部页面。")}</p>}
                 </div>
                 {s.error&&<div role="alert"><ErrorMessage message={s.error}/></div>}
-                <div className="dialog-actions"><Dialog.Close><Button variant="soft" disabled={exporting}>{t("取消")}</Button></Dialog.Close><Button disabled={exporting} onClick={()=>void exportDeck(exportFormat==='pptx-editable'?'pptx':exportFormat,exportFormat==='pptx-editable')}>{t(exporting?'导出中…':'开始导出')}</Button></div>
+                <div className="dialog-actions"><Dialog.Close><Button variant="soft" disabled={exporting}>{t("取消")}</Button></Dialog.Close><Button disabled={exporting} onClick={()=>void exportDeck(exportFormat,exportFormat==='pptx'&&pptxEditable)}>{t(exporting?'导出中…':'开始导出')}</Button></div>
               </Dialog.Content>
             </Dialog.Root>
             <Dialog.Root open={source} onOpenChange={setSource}>
@@ -935,14 +943,15 @@ export default function App() {
                 <Dialog.Description mb="3">
                   {t("点击文件下载。")}
                 </Dialog.Description>
-                {exports.map((file) => (
+                {exports.map((file,index) => (
                   <p key={file}>
                     <a
-                      href={`/out/${encodeURIComponent(file.split(/[\\/]/).at(-1)!)}`}
+                      href={exportDownloads[index]||`/out/${encodeURIComponent(file.split(/[\\/]/).at(-1)!)}`}
                       download
                     >
                       {file.split(/[\\/]/).at(-1)}
                     </a>
+                    <small style={{display:'block',overflowWrap:'anywhere'}}>{file}</small>
                   </p>
                 ))}
                 <Dialog.Close>

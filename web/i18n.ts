@@ -29,6 +29,12 @@ export function useLocale() {
 const en: Record<string, string> = Object.fromEntries(
  `
 偏好设置…|Preferences…
+导出前保存文档。桌面版随后选择保存位置；浏览器版输出到文档旁的 out 文件夹。|Saves first, then asks for a destination on desktop. Browser exports go to the adjacent out folder.
+PPTX 模式|PPTX mode
+可编辑优先|Prefer editable objects
+视觉保真（整页图片）|Visual fidelity (full-slide images)
+文字、基础形状和部分图片可编辑；复杂内容转为图片，字体与排版可能有差异。|Text, basic shapes and some images are editable. Complex content becomes images; fonts and layout may differ.
+每页是一张图片，优先保留视觉；无法在 PowerPoint 中逐个编辑文字和对象。|Each slide is an image to preserve appearance. Text and objects cannot be edited individually in PowerPoint.
 偏好设置|Preferences
 设置自动保存，仅影响当前设备的编辑器。|Preferences are saved automatically for this device.
 语言|Language

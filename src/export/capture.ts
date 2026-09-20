@@ -45,7 +45,7 @@ export async function withBrowser<T>(fn: (browser: Browser) => T | Promise<T>): 
   const puppeteer = await getPuppeteer();
   const browser = await puppeteer.launch({
     executablePath: exe,
-    args: ['--font-render-hinting=none', '--disable-lcd-text', '--no-sandbox'],
+    args: ['--no-sandbox'],
   });
   try {
     return await fn(browser);
@@ -59,7 +59,8 @@ async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
   for (;;) {
     // __SLX_READY__ 为渲染页注入的全局标记，DOM 类型上不存在 → 窄化 any
     const ok = await page.evaluate(() => (window as any).__SLX_READY__ === true).catch(() => false);
-    if (ok || Date.now() - t0 > timeoutMs) return;
+    if (ok) return;
+    if (Date.now() - t0 > timeoutMs) throw Error('页面渲染未就绪，已取消导出');
     await new Promise(r => setTimeout(r, 120));
   }
 }
@@ -90,7 +91,8 @@ export async function capturePngs(
 export async function capturePdf(url: string, outFile: string): Promise<string> {
   await withBrowser(async (browser) => {
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+    const response=await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    if(!response?.ok())throw Error('无法加载 PDF 打印页面');
     await waitReady(page, 15000);
     await page.pdf({
       path: outFile,

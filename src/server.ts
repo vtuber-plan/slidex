@@ -3,6 +3,7 @@
 import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseSlideX } from './ir.js';
 import type { Deck } from './types.js';
@@ -41,10 +42,11 @@ export interface ServerHandle {
   close: () => void;
 }
 
-export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
+export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickExport?: (format: string, deckFile: string) => Promise<{directory?: string; outputFile?: string} | undefined>; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
   let deckFile = path.resolve(deckPath);
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
+  const exportDownloads=new Map<string,string>();
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -71,7 +73,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   function serveFile(res: ServerResponse, file: string, download?: boolean) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { send(res, 404, { error: 'not found: ' + file }); return; }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store', ...(download ? { 'Content-Disposition': `attachment; filename="${path.basename(file)}"` } : {}) });
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store', ...(download ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}` } : {}) });
     fs.createReadStream(file).pipe(res);
   }
 
@@ -86,6 +88,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   async function route(req: IncomingMessage, res: ServerResponse) {
     const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
+    if(req.method==='GET'&&p.startsWith('/api/export-file/')){
+      const file=exportDownloads.get(p.slice('/api/export-file/'.length));
+      if(!file){send(res,404,{error:'Unknown export'});return;}
+      serveFile(res,file,true);return;
+    }
 
     if (req.method === 'GET' && ['/', '/index.html', '/present', '/present-speaker', '/player', '/preview'].includes(p)) { serveFile(res, path.join(APP, 'web', 'index.html')); return; }
     if (req.method === 'GET' && p === '/legacy') { serveFile(res, path.join(APP, 'index.html')); return; }
@@ -210,12 +217,20 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2, editable = false, pages, manifest = false } = await readBody(req);
+      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false } = await readBody(req);
       try {
         if (pages !== undefined && typeof pages !== 'string') throw Error('pages 必须是页码范围字符串');
         if (typeof manifest !== 'boolean') throw Error('manifest 必须是布尔值');
-        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest });
-        send(res, 200, { ok: true, ...result });
+        if(!['png','pdf','pptx','html'].includes(format))throw Error('不支持的导出格式');
+        let destination:{directory?:string;outputFile?:string}={};
+        if(chooseDestination && opts.pickExport){
+          const picked=await opts.pickExport(format,deckFile);
+          if(!picked){send(res,200,{ok:true,canceled:true});return;}
+          destination=picked;
+        }
+        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest, ...destination });
+        const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
+        send(res, 200, { ok: true, ...result, downloads });
       } catch (e) {
         send(res, 200, { ok: false, error: String(e && (e as Error).message || e) });
       }

@@ -247,6 +247,21 @@ app.whenReady().then(async () => {
     deckFile = file;
     win?.setTitle(`SlideX — ${file}`);
     app.addRecentDocument(file);
+  }, pickExport: async (format,sourceFile) => {
+    if(!win)return undefined;
+    if(format==='png'){
+      const picked=await dialog.showOpenDialog(win,{title:M('选择图片导出文件夹','Choose image export folder'),defaultPath:path.dirname(sourceFile),properties:['openDirectory','createDirectory']});
+      if(picked.canceled||!picked.filePaths[0])return undefined;
+      const directory=picked.filePaths[0],base=path.basename(sourceFile,path.extname(sourceFile));
+      if(fs.readdirSync(directory).some(name=>name.startsWith(base+'-')&&(/\.png$/i.test(name)||name===base+'-images.json'))){
+        const answer=await dialog.showMessageBox(win,{type:'question',message:M('目标文件夹已有同名导出，是否覆盖本次导出的文件？','Replace existing files from this export?'),buttons:[M('取消','Cancel'),M('覆盖','Replace')],defaultId:0,cancelId:0});
+        if(answer.response!==1)return undefined;
+      }
+      return {directory};
+    }
+    const picked=await dialog.showSaveDialog(win,{title:M('导出文件','Export file'),defaultPath:path.join(path.dirname(sourceFile),path.basename(sourceFile,path.extname(sourceFile))+'.'+format),filters:[{name:format.toUpperCase(),extensions:[format]}]});
+    if(picked.canceled||!picked.filePath)return undefined;
+    return {outputFile:picked.filePath};
   }, pickDeck: async () => {
     if (!win) return undefined;
     const result = await dialog.showOpenDialog(win, { title: M('打开 SlideX 演示', 'Open SlideX deck'), filters: [{ name: 'SlideX', extensions: ['slx'] }], properties: ['openFile'] });

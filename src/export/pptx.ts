@@ -34,10 +34,10 @@ export function zip(entries: Array<{ name: string; data: Buffer | string }>): Bu
     local.writeUInt16LE(20, 4);      // version
     local.writeUInt16LE(0x0800, 6);  // UTF-8 flag
     local.writeUInt16LE(8, 8);       // deflate
-    local.writeUInt16LE(0, 10); local.writeUInt16LE(0, 12); local.writeUInt32LE(0, 14); // time/date
-    local.writeUInt32LE(crc, 16);
-    local.writeUInt32LE(comp.length, 20);
-    local.writeUInt32LE(data.length, 24);
+    local.writeUInt16LE(0, 10); local.writeUInt16LE(33, 12); // 1980-01-01
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(comp.length, 18);
+    local.writeUInt32LE(data.length, 22);
     local.writeUInt16LE(nameBuf.length, 26);
     local.writeUInt16LE(0, 28);
     chunks.push(local, nameBuf, comp);
@@ -46,11 +46,12 @@ export function zip(entries: Array<{ name: string; data: Buffer | string }>): Bu
     cen.writeUInt32LE(0x02014b50, 0);
     cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6);
     cen.writeUInt16LE(0x0800, 8); cen.writeUInt16LE(8, 10);
-    cen.writeUInt16LE(0, 12); cen.writeUInt16LE(0, 14); cen.writeUInt32LE(0, 16);
-    cen.writeUInt32LE(crc, 20);
-    cen.writeUInt32LE(comp.length, 24); cen.writeUInt32LE(data.length, 28);
-    cen.writeUInt16LE(nameBuf.length, 30);
-    central.push(Buffer.concat([cen, nameBuf, Buffer.alloc(16)])); // extra/comment/disk/attrs 均 0
+    cen.writeUInt16LE(0, 12); cen.writeUInt16LE(33, 14);
+    cen.writeUInt32LE(crc, 16);
+    cen.writeUInt32LE(comp.length, 20); cen.writeUInt32LE(data.length, 24);
+    cen.writeUInt16LE(nameBuf.length, 28);
+    cen.writeUInt32LE(offset, 42);
+    central.push(Buffer.concat([cen, nameBuf]));
 
     offset += local.length + nameBuf.length + comp.length;
   }
@@ -86,15 +87,17 @@ export function buildPptx({ pngFiles, width, height, title = '', notes = [] }: {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
 <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
 <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+<Override PartName="/ppt/theme/theme2.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 <Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>
 <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
 <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>`;
   for (let i = 1; i <= N; i++) {
     ct += `
 <Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
-<Override PartName="/ppt/notesSlides/notesSlide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`;
+${notes[i-1]?.trim()?`<Override PartName="/ppt/notesSlides/notesSlide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`:''}`;
   }
   ct += '</Types>';
   add('[Content_Types].xml', ct);
@@ -119,7 +122,7 @@ export function buildPptx({ pngFiles, width, height, title = '', notes = [] }: {
   }
   add('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId id="2147483649" r:id="rId2"/></p:notesMasterIdLst>
+<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId2"/></p:notesMasterIdLst>
 <p:sldIdLst>${sldIds}</p:sldIdLst>
 <p:sldSz cx="${emu(width)}" cy="${emu(height)}"/><p:notesSz cx="${emu(height)}" cy="${emu(width)}"/>
 </p:presentation>`);
@@ -143,9 +146,11 @@ ${sldRels}
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
 </Relationships>`);
   add('ppt/notesMasters/notesMaster1.xml', notesMasterXml());
+  // PowerPoint requires the notes master to own a separate theme part.
+  add('ppt/theme/theme2.xml', themeXml());
   add('ppt/notesMasters/_rels/notesMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme2.xml"/>
 </Relationships>`);
 
   for (let i = 1; i <= N; i++) {
@@ -153,6 +158,7 @@ ${sldRels}
     const hasNotes = notes[i - 1] && notes[i - 1].trim();
     add(`ppt/slides/_rels/slide${i}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rIdLayout" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i}.png"/>${hasNotes ? `
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide${i}.xml"/>` : ''}
 </Relationships>`);
@@ -162,6 +168,7 @@ ${sldRels}
       add(`ppt/notesSlides/_rels/notesSlide${i}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide${i}.xml"/>
 </Relationships>`);
     }
   }
@@ -191,7 +198,7 @@ export function notesSlideXml(idx: number, text: string): string {
 <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
 <p:grpSpPr/>
 <p:sp>
-<p:nvSpPr><p:cNvPr id="2" name="备注 ${idx}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/></p:nvSpPr>
+<p:nvSpPr><p:cNvPr id="2" name="备注 ${idx}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>
 <p:spPr/>
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${esc(text)}</a:t></a:r></a:p></p:txBody>
 </p:sp>

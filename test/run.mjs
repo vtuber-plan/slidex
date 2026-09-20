@@ -158,7 +158,7 @@ sec('6. PPTX 结构');
         const nameLen = buf.readUInt16LE(p + 26);
         names.push(buf.slice(p + 30, p + 30 + nameLen).toString('utf8'));
         // 跳到下一个（用压缩区长度）
-        const compLen = buf.readUInt32LE(p + 20);
+        const compLen = buf.readUInt32LE(p + 18);
         p = p + 30 + nameLen + compLen;
       } else p++;
     }
@@ -191,6 +191,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/react-navigation.mjs', hasChrome],
     ['test/react-menus.mjs', hasChrome],
     ['test/dsl-tools.mjs', hasChrome],
+    ['test/pptx-integrity.mjs', true],
     ['test/react-appearance.mjs', hasChrome],
     ['test/release-offline.mjs', hasChrome],
     ['test/gap-warnings.mjs', true],

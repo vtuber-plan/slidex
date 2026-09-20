@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { parseSlideX } from '../ir.js';
 import { startServer } from '../server.js';
 import { capturePngs, capturePdf, withBrowser } from './capture.js';
@@ -14,7 +15,7 @@ import { parsePages } from './pages.js';
 
 export async function exportDeck(
   deckFile: string,
-  { format = 'png', scale = 2, editable = false, pages, manifest = false }: { format?: string; scale?: number; editable?: boolean; pages?: string; manifest?: boolean } = {},
+  { format = 'png', scale = 2, editable = false, pages, manifest = false, directory, outputFile }: { format?: string; scale?: number; editable?: boolean; pages?: string; manifest?: boolean; directory?: string; outputFile?: string } = {},
 ): Promise<{ files: string[]; outDir: string }> {
   const abs = path.resolve(deckFile);
   const xml = fs.readFileSync(abs, 'utf8');
@@ -28,7 +29,7 @@ export async function exportDeck(
   if ((pages !== undefined || manifest) && format !== 'png') throw Error('页码选择和图片清单仅用于 PNG 导出');
   const selected = parsePages(pages, deck.slides.length);
   const deckDir = path.dirname(abs);
-  const outDir = path.join(deckDir, 'out');
+  const outDir = outputFile ? path.dirname(path.resolve(outputFile)) : directory ? path.resolve(directory) : path.join(deckDir, 'out');
   const base = path.basename(abs, path.extname(abs));
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -47,26 +48,29 @@ export async function exportDeck(
         return { files, outDir };
       }
       case 'pdf': {
-        const file = path.join(outDir, `${base}.pdf`);
+        const file = outputFile || path.join(outDir, `${base}.pdf`);
         await capturePdf(`${baseUrl}/api/print`, file);
         return { files: [file], outDir };
       }
       case 'pptx': {
         if (editable) {
-          const file = await exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale });
+          const file = await exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile });
           return { files: [file], outDir };
         }
-        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale: Math.max(2, scale), outDir, deckW: deck.width, deckH: deck.height, base });
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(),'slidex-pptx-'));
+        try {
+        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale: Math.max(2, scale), outDir: scratch, deckW: deck.width, deckH: deck.height, base });
         const buf = buildPptx({
           pngFiles: pngs, width: deck.width, height: deck.height,
           title: deck.title || base, notes: deck.slides.map(s => s.notes || ''),
         });
-        const file = path.join(outDir, `${base}.pptx`);
+        const file = outputFile || path.join(outDir, `${base}.pptx`);
         fs.writeFileSync(file, buf);
-        return { files: [...pngs, file], outDir };
+        return { files: [file], outDir };
+        } finally { fs.rmSync(scratch,{recursive:true,force:true}); }
       }
       case 'html': {
-        const file = path.join(outDir, `${base}.html`);
+        const file = outputFile || path.join(outDir, `${base}.html`);
         fs.writeFileSync(file, buildStandaloneHtml(deck, deckDir), 'utf8');
         return { files: [file], outDir };
       }
@@ -79,13 +83,14 @@ export async function exportDeck(
 }
 
 // 可编辑混合导出：原生元素映射 + 复杂元素裁图
-async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale }: {
+async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile }: {
   deck: Deck;
   deckDir: string;
   baseUrl: string;
   outDir: string;
   base: string;
   scale: number;
+  outputFile?: string;
 }): Promise<string> {
   const plans = deck.slides.map(s => planSlide(deck, s));
   const cropBuffers = new Map<string, Buffer>(); // "slideIdx:key" -> PNG Buffer
@@ -96,12 +101,14 @@ async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale 
       const plan = plans[i];
       const crops = plan.items.filter((it): it is Extract<PlanItem, { kind: 'crop' }> => it.kind === 'crop');
       if (!crops.length) continue;
-      await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+      const response=await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 });
+      if(!response?.ok())throw Error(`无法渲染第 ${i+1} 页`);
       const t0 = Date.now();
       for (;;) {
         // __SLX_READY__ 为渲染页注入的全局标记，DOM 类型上不存在 → 窄化 any
         const ok = await page.evaluate(() => (window as any).__SLX_READY__ === true).catch(() => false);
-        if (ok || Date.now() - t0 > 10000) break;
+        if (ok) break;
+        if (Date.now() - t0 > 10000) throw Error(`第 ${i+1} 页渲染未就绪`);
         await new Promise(r => setTimeout(r, 120));
       }
       // 隐藏原生映射元素，让裁图只含“裁图内容 + 背景”
@@ -123,7 +130,7 @@ async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale 
     deck, deckDir, plans, cropBuffers,
     width: deck.width, height: deck.height, title: deck.title || base,
   });
-  const file = path.join(outDir, `${base}.pptx`);
+  const file = outputFile || path.join(outDir, `${base}.pptx`);
   fs.writeFileSync(file, buf);
   return file;
 }

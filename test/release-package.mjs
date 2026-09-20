@@ -4,7 +4,8 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import puppeteer from 'puppeteer-core';
-const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.5/win-unpacked/SlideX.exe');
+import {unzipIndependent} from './pptx-integrity.mjs';
+const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.6/win-unpacked/SlideX.exe');
 const uiOnly=process.argv.includes('--ui-only');
 assert.ok(fs.existsSync(executable),'Packaged executable must exist');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-package-')),file=path.join(dir,'deck.slx');
@@ -51,6 +52,13 @@ try {
   for(const format of uiOnly ? [] : ['html','png','pdf','pptx']) {
     const result=await page.evaluate(async format=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format,scale:1})})).json(),format);
     assert.ok(result.ok,`${format}: ${result.error}`);assert.ok(result.files.every(file=>fs.statSync(file).size>100));console.log('  ✓ packaged '+format+' export');
+    if(format==='pptx'){
+      const parts=await unzipIndependent(fs.readFileSync(result.files.at(-1)));assert.ok(parts.has('ppt/presentation.xml'));assert.ok(parts.has('ppt/slides/slide1.xml'));
+      fs.copyFileSync(result.files.at(-1),path.join(dir,'image.pptx'));
+      const editable=await page.evaluate(async()=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:'pptx',editable:true})})).json());
+      assert.ok(editable.ok,editable.error);const native=await unzipIndependent(fs.readFileSync(editable.files.at(-1)));assert.ok(native.get('ppt/slides/slide1.xml').toString().includes('<p:sp>'));
+      fs.copyFileSync(editable.files.at(-1),path.join(dir,'editable.pptx'));console.log('  ✓ packaged editable pptx export');
+    }
   }
   // The packaged smoke window remains hidden; visual capture is covered by react-electron.cjs.
   // Chromium may never deliver Page.captureScreenshot for a never-shown native window.

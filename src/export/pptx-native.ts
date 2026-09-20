@@ -104,7 +104,8 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = ''): void {
       return;
     }
     case 'image':
-      items.push({ kind: 'pic', el });
+      if (/\.(png|jpe?g|gif)(?:[?#].*)?$/i.test(String(el.src))) items.push({ kind: 'pic', el });
+      else items.push({kind:'crop',el,key:prefix+el.id,x:el.x!,y:el.y!,w:el.w!,h:el.h!});
       return;
     default:
       items.push({ kind: 'crop', el, key: prefix + el.id, x: el.x!, y: el.y!, w: el.w!, h: el.h! });
@@ -160,7 +161,7 @@ function xfrmXml(el: SlideElement): string {
   return `<a:xfrm${rot}${flip}><a:off x="${emu(el.x)}" y="${emu(el.y)}"/><a:ext cx="${emu(el.w)}" cy="${emu(el.h)}"/></a:xfrm>`;
 }
 function adjXml(el: SlideElement): string {
-  const adj = String(el.adj ?? '').trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+  const adj = String(el.adj ?? '').trim().split(/[\s,]+/).filter(Boolean).map(Number).filter(Number.isFinite);
   const clamp01 = (v: number): number => Math.max(0, Math.min(100000, Math.round(v * 100000)));
   const gds: Array<[string, number]> = [];
   switch (el.name) {
@@ -216,7 +217,7 @@ function textBodyXml(el: SlideElement, deck: Deck, linkIds?: Map<string, string>
     }).join('');
     return `<a:p>${pPr}${runsXml}</a:p>`;
   }).join('');
-  return `<p:txBody><a:bodyPr${wrap} anchor="${anchor}" lIns="91440" tIns="45720" rIns="91440" bIns="45720"/><a:lstStyle/>${parasXml}</p:txBody>`;
+  return `<p:txBody><a:bodyPr${wrap} anchor="${anchor}" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/>${parasXml}</p:txBody>`;
 }
 
 // ─────────── 元素级 XML ───────────
@@ -303,9 +304,7 @@ export function slideNativeXml(deck: Deck, slide: SlideContainer, plan: SlidePla
   // linkIds: Map(href -> rId)；文本 run 超链接（可省略，向后兼容）
   let idNum = 10;
   const parts: string[] = [];
-  if (plan.bg) {
-    parts.push(`<p:bg><p:bgPr>${fillXml(plan.bg.color, deck)}<a:effectLst/></p:bgPr></p:bg>`);
-  }
+  const background = plan.bg ? `<p:bg><p:bgPr>${fillXml(plan.bg.color, deck)}<a:effectLst/></p:bgPr></p:bg>` : '';
   for (const item of plan.items) {
     idNum++;
     switch (item.kind) {
@@ -318,7 +317,7 @@ export function slideNativeXml(deck: Deck, slide: SlideContainer, plan: SlidePla
   }
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-<p:cSld><p:spTree>
+<p:cSld>${background}<p:spTree>
 <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
 <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(deck.width)}" cy="${emu(deck.height)}"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
 ${parts.join('\n')}
@@ -384,14 +383,16 @@ export async function buildPptxEditable({ deck, deckDir, plans, cropBuffers, wid
 <Default Extension="jpg" ContentType="image/jpeg"/>
 <Default Extension="jpeg" ContentType="image/jpeg"/>
 <Default Extension="gif" ContentType="image/gif"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
 <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
 <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+<Override PartName="/ppt/theme/theme2.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 <Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>
 <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
 <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>`;
   for (let i = 1; i <= N; i++) {
     ct += `\n<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
-    if (deck.slides[i - 1].notes) ct += `\n<Override PartName="/ppt/notesSlides/notesSlide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`;
+    if (deck.slides[i - 1].notes?.trim()) ct += `\n<Override PartName="/ppt/notesSlides/notesSlide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`;
   }
   ct += '</Types>';
   add('[Content_Types].xml', ct);
@@ -410,7 +411,7 @@ export async function buildPptxEditable({ deck, deckDir, plans, cropBuffers, wid
   }
   add('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId id="2147483649" r:id="rId2"/></p:notesMasterIdLst>
+<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId2"/></p:notesMasterIdLst>
 <p:sldIdLst>${sldIds}</p:sldIdLst>
 <p:sldSz cx="${emu(width)}" cy="${emu(height)}"/><p:notesSz cx="${emu(height)}" cy="${emu(width)}"/>
 </p:presentation>`);
@@ -432,8 +433,9 @@ ${sldRels}
     { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster', target: '../slideMasters/slideMaster1.xml' },
   ]));
   add('ppt/notesMasters/notesMaster1.xml', notesMasterXml());
+  add('ppt/theme/theme2.xml', themeXml());
   add('ppt/notesMasters/_rels/notesMaster1.xml.rels', relsXml([
-    { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme', target: '../theme/theme1.xml' },
+    { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme', target: '../theme/theme2.xml' },
   ]));
 
   let mediaIdx = 0;
@@ -446,9 +448,10 @@ ${sldRels}
       if (item.kind !== 'pic') continue;
       mediaIdx++;
       const relId = `rId${rels.length + 1}`;
-      const ext = (path.extname(item.el.src as string) || '.png').slice(1).toLowerCase();
+      const ext = (path.extname((item.el.src as string).split(/[?#]/)[0]) || '.png').slice(1).toLowerCase();
       const buf = await loadImageBuffer(item.el.src as string, deckDir);
-      add(`ppt/media/image${mediaIdx}.${ext || 'png'}`, buf || Buffer.alloc(0));
+      if(!buf?.length)throw Error(`无法读取 PPTX 图片：${item.el.src}`);
+      add(`ppt/media/image${mediaIdx}.${ext || 'png'}`, buf);
       rels.push({ id: relId, type: R_IMAGE, target: `../media/image${mediaIdx}.${ext || 'png'}` });
       relIds.set(item.el.id, relId);
     }
@@ -457,7 +460,9 @@ ${sldRels}
       if (item.kind !== 'crop') continue;
       mediaIdx++;
       const relId = `rId${rels.length + 1}`;
-      add(`ppt/media/image${mediaIdx}.png`, cropBuffers.get(`${i}:${item.key}`) || Buffer.alloc(0));
+      const crop=cropBuffers.get(`${i}:${item.key}`);
+      if(!crop?.length)throw Error(`PPTX 对象图片缺失：${item.key}`);
+      add(`ppt/media/image${mediaIdx}.png`, crop);
       rels.push({ id: relId, type: R_IMAGE, target: `../media/image${mediaIdx}.png` });
       relIds.set(item.key, relId);
     }
@@ -470,11 +475,13 @@ ${sldRels}
     }
     const hasNotes = deck.slides[i].notes && deck.slides[i].notes.trim();
     if (hasNotes) rels.push({ id: `rId${rels.length + 1}`, type: R_NOTES, target: `../notesSlides/notesSlide${i + 1}.xml` });
+    rels.push({id:'rIdLayout',type:'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout',target:'../slideLayouts/slideLayout1.xml'});
     add(`ppt/slides/slide${i + 1}.xml`, slideNativeXml(deck, deck.slides[i], plan, relIds, linkIds));
     add(`ppt/slides/_rels/slide${i + 1}.xml.rels`, relsXml(rels));
     if (hasNotes) add(`ppt/notesSlides/notesSlide${i + 1}.xml`, notesSlideXml(i + 1, deck.slides[i].notes));
     if (hasNotes) add(`ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`, relsXml([
       { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster', target: '../notesMasters/notesMaster1.xml' },
+      { id: 'rId2', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: `../slides/slide${i + 1}.xml` },
     ]));
   }
   return zip(entries);

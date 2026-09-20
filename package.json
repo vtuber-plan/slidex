@@ -1,6 +1,6 @@
 {
   "name": "slidex",
-  "version": "1.7.0-rc.5",
+  "version": "1.7.0-rc.6",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "type": "module",
   "bin": {
@@ -63,7 +63,8 @@
     "prettier": "^3.9.8",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "yauzl": "^3.4.0"
   },
   "author": "SlideX Team"
 }

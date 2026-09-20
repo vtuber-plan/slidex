@@ -25,7 +25,7 @@ function unzip(buf) {
   let off = 0;
   while (off + 4 <= buf.length && buf.readUInt32LE(off) === 0x04034b50) {
     const method = buf.readUInt16LE(off + 8);
-    const compSize = buf.readUInt32LE(off + 20);
+    const compSize = buf.readUInt32LE(off + 18);
     const nameLen = buf.readUInt16LE(off + 26);
     const extraLen = buf.readUInt16LE(off + 28);
     const name = buf.slice(off + 30, off + 30 + nameLen).toString('utf8');

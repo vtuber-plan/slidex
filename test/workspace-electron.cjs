@@ -10,7 +10,9 @@ app.commandLine.appendSwitch('slidex-smoke-test');
 process.argv.push(first);
 app.disableHardwareAcceleration();
 let picked=second;
-dialog.showOpenDialog=async()=>({canceled:!picked,filePaths:picked?[picked]:[]});
+let exportFolder,exportFile,folderCalls=0,saveCalls=0;
+dialog.showOpenDialog=async(_window,options)=>{const folder=options.properties?.includes('openDirectory');if(folder)folderCalls++;const chosen=folder?exportFolder:picked;return {canceled:!chosen,filePaths:chosen?[chosen]:[]};};
+dialog.showSaveDialog=async()=>{saveCalls++;return {canceled:!exportFile,filePath:exportFile};};
 const timer=setTimeout(()=>{console.error('Native open test timed out');app.exit(1);},60000);
 const wait=async(fn)=>{for(let i=0;i<200;i++){if(await fn())return;await new Promise(r=>setTimeout(r,100));}throw Error('Condition timed out');};
 (async()=>{
@@ -39,6 +41,16 @@ const wait=async(fn)=>{for(let i=0;i<200;i++){if(await fn())return;await new Pro
     fileMenu.find(item=>['导出…','Export…'].includes(item.label)).click();
     await wait(()=>win.webContents.executeJavaScript('!!document.querySelector("[aria-label=导出格式],[aria-label=\\"Export format\\"]")'));
     console.log('PASS Electron preferences and unified export menu');
+    const runExport=format=>win.webContents.executeJavaScript(`fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:${JSON.stringify(format)},chooseDestination:true,scale:1})}).then(r=>r.json())`);
+    const canceled=await runExport('pdf');if(!canceled.canceled||saveCalls!==1)throw Error('Canceled save dialog must cancel export');
+    exportFile=path.join(dir,'custom-导出.pdf');const pdf=await runExport('pdf');
+    if(!pdf.ok||pdf.files[0]!==exportFile||!fs.existsSync(exportFile))throw Error('PDF did not use selected destination');
+    const download=await win.webContents.executeJavaScript(`fetch(${JSON.stringify(pdf.downloads[0])}).then(async r=>({status:r.status,size:(await r.arrayBuffer()).byteLength,disposition:r.headers.get('content-disposition')}))`);
+    if(download.status!==200||download.size<100||!download.disposition.includes('UTF-8'))throw Error('Selected export download failed');
+    const cancelImages=await runExport('png');if(!cancelImages.canceled||folderCalls!==1)throw Error('Canceled folder dialog must cancel export');
+    exportFolder=path.join(dir,'images');fs.mkdirSync(exportFolder);const png=await runExport('png');
+    if(!png.ok||path.dirname(png.files[0])!==exportFolder)throw Error('PNG did not use selected folder');
+    console.log('PASS Electron export save/folder pickers, cancellation and Unicode destination download');
     console.log('PASS Electron native open menu, picker bridge, title and cancellation');
     clearTimeout(timer);app.exit(0);
   }catch(error){console.error(error);clearTimeout(timer);app.exit(1);}
