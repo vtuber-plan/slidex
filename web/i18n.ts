@@ -211,6 +211,14 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 文件路径|File path
 正在原位编辑|Editing on canvas
 文字样式|Text style
+空格拖动画布 · Ctrl+滚轮缩放|Space to pan · Ctrl+wheel to zoom
+缩放百分比|Zoom percentage
+实际大小|Actual size
+适应|Fit
+收起幻灯片栏|Collapse slides panel
+展开幻灯片栏|Expand slides panel
+收起属性栏|Collapse properties panel
+展开属性栏|Expand properties panel
 打开|Open
 替换全部|Replace all
 本地版本历史|Local history

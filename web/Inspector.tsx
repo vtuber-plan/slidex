@@ -1,5 +1,5 @@
 import { t, useLocale, optionLabel } from "./i18n";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Checkbox, Tabs, TextArea, Dialog } from "@radix-ui/themes";
 import {
   ArrowUp,
@@ -85,16 +85,18 @@ export function Inspector({ preview }: { preview: () => void }) {
     slide = container(s),
     el = slide.elements.find((e) => e.id === s.selection[0]);
   const [tab, setTab] = useState("design");
+  useEffect(()=>{if(s.editing)setTab("design");},[s.editing]);
   return (
     <aside className="inspector">
-      <Tabs.Root value={tab} onValueChange={setTab}>
+      <Tabs.Root value={tab} onValueChange={next=>{window.__slxCommitText?.();setTab(next);}}>
         <Tabs.List>
           <Tabs.Trigger value="design">{t("设计")}</Tabs.Trigger>
           <Tabs.Trigger value="layers">{t("图层")}</Tabs.Trigger>
           <Tabs.Trigger value="animation">{t("动画")}</Tabs.Trigger>
         </Tabs.List>
-        <Tabs.Content value="design">
-          <div className="panel-body">
+        <Tabs.Content value="design" forceMount className="design-tab">
+          <div id="text-format-dock" data-rich-editor-ui />
+          <div className="panel-body" hidden={!!s.editing}>
             {el && s.selection.length === 1 ? (
               <>
                 <div className="panel-heading">

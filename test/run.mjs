@@ -188,6 +188,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/react-groups.mjs', hasChrome],
     ['test/react-text.mjs', hasChrome],
     ['test/react-workspace.mjs', hasChrome],
+    ['test/react-navigation.mjs', hasChrome],
     ['test/react-appearance.mjs', hasChrome],
     ['test/release-offline.mjs', hasChrome],
     ['test/gap-warnings.mjs', true],

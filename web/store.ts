@@ -46,6 +46,7 @@ interface EditorState {
   error: string;
   ready: boolean;
   zoom: number;
+  zoomMode: "fit" | "manual";
   editing: string;
   clipboard: SlideElement[];
   gesture: Deck | null;
@@ -125,6 +126,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   error: "",
   ready: false,
   zoom: 1,
+  zoomMode: "fit",
   editing: "",
   clipboard: [],
   gesture: null,

@@ -16,6 +16,7 @@ import {
 import { SlideSurface } from "./SlideSurface";
 import { RichText } from "./RichText";
 import { PanelResize, usePanelSize } from "./PanelResize";
+import { useCanvasNavigation } from "./useCanvasNavigation";
 import { TextOverflow } from "./TextOverflow";
 import type { SlideElement } from "../src/types";
 import { resizeElement } from "../src/geometry";
@@ -43,24 +44,18 @@ export function Canvas() {
   );
   const [notesHeight, setNotesHeight] = usePanelSize("notes", 120);
   useEffect(() => { localStorage.setItem("slidex-panel-notes", String(notesHeight)); }, [notesHeight]);
-  const [size, setSize] = useState({ w: 900, h: 600 }),
-    [box, setBox] = useState<{
+  const navigation=useCanvasNavigation(area,s.deck.width,s.deck.height);
+  const scale=navigation.scale;
+  const [zoomDraft,setZoomDraft]=useState(String(Math.round(scale*100)));
+  const zoomInputChanged=useRef(false);
+  useEffect(()=>{if(!zoomInputChanged.current)setZoomDraft(String(Math.round(scale*100)));},[scale]);
+  const [box, setBox] = useState<{
       x: number;
       y: number;
       w: number;
       h: number;
     } | null>(null),
     [guides, setGuides] = useState<{ x?: number; y?: number }>({});
-  useEffect(() => {
-    const observer = new ResizeObserver((entries) => {
-      const r = entries[0].contentRect;
-      setSize({ w: r.width, h: r.height });
-    });
-    if (area.current) observer.observe(area.current);
-    return () => observer.disconnect();
-  }, []);
-  const fit = Math.min(size.w / s.deck.width, size.h / s.deck.height),
-    scale = Math.max(0.1, fit * s.zoom);
   const point = (e: { clientX: number; clientY: number }) => {
     const r = board.current!.getBoundingClientRect();
     return inversePoint(currentScope.matrix, {
@@ -310,7 +305,9 @@ export function Canvas() {
           />
           <div
             ref={area}
-            className="canvas-workspace"
+            tabIndex={-1}
+            className={`canvas-workspace ${navigation.className}`}
+            {...navigation.handlers}
             onDragOver={(e) => e.preventDefault()}
           >
             <div
@@ -318,6 +315,7 @@ export function Canvas() {
               style={{
                 width: s.deck.width * scale,
                 height: s.deck.height * scale,
+                ...navigation.position,
               }}
             >
               <div
@@ -449,34 +447,37 @@ export function Canvas() {
             </div>
           </div>
           <div className="canvas-bottom">
-            <span>{t("Shift 多选 · Alt 暂停吸附 · 双击编辑文本")}</span>
+            <span>{t("空格拖动画布 · Ctrl+滚轮缩放")}</span>
             <div className="flex items-center gap-2">
               <Button
                 aria-label={t("缩小")}
                 size="1"
                 variant="ghost"
                 onClick={() =>
-                  useEditor.setState({ zoom: Math.max(0.25, s.zoom - 0.1) })
+                  navigation.setScale(scale - 0.1)
                 }
               >
                 <Minus size={14} />
               </Button>
               <Slider
                 aria-label={t("缩放")}
-                min={0.25}
-                max={2}
+                min={0.1}
+                max={4}
                 step={0.05}
-                value={[s.zoom]}
-                onValueChange={([zoom]) => useEditor.setState({ zoom })}
+                value={[scale]}
+                onValueChange={([zoom]) => navigation.setScale(zoom)}
                 style={{ width: 90 }}
               />
-              <span>{Math.round(scale * 100)}%</span>
+              <label className="zoom-entry"><input aria-label={t("缩放百分比")} type="number" min="10" max="400" value={zoomDraft}
+                onChange={e=>{zoomInputChanged.current=true;setZoomDraft(e.target.value);}}
+                onBlur={()=>{if(!zoomInputChanged.current)return;zoomInputChanged.current=false;if(zoomDraft.trim()&&Number.isFinite(+zoomDraft)){const value=Math.max(10,Math.min(400,+zoomDraft));navigation.setScale(value/100);setZoomDraft(String(value));}else setZoomDraft(String(Math.round(scale*100)));}}
+                onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();if(e.key==='Escape'){e.preventDefault();zoomInputChanged.current=false;setZoomDraft(String(Math.round(scale*100)));}}} />%</label>
               <Button
                 aria-label={t("放大")}
                 size="1"
                 variant="ghost"
                 onClick={() =>
-                  useEditor.setState({ zoom: Math.min(2, s.zoom + 0.1) })
+                  navigation.setScale(scale + 0.1)
                 }
               >
                 <Plus size={14} />
@@ -484,11 +485,14 @@ export function Canvas() {
               <Button
                 aria-label={t("适应画布")}
                 size="1"
-                variant="ghost"
-                onClick={() => useEditor.setState({ zoom: 1 })}
+                variant={navigation.mode==='fit'?'soft':'ghost'}
+                aria-pressed={navigation.mode==='fit'}
+                onClick={navigation.reset}
               >
                 <Scan size={14} />
+                {t("适应")}
               </Button>
+              <Button size="1" variant="ghost" aria-label={t("实际大小")} onClick={()=>navigation.setScale(1)}>100%</Button>
             </div>
           </div>
           <details className="notes-panel">

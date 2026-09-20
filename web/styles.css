@@ -43,7 +43,7 @@
 }
 .properties-dock {min-width:0;min-height:0;background:var(--color-panel-solid);overflow:auto;}
 .object-inspector,.object-inspector > .inspector {height:100%;}
-.properties-dock.is-text-editing .object-inspector {display:none;}
+.design-tab[data-state=inactive],.panel-body[hidden] {display:none;}
 #text-format-dock:empty {display:none;}
 .rich-editor {padding:0 18px 20px;}
 .text-panel-heading {display:flex;flex-direction:column;gap:6px;padding:20px 0 18px;border-bottom:1px solid var(--gray-5);margin-bottom:18px;}
@@ -265,6 +265,14 @@ button:focus-visible {
   min-height: 0;
   flex: 1;
 }
+.editor-layout > .filmstrip {grid-column:1;grid-row:1;}
+.editor-layout > .panel-resize:nth-child(2) {grid-column:2;grid-row:1;}
+.editor-layout > .canvas-and-tools {grid-column:3;grid-row:1;}
+.editor-layout > .panel-resize:nth-child(4) {grid-column:4;grid-row:1;}
+.editor-layout > .properties-dock {grid-column:5;grid-row:1;}
+.left-collapsed > .filmstrip,.left-collapsed > .panel-resize:nth-child(2),.right-collapsed > .properties-dock,.right-collapsed > .panel-resize:nth-child(4) {display:none;}
+.zoom-entry {display:flex;align-items:center;gap:2px;white-space:nowrap;}
+.zoom-entry input {width:54px;padding:3px;border:1px solid var(--gray-6);border-radius:4px;background:var(--color-panel-solid);color:var(--gray-12);font:inherit;}
 .filmstrip {
   display: flex;
   flex-direction: column;
@@ -354,22 +362,22 @@ button:focus-visible {
   color: var(--gray-9);
 }
 .canvas-workspace {
+  position: relative;
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  display: flex;
-  align-items: safe center;
-  justify-content: safe center;
-  padding: 24px;
+  overflow: hidden;
+  padding: 0;
   background: var(--gray-3);
 }
 .canvas-size {
-  position: relative;
+  position: absolute;
   flex-shrink: 0;
   box-shadow:
     0 8px 40px #00000014,
     0 1px 5px #0000000c;
 }
+.canvas-workspace.can-pan,.canvas-workspace.can-pan * {cursor:grab !important;}
+.canvas-workspace.is-panning,.canvas-workspace.is-panning * {cursor:grabbing !important;user-select:none !important;}
 .canvas-board {
   position: relative;
   transform-origin: top left;
@@ -1025,6 +1033,7 @@ button:focus-visible {
   .editor-layout {
     grid-template-columns: 120px 6px minmax(230px, 1fr) !important;
   }
+  .editor-layout.left-collapsed {grid-template-columns:0 0 minmax(230px,1fr) !important;}
   .editor-layout > .panel-resize:nth-last-child(2) {display:none;}
   .properties-dock {
     position: absolute;

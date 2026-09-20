@@ -42,6 +42,8 @@ import {
   AlignCenterVertical,
   AlignEndVertical,
   Minus,
+  PanelLeft,
+  PanelRight,
 } from "lucide-react";
 import { useEditor, container, scope, uid, uploadImage } from "./store";
 import { Thumbnail, RenderResources } from "./SlideSurface";
@@ -72,6 +74,9 @@ function shapeSvg(name: string, w: number, h: number) {
   return `<svg viewBox="${shape.viewBox}"><path d="${shape.d}" fill-rule="${shape.fillRule}"/></svg>`;
 }
 export default function App() {
+  const [leftCollapsed,setLeftCollapsed]=useState(localStorage.getItem('slidex-left-collapsed')==='true');
+  const [rightCollapsed,setRightCollapsed]=useState(localStorage.getItem('slidex-right-collapsed')==='true');
+  useEffect(()=>{localStorage.setItem('slidex-left-collapsed',String(leftCollapsed));localStorage.setItem('slidex-right-collapsed',String(rightCollapsed));},[leftCollapsed,rightCollapsed]);
   const [leftWidth, setLeftWidth] = usePanelSize("left", 168);
   const [rightWidth, setRightWidth] = usePanelSize("right", 300);
   const [openFile, setOpenFile] = useState(false), [filePath, setFilePath] = useState("");
@@ -85,8 +90,8 @@ export default function App() {
     localStorage.setItem("slidex-panel-left", String(leftWidth));
     localStorage.setItem("slidex-panel-right", String(rightWidth));
   }, [leftWidth, rightWidth]);
-  const rightSize = Math.min(rightWidth, Math.max(240, viewport - 480));
-  const leftSize = Math.min(leftWidth, Math.max(120, viewport - rightSize - 340));
+  const rightSize = Math.min(rightWidth, Math.max(240, viewport - (leftCollapsed?340:480)));
+  const leftSize = Math.min(leftWidth, Math.max(120, viewport - (rightCollapsed?0:rightSize) - 340));
   async function openDocument(path: string) {
     try {
       window.__slxCommitText?.();
@@ -594,6 +599,8 @@ export default function App() {
               </Tool>
               <div className="ml-auto">
                 <EditingTools />
+                <Tool label={t(leftCollapsed?"展开幻灯片栏":"收起幻灯片栏")} onClick={()=>setLeftCollapsed(!leftCollapsed)}><PanelLeft size={16}/></Tool>
+                <Tool label={t(rightCollapsed?"展开属性栏":"收起属性栏")} onClick={()=>setRightCollapsed(!rightCollapsed)}><PanelRight size={16}/></Tool>
                 <Badge variant="soft">
                   {s.selection.length
                     ? t(`${s.selection.length} 个对象`)
@@ -601,7 +608,7 @@ export default function App() {
                 </Badge>
               </div>
             </div>
-            <div className="editor-layout" style={{gridTemplateColumns: `${leftSize}px 6px minmax(230px, 1fr) 6px ${rightSize}px`}}>
+            <div className={`editor-layout ${leftCollapsed?'left-collapsed':''} ${rightCollapsed?'right-collapsed':''}`} style={{gridTemplateColumns: `${leftCollapsed?0:leftSize}px ${leftCollapsed?0:6}px minmax(230px, 1fr) ${rightCollapsed?0:6}px ${rightCollapsed?0:rightSize}px`}}>
               <aside className="filmstrip">
                 <div className="filmstrip-title">
                   <strong>{t("幻灯片")}</strong>
@@ -662,7 +669,7 @@ export default function App() {
                   </div>
                 </div>
               </aside>
-              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-rightSize-340)} />
+              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-(rightCollapsed?0:rightSize)-340)} />
               <div className="canvas-and-tools">
                 <Canvas />
                 <div
@@ -735,10 +742,9 @@ export default function App() {
                   </DropdownMenu.Root>
                 </div>
               </div>
-              <PanelResize name="调整属性面板宽度" value={rightSize} onChange={setRightWidth} min={240} max={Math.min(560, viewport-leftSize-340)} reverse />
+              <PanelResize name="调整属性面板宽度" value={rightSize} onChange={setRightWidth} min={240} max={Math.min(560, viewport-(leftCollapsed?0:leftSize)-340)} reverse />
               <div className={`properties-dock ${s.editing ? "is-text-editing" : ""}`}>
                 <div className="object-inspector"><Inspector preview={() => setPresent(true)} /></div>
-                <div id="text-format-dock" data-rich-editor-ui />
               </div>
             </div>
             <footer className="statusbar">

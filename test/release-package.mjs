@@ -4,7 +4,7 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import puppeteer from 'puppeteer-core';
-const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.3/win-unpacked/SlideX.exe');
+const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.4/win-unpacked/SlideX.exe');
 const uiOnly=process.argv.includes('--ui-only');
 assert.ok(fs.existsSync(executable),'Packaged executable must exist');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-package-')),file=path.join(dir,'deck.slx');
@@ -27,8 +27,8 @@ try {
   await page.click('.canvas-caption');
   await page.waitForFunction(()=>{
     const board=document.querySelector('#canvasHost'),area=document.querySelector('.canvas-workspace');
-    const style=getComputedStyle(area),width=area.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),height=area.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
-    const fit=Math.max(.1,Math.min(width/640,height/360));
+    const width=area.clientWidth-48,height=area.clientHeight-48;
+    const fit=Math.max(.1,Math.min(4,width/640,height/360));
     return Math.abs(board.getBoundingClientRect().width-640*fit)<1;
   },{polling:100});
   const geometry=()=>page.$eval('#canvasHost',el=>{const r=el.getBoundingClientRect();return [r.x,r.y,r.width,r.height];});
@@ -40,6 +40,11 @@ try {
   assert.ok(await page.$eval('.brand-icon',el=>el.complete&&el.naturalWidth>0));
   assert.equal(await page.$('[role="dialog"]'),null);
   await page.keyboard.type('Edited ');await page.click('.canvas-caption');
+  await page.click('[aria-label="实际大小"]');
+  await page.waitForFunction(()=>Math.abs(document.querySelector('#canvasHost').getBoundingClientRect().width-640)<1);
+  await page.click('[aria-label="收起属性栏"]');
+  assert.ok(Math.abs((await geometry())[2]-640)<1);
+  await page.click('[aria-label="展开属性栏"]');
   assert.equal(await page.$$eval('.editor-layout > [role="separator"]',nodes=>nodes.length),2);
   await page.click('#canvasHost [data-id="a"]');await page.keyboard.press('ArrowRight');
   assert.ok(await page.evaluate(()=>window.__slxSave()));assert.match(fs.readFileSync(file,'utf8'),/x="41"/);
