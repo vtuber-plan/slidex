@@ -7,7 +7,7 @@ SlideX 是一种基于受控 XML 子集的幻灯片描述语言。一份 `.slx` 
 
 1. **AI 友好** —— 结构自描述、语法容错面小、错误信息带行列号，LLM 一次生成即可运行；
 2. **人类可读写** —— 手写不难受、diff 干净、编辑器保存输出**规范形（canonical form）**保证幂等；
-3. **布局一比一** —— 编辑器预览、放映、PNG/PDF/PPTX 导出共用同一渲染管线，像素级一致；
+3. **共享布局** —— 编辑器预览、放映和保真导出复用渲染管线；可编辑 PPTX 使用原生对象映射，字体与排版差异及回退通过导出能力报告说明；
 4. **自包含** —— 一个项目文件夹（`.slx` + `media/`）可整体拷贝、版本化。
 
 格式以受控 XML 描述主题、页面和元素，强调可读、可校验、可稳定序列化，并让编辑器与导出器共享同一份中间表示。
@@ -193,6 +193,7 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `master` | string | — | 引用 `<master id>`；母版元素垫底渲染，本页背景覆盖母版背景 |
 | `transition` | `none \| fade \| slide-left \| slide-up \| zoom` | `none` | 放映时本页入场切换 |
 | `id` | string | 自动 | 页面标识（编辑器寻址用） |
+| `guides-x` `guides-y` | number 列表 | 空 | 固定参考线的页面坐标，分别为竖线 x / 横线 y；空格或逗号分隔，有限数值且分别在 `[0,width]` / `[0,height]` 内，否则 `E_ATTR_RANGE`。去重后保存；母版也支持，编辑时使用当前页面或母版自己的参考线，不参与放映与导出 |
 
 ### 6.1 `<animation>` 动画
 
@@ -207,7 +208,9 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `duration` | 各效果默认（入/出场 500ms，pulse 600ms） | 毫秒 |
 | `delay` | `0` | 毫秒 |
 
-放映语义：首个 `withPrevious/afterPrevious` 组在进页时自动播放；`onClick` 开新点击组，点击/空格依次播放组，组播完后下一次点击才翻页。导出 PNG/PDF 永远是**最终态**（全部入场完成、退出不执行——即导出静态结果）；PPTX 可编辑导出 v1 将动画元素的整体效果近似为无动画（见 §19）。
+放映语义：首个 `withPrevious/afterPrevious` 组在进页时自动播放；`onClick` 开新点击组，点击/空格依次播放组，组播完后下一次点击才翻页。PNG/PDF 使用文档静态布局（入场可见，不执行强调、路径和退出）。可编辑 PPTX 支持顶层原生对象的单击出现/消失/淡入/淡出及页面切换，其他效果报告为不支持。
+
+扩展效果：`spin` 使用 `angle`（默认 360，±36000 度）；`color` 使用 `color="#RRGGBB"` 做颜色强调后恢复；`fly-out / zoom-out / wipe-out` 为退出效果；`motion-path` 使用 `path="0,0 100,30"`，2～1000 个相对位移点，起点必须为零，坐标为父容器局部坐标且绝对值不超过 100000。路径末点和旋转结果保持到切页/重播，届时恢复文档布局。duration 默认 500，duration/delay 范围 0～600000ms。非法值报 `E_ANIM_VALUE` / `E_ANIM_PATH`。同对象同属性的并行动画后启动者覆盖，不叠加混合。详情见 [第三批能力说明](content-capabilities.md)。
 
 ## 7. 元素通用属性
 
@@ -223,6 +226,8 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `href` | string | — | 外部 `https://` / `mailto:`，或内部页面跳转 `slide:<slide-id>` |
 | `alt` | string | — | 无障碍描述；image/icon 缺失时提示 `W_ALT_MISSING` |
 | `locked` | boolean | `false` | 编辑器中禁止拖动、缩放和旋转；不影响渲染与导出 |
+| `label` | string | — | 图层显示名称，不替换 `id`，不改变动画目标或引用 |
+| `hidden` | boolean | `false` | 隐藏对象及其整个子树；编辑器、Viewer、HTML、PNG、PDF 和两种 PPTX 模式均不绘制。源内容与动画定义保留，隐藏目标的播放步骤跳过 |
 | `lock-aspect` | boolean | `false` | 编辑器角点缩放时保持宽高比（按住 Shift 也可临时启用） |
 
 ## 8. 元素：`<text>` 文本
@@ -282,7 +287,7 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | 属性 | 默认 | 说明 |
 |---|---|---|
 | `name` | **必填** | 内置形状名（下表）或 `custom` |
-| `adj` | 各形状默认 | 调整参数，空格分隔（OOXML 语义，见下表） |
+| `adj` | 各形状默认 | SlideX 几何参数，空格或逗号分隔；不直接等同于 OOXML 参数，见下表 |
 | `path` `view-box` | custom 必填 | SVG path（`M L H V C S Q A Z`）+ 视窗 `[w h]` |
 | `fill` | 不填充 | Fill 简写（纯色）或子元素 `<fill>`（渐变/图片，见 §16 通用 Fill 元素） |
 | `stroke` | 无描边 | 颜色 |
@@ -304,6 +309,8 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `donut` | `0.25` | 圆环，adj=环宽比 |
 | `star5` | — | 五角星 |
 | `custom` | — | 自定义路径 |
+
+现有 36 种内置预设，完整名称和参数范围见 [形状库注册表与说明](content-capabilities.md#c1-形状库)。新增多边形、方向箭头、多角星、十字、对话标注及流程图；`star5` 现支持内径比例，默认 0.382，保持原有默认外观。参数非法报 `E_SHAPE_ADJ`。
 
 `custom` 约定：`view-box` 非等比拉伸到 bounds 会变形，需保持 `viewBox.w:viewBox.h = w:h`；镂空用外圈顺时针 + 内圈逆时针的复合路径。
 
@@ -384,7 +391,7 @@ bounds 变化（编辑器缩放）时按比例缩放 points。两点特例：`po
 
 ## 14. 元素：`<chart>` 图表
 
-数据与系列分离；v1 支持 `bar / line / area / pie / scatter`，混合规则：笛卡尔系（bar/line/area/scatter）可任意混叠；`pie` 独占。
+数据与系列分离；支持 `bar / line / area / pie / scatter / radar / bubble / waterfall`。bar/line/area 可混合；pie 和 waterfall 为独占单系列；scatter、radar、bubble 仅允许同类型多系列。
 
 ```xml
 <chart id="c1" x="50" y="100" w="600" h="360" title="季度营收" legend="bottom">
@@ -406,7 +413,8 @@ bounds 变化（编辑器缩放）时按比例缩放 points。两点特例：`po
 
 | 属性 | 说明 |
 |---|---|
-| `type` | `bar \| line \| area \| pie \| scatter` |
+| `type` | `bar \| line \| area \| pie \| scatter \| radar \| bubble \| waterfall` |
+| `size` | bubble 必填，非负数值列；圆面积与值成比例，零/空值不绘制 |
 | `x` `y` | encode 列名（所有类型统一：`x`=类目列（pie 为扇区名），`y`=数值列；scatter 的 x 也是数值）；列必须存在于 cols（`E_ENCODE_COL`） |
 | `name` | 图例名，默认取 y 列名 |
 | `fill` | bar/area 面色、pie 扇区色（可多值空格循环） |
@@ -425,7 +433,9 @@ bounds 变化（编辑器缩放）时按比例缩放 points。两点特例：`po
 - `legend`：`none`（默认）`top|bottom|left|right`。
 - `font-size`：图表全局字号（默认 12）。
 
-图表为纯 SVG 渲染（无外部依赖），导出与预览完全一致。
+radar 的 y 非负且至少三行；waterfall 的 y 为从零累计的正负增量，空值不改变累计值；bubble 的 x/y 允许负数。雷达/瀑布不支持堆叠及自定义轴样式。非法列、数值、混合方式及轴设置有对应诊断。普通折线/面积图跳过空值并连接有效点，雷达空值形成断点。双轴绑定尚不支持，报 `E_CHART_AXIS`。
+
+共享渲染使用纯 SVG。可编辑 PPTX 对基础五类图表提供原生子集及内嵌 XLSX 数据，复杂图表显式回退；原生图表排版由 PowerPoint 决定，不承诺视觉完全一致。边界见 [图表能力](content-capabilities.md#c2-图表)。
 
 ## 15. 元素：`<code>` 代码块
 
@@ -478,7 +488,7 @@ def eval_(t, env):
 
 - `x/y/w/h/rotation/opacity/flip-h/flip-v` 作用于整个组合；子元素坐标相对 group 左上角。
 - 子元素 id 仍在页面范围内唯一，可作为 animation target。
-- group 可以整体参与图层排序、复制和导出；可编辑 PPTX 当前将其按组合边界裁图。
+- group 可以整体参与图层排序、复制和导出；可编辑 PPTX 递归映射受支持子元素，其他子元素按最小必要范围裁图。
 
 ## 17. 校验规则
 
@@ -527,4 +537,4 @@ def eval_(t, env):
 
 ---
 
-*当前能力边界：单文件 XML；10 种内置形状并支持 custom path；5 类纯 SVG 图表；动画/切换支持放映但暂不导出为 PPTX 原生动画；PPTX 同时提供整页图与原生/混合可编辑导出。*
+*当前能力边界：单文件 XML；36 种内置形状及 custom path；8 类 SVG 图表；原生图表、动画与切换支持明确子集。PPTX 同时提供整页图与原生/混合可编辑导出，差异由能力报告列出。*

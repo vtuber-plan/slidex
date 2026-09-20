@@ -1,5 +1,7 @@
 # 路线图
 
+> 2026-09-20：后续工作的优先级、实施批次及验收标准见 [后续改进规划](improvement-plan.md)。下文保留历史路线图；其中待办状态可能已由后续版本完成，以新规划的当前基线为准。
+
 ## React Studio（已实现，未发布）
 
 - React + Tailwind CSS + Radix Themes + Zustand；生产入口已切换，旧界面保留 `/legacy`。

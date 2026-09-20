@@ -2,6 +2,7 @@
 // 属性 schema 是解析/序列化/检查器三端共用的单一事实来源。
 
 import { parseXML, escapeHtml, decodeEntities } from './parser.js';
+import {SHAPE_PRESETS,shapeAdjustmentError} from './shape-library.js';
 import type {
   Animation, AttrSpec, AxisSpec, ChartSeries, Deck, DeckTheme, Diag, ElementSchema,
   ElementType, Fill, ParseResult, Shadow, SlideContainer, SlideElement, StyleAttrs,
@@ -15,6 +16,7 @@ const GEOM: AttrSpec[] = [
   ['rotation', 'num', 0], ['opacity', 'num', 1], ['flip-h', 'bool', false], ['flip-v', 'bool', false],
   ['href', 'str'], ['alt', 'str'],
   ['locked', 'bool', false], ['lock-aspect', 'bool', false],
+  ['label', 'str'], ['hidden', 'bool', false],
 ];
 const TEXT_STYLE: AttrSpec[] = [
   ['color', 'color'], ['font-size', 'num'], ['font-family', 'str'], ['bold', 'bool'],
@@ -78,9 +80,9 @@ export const ELEMENT_SCHEMA: ElementSchema = {
   },
 };
 
-export const SHAPE_NAMES = new Set(['rect', 'roundRect', 'ellipse', 'triangle', 'diamond', 'rightArrow', 'chevron', 'donut', 'star5', 'custom']);
-export const CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'scatter']);
-export const ANIM_EFFECTS = new Set(['appear', 'fade-in', 'fly-in', 'zoom-in', 'wipe-in', 'float-in', 'pulse', 'fade-out', 'disappear']);
+export const SHAPE_NAMES = new Set([...SHAPE_PRESETS.map(p=>p.name), 'custom']);
+export const CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'scatter', 'radar', 'bubble', 'waterfall']);
+export const ANIM_EFFECTS = new Set(['appear', 'fade-in', 'fly-in', 'zoom-in', 'wipe-in', 'float-in', 'pulse', 'fade-out', 'disappear','spin','color','fly-out','zoom-out','wipe-out','motion-path']);
 export const ANIM_TRIGGERS = new Set(['onClick', 'withPrevious', 'afterPrevious']);
 export const TRANSITIONS = new Set(['none', 'fade', 'slide-left', 'slide-up', 'zoom']);
 const STRUCT_TAGS = new Set(['fonts', 'font', 'theme', 'palette', 'color', 'text-styles', 'style', 'table-styles', 'table-style', 'header', 'body', 'last-row', 'first-col', 'last-col', 'cell', 'background', 'fill', 'stop', 'cols', 'rows', 'tr', 'td', 'data', 'row', 'series', 'x-axis', 'y-axis', 'slide', 'master', 'animation']);
@@ -246,6 +248,13 @@ function buildSlideContainer(node: XMLNode, deck: Deck, errors: Diag[], warnings
     elements: [],
     line: node.line,
   };
+  for(const [attr,key,max] of [['guides-x','guidesX',deck.width],['guides-y','guidesY',deck.height]] as const){
+    if(node.attrs[attr]!==undefined){
+      const values=String(node.attrs[attr]).trim().split(/[\s,]+/).filter(Boolean).map(Number);
+      if(values.some(n=>!Number.isFinite(n)||n<0||n>max))errors.push({code:'E_ATTR_RANGE',message:`${attr} 必须是页面范围内的有限坐标`,line:node.line});
+      else container[key]=[...new Set(values)];
+    }
+  }
   for (const c of node.children) {
     // Older serializers emitted a direct <fill> for non-solid backgrounds.
     if (c.name === 'background' || c.name === 'fill') container.background = fillFrom(c);
@@ -255,9 +264,12 @@ function buildSlideContainer(node: XMLNode, deck: Deck, errors: Diag[], warnings
         effect: c.attrs.effect || 'fade-in',
         trigger: c.attrs.trigger || 'onClick',
         direction: c.attrs.direction || 'up',
-        duration: num(c.attrs.duration, 0),
-        delay: num(c.attrs.delay, 0),
+        duration: c.attrs.duration===undefined?500:Number(c.attrs.duration),
+        delay: c.attrs.delay===undefined?0:Number(c.attrs.delay),
         line: c.line,
+        ...(c.attrs.angle!==undefined?{angle:Number(c.attrs.angle)}:{}),
+        ...(c.attrs.color!==undefined?{color:c.attrs.color}:{}),
+        ...(c.attrs.path!==undefined?{path:c.attrs.path}:{}),
       };
       container.animations.push(a);
     }
@@ -473,6 +485,14 @@ export function validateDeck(deck: Deck, errors: Diag[] = [], warnings: Diag[] =
       if (!a.target || !elIds.has(a.target)) warnings.push({ code: 'W_ANIM_TARGET', message: `<animation target="${a.target}"> 未找到本页元素`, line: a.line });
       if (!ANIM_EFFECTS.has(a.effect)) errors.push({ code: 'E_XML', message: `animation effect="${a.effect}" 不受支持`, line: a.line });
       if (!ANIM_TRIGGERS.has(a.trigger)) errors.push({ code: 'E_XML', message: `animation trigger="${a.trigger}" 不受支持`, line: a.line });
+      if(!Number.isFinite(a.duration)||a.duration<0||a.duration>600000||!Number.isFinite(a.delay)||a.delay<0||a.delay>600000)errors.push({code:'E_ANIM_VALUE',message:'动画时长与延迟必须在 0..600000 ms',line:a.line});
+      if(a.angle!==undefined&&(!Number.isFinite(a.angle)||Math.abs(a.angle)>36000))errors.push({code:'E_ANIM_VALUE',message:'动画角度必须为 -36000..36000 的有限数值',line:a.line});
+      if(!['up','down','left','right'].includes(a.direction))errors.push({code:'E_ANIM_VALUE',message:'动画方向无效',line:a.line});
+      if(a.effect==='color'&&!/^#[0-9a-f]{6}$/i.test(a.color||''))errors.push({code:'E_ANIM_VALUE',message:'颜色动画需要 #RRGGBB color',line:a.line});
+      if(a.effect==='motion-path'){
+        const pairs=(a.path||'').trim().split(/\s+/).map(p=>p.split(',').map(Number));
+        if(pairs.length<2||pairs.length>1000||pairs.some(p=>p.length!==2||p.some(n=>!Number.isFinite(n)||Math.abs(n)>100000))||pairs[0]?.some(n=>n!==0))errors.push({code:'E_ANIM_PATH',message:'路径须为 2..1000 个有限 x,y 点，以 0,0 起始，坐标绝对值不超过 100000',line:a.line});
+      }
     }
   }
   return deck;
@@ -504,6 +524,8 @@ function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings:
   }
   if (el.type === 'text') validateRichStyles(el.content || '', warnings, el);
   if (el.type === 'shape') {
+    const adjustmentError=shapeAdjustmentError(el);
+    if(adjustmentError)errors.push({code:'E_SHAPE_ADJ',message:`${at} ${adjustmentError}`,line:el.line,col:el.col});
     if (!SHAPE_NAMES.has(el.name || 'rect')) errors.push({ code: 'E_SHAPE_NAME', message: `${at} 未知形状 ${el.name}`, line: el.line, col: el.col });
     if (el.name === 'custom' && (!el.path || !el.viewBox)) errors.push({ code: 'E_SHAPE_NAME', message: `${at} custom 形状需要 path 与 view-box`, line: el.line, col: el.col });
   }
@@ -567,11 +589,24 @@ function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: R
   }
   if (!el.seriesList!.length) errors.push({ code: 'E_CHART_MIX', message: `${at} 至少需要一个 <series>`, line: el.line, col: el.col });
   const hasPie = el.seriesList!.some(s => s.type === 'pie');
+  const types=new Set(el.seriesList!.map(s=>s.type));
+  if(types.has('scatter')&&types.size>1)errors.push({code:'E_CHART_MIX',message:`${at} scatter 不能与类目图混用`,line:el.line});
+  for(const axis of [el.xAxis,el.yAxis])if(axis){
+    for(const key of ['min','max'])if(axis[key]!==undefined&&!Number.isFinite(Number(axis[key])))errors.push({code:'E_CHART_AXIS',message:`坐标轴 ${key} 必须为有限数值`,line:axis.line});
+    if(axis.min!==undefined&&axis.max!==undefined&&Number(axis.min)>=Number(axis.max))errors.push({code:'E_CHART_AXIS',message:'坐标轴 min 必须小于 max',line:axis.line});
+    if((types.has('radar')||types.has('waterfall'))&&Object.keys(axis).some(k=>!['type','line'].includes(k)))errors.push({code:'E_CHART_AXIS',message:'radar/waterfall 当前使用自动刻度，不支持自定义坐标轴样式',line:axis.line});
+  }
+  if(['radar','bubble','waterfall'].some(type=>types.has(type))&&types.size>1)errors.push({code:'E_CHART_MIX',message:`${at} radar/bubble/waterfall 不能与其他类型混用`,line:el.line});
+  if(types.has('waterfall')&&el.seriesList!.length!==1)errors.push({code:'E_CHART_MIX',message:`${at} waterfall 只支持一个增量系列`,line:el.line});
+  if(types.has('radar')&&el.chartData!.rows.length<3)errors.push({code:'E_CHART_DATA',message:`${at} radar 至少需要三个类别`,line:el.line});
   if (hasPie && el.seriesList!.length > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} pie 系列必须独占（不能与其他系列混用）`, line: el.line, col: el.col });
   const stackVals = new Set(el.seriesList!.filter(s => s.stack).map(s => s.stack));
   if (stackVals.size > 1) errors.push({ code: 'E_CHART_MIX', message: `${at} 所有 stack 系列必须使用相同的 stack 值`, line: el.line, col: el.col });
   for (const se of el.seriesList!) {
-    if (!CHART_TYPES.has(se.type)) errors.push({ code: 'E_CHART_MIX', message: `series type="${se.type}" 不受支持（v1: bar/line/area/pie/scatter）`, line: se.line });
+    if (!CHART_TYPES.has(se.type)) errors.push({ code: 'E_CHART_MIX', message: `series type="${se.type}" 不受支持`, line: se.line });
+    if(se.axis!==undefined||se['y-axis']!==undefined)errors.push({code:'E_CHART_AXIS',message:'暂不支持系列绑定第二坐标轴',line:se.line});
+    if(se.stack&&['radar','bubble','waterfall'].includes(se.type))errors.push({code:'E_CHART_MIX',message:`${se.type} 不支持 stack`,line:se.line});
+    if(se.type==='bubble'&&(!se.size||!colsSet.has(se.size)))errors.push({code:'E_ENCODE_COL',message:'bubble 必须指定有效的 size 列',line:se.line});
     if (se.stack && !['value', 'percent'].includes(String(se.stack))) errors.push({ code: 'E_ATTR_VALUE', message: `series stack="${se.stack}" 不受支持（value/percent）`, line: se.line });
     if (se.marker && !['none', 'circle', 'rect', 'diamond', 'triangle'].includes(String(se.marker))) errors.push({ code: 'E_ATTR_VALUE', message: `series marker="${se.marker}" 不受支持`, line: se.line });
     if (se.dash && !['solid', 'dash', 'dot'].includes(String(se.dash))) errors.push({ code: 'E_ATTR_VALUE', message: `series dash="${se.dash}" 不受支持`, line: se.line });
@@ -587,11 +622,12 @@ function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: R
       else if (!colsSet.has(se[ch]!)) errors.push({ code: 'E_ENCODE_COL', message: `series 的 ${ch} 列 "${se[ch]}" 不在 data.cols 中`, line: se.line });
     }
     // 数值列检查：y 恒为数值；scatter 的 x 也为数值
-    const numCols = (se.type === 'scatter' ? ['x', 'y'] : ['y']) as Array<'x' | 'y'>;
+    const numCols = (se.type==='bubble'?['x','y','size']:se.type === 'scatter' ? ['x', 'y'] : el.yAxis?.type==='category'?['x']:['y']) as Array<'x' | 'y' | 'size'>;
     for (const ch of numCols) {
       const ci = el.chartData!.cols.indexOf(se[ch]!);
       if (ci < 0) continue;
       for (const row of el.chartData!.rows) {
+        if(typeof row[ci]==='number'&&(!Number.isFinite(row[ci])||((se.type==='radar'||se.type==='pie'||ch==='size')&&Number(row[ci])<0)))errors.push({code:'E_CHART_DATA',message:`${se.type} 的 ${ch} 列需要有限数值${se.type==='radar'||se.type==='pie'||ch==='size'?'且不能为负数':''}`,line:se.line});
         if (typeof row[ci] === 'string' && row[ci] !== '') {
           errors.push({ code: 'E_NON_NUMERIC', message: `series "${se.name || se.y}" 的 ${ch} 列 "${se[ch]}" 含非数值 "${row[ci]}"`, line: se.line });
           break;
@@ -933,7 +969,7 @@ export function newElement(type: ElementType, patch: Partial<SlideElement> = {})
 function defaultsFor(type: ElementType): Record<string, unknown> { // 注意：保留 kebab 键（与编辑器历史行为一致）
   switch (type) {
     case 'text': return { x: 80, y: 80, w: 400, h: 60, content: '<p>文本</p>', style: '', align: 'left top', wrap: true, opacity: 1 };
-    case 'shape': return { x: 120, y: 120, w: 160, h: 120, name: 'roundRect', fill: '#2563EB', adj: '8', stroke: '', 'stroke-width': 1 };
+    case 'shape': return { x: 120, y: 120, w: 160, h: 120, name: 'roundRect', fill: '#2563EB', stroke: '', 'stroke-width': 1 };
     case 'line': return { x: 120, y: 200, w: 200, h: 0, points: '0,0 200,0', curve: 'round', stroke: '#4A5560', 'stroke-width': 2 };
     case 'image': return { x: 120, y: 120, w: 280, h: 200, src: '', fit: 'cover', radius: 0 };
     case 'icon': return { x: 140, y: 140, w: 48, h: 48, name: 'fas:star', fill: '#2563EB' };

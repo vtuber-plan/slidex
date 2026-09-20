@@ -3,6 +3,7 @@ import { newElement, newSlide, parseSlideX } from "../src/ir";
 import { serializeDeck } from "../src/serializer";
 import { recordRevision } from "./revisions";
 import { resolveScope, scopedContainer } from "../src/group-scope";
+import {duplicatePages,deletePages,movePages,findLayer} from '../src/page-operations';
 import type {
   Deck,
   SlideContainer,
@@ -32,6 +33,14 @@ type Edit = (deck: Deck, slide: SlideContainer) => void;
 interface EditorState {
   deck: Deck;
   page: number;
+  pageSelection: string[];
+  pageAnchor: string;
+  selectPage: (index:number,toggle?:boolean,range?:boolean)=>void;
+  moveSelectedPages:(destination:number)=>void;
+  editDocument:(fn:(deck:Deck)=>void)=>void;
+  focusLayer:(id:string,add?:boolean)=>void;
+  patchLayer:(id:string,attrs:Partial<SlideElement>)=>void;
+  reorderLayer:(id:string,target:string)=>void;
   master: string;
   groupPath: string[];
   enterGroup: (id: string) => void;
@@ -76,6 +85,8 @@ interface EditorState {
 const normalize = (s: EditorState, deck: Deck) => ({
   deck,
   page: Math.max(0, Math.min(s.page, deck.slides.length - 1)),
+  pageSelection:[deck.slides[Math.max(0,Math.min(s.page,deck.slides.length-1))].id],
+  pageAnchor:deck.slides[Math.max(0,Math.min(s.page,deck.slides.length-1))].id,
   master: deck.masters.some((m) => m.id === s.master) ? s.master : "",
   selection: [],
   editing: "",
@@ -93,6 +104,52 @@ let saveQueue: Promise<unknown> = Promise.resolve();
 export const useEditor = create<EditorState>((set, get) => ({
   deck: blank,
   page: 0,
+  pageSelection:[blank.slides[0].id],
+  pageAnchor:blank.slides[0].id,
+  selectPage:(index,toggle=false,range=false)=>{
+    window.__slxCommitText?.();
+    if(get().gesture)get().end(true);
+    const s=get(),page=Math.max(0,Math.min(index,s.deck.slides.length-1)),id=s.deck.slides[page].id;
+    let selection=[id];
+    if(range){const anchor=Math.max(0,s.deck.slides.findIndex(p=>p.id===s.pageAnchor));selection=s.deck.slides.slice(Math.min(anchor,page),Math.max(anchor,page)+1).map(p=>p.id);}
+    else if(toggle){selection=s.pageSelection.includes(id)?s.pageSelection.filter(x=>x!==id):[...s.pageSelection,id];if(!selection.length)selection=[id];}
+    const active=selection.includes(id)?page:s.deck.slides.findIndex(p=>selection.includes(p.id));
+    set({page:active,pageSelection:selection,pageAnchor:range?s.pageAnchor:id,master:'',groupPath:[],selection:[],editing:''});
+  },
+  editDocument:fn=>{
+    window.__slxCommitText?.();if(get().gesture)get().end(true);
+    const s=get(),deck=clone(s.deck);fn(deck);
+    if(JSON.stringify(deck)===JSON.stringify(s.deck))return;
+    set({...normalize(s,deck),groupPath:[],master:'',past:[...s.past.slice(-99),s.deck],future:[],status:'未保存',error:''});
+  },
+  moveSelectedPages:destination=>{
+    const s=get(),active=s.deck.slides[s.page].id,ids=s.pageSelection;
+    s.editDocument(deck=>movePages(deck,ids,destination));
+    set({page:get().deck.slides.findIndex(page=>page.id===active),pageSelection:ids});
+  },
+  focusLayer:(id,add=false)=>{
+    window.__slxCommitText?.();
+    const s=get(),found=findLayer(rootContainer(s).elements,id);if(!found)return;
+    const blocked=found.parents.find(el=>el.locked||el.hidden);
+    const focus=blocked?findLayer(rootContainer(s).elements,blocked.id)!:found;
+    const groupPath=focus.parents.map(el=>el.id);
+    const same=groupPath.join('/')===s.groupPath.join('/');
+    const selection=add&&same?(s.selection.includes(focus.element.id)?s.selection.filter(x=>x!==focus.element.id):[...s.selection,focus.element.id]):[focus.element.id];
+    set({groupPath,selection,editing:''});
+  },
+  patchLayer:(id,attrs)=>{
+    window.__slxCommitText?.();
+    const s=get(),found=findLayer(rootContainer(s).elements,id);
+    if(!found||found.parents.some(el=>el.locked))return;
+    if(found.element.locked&&!(Object.keys(attrs).length===1&&attrs.locked===false))return;
+    s.edit((deck)=>{const target=findLayer(rootContainer({...s,deck}).elements,id);if(target)Object.assign(target.element,attrs);});
+    const next=get();set({groupPath:scope(next).path,selection:next.selection.filter(selected=>scope(next).elements.some(el=>el.id===selected&&!el.hidden))});
+  },
+  reorderLayer:(id,target)=>{
+    const s=get(),root=rootContainer(s),from=findLayer(root.elements,id),to=findLayer(root.elements,target);
+    if(!from||!to||from.element.locked||to.element.locked||from.parents.some(el=>el.locked)||from.parents.map(el=>el.id).join('/')!==to.parents.map(el=>el.id).join('/'))return;
+    s.edit(deck=>{const found=findLayer(rootContainer({...s,deck}).elements,id)!;const list=found.parents.at(-1)?.elements||rootContainer({...s,deck}).elements;const a=list.findIndex(el=>el.id===id),b=list.findIndex(el=>el.id===target);list.splice(b,0,list.splice(a,1)[0]);});
+  },
   master: "",
   groupPath: [],
   enterGroup: (id) => {
@@ -144,6 +201,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         saved: serializeDeck(parsed.deck),
         ready: true,
         page: 0,
+        pageSelection:[parsed.deck.slides[0].id],
+        pageAnchor:parsed.deck.slides[0].id,
         selection: [],
         past: [],
         future: [],
@@ -270,14 +329,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   select: (selection) => set({ selection }),
   goto: (page) => {
-    window.__slxCommitText?.();
-    set({
-      page: Math.max(0, Math.min(page, get().deck.slides.length - 1)),
-      master: "",
-      groupPath: [],
-      selection: [],
-      editing: "",
-    });
+    get().selectPage(page);
   },
   undo: () => {
     const s = get(),
@@ -446,35 +498,25 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   addPage: () => {
     const s = get();
-    s.edit((deck) => {
+    s.editDocument((deck) => {
       deck.slides.splice(s.page + 1, 0, { ...newSlide(), id: uid("slide") });
     });
     s.goto(s.page + 1);
   },
   duplicatePage: () => {
     const s = get();
-    s.edit((deck) => {
-      const slide = clone(deck.slides[s.page]);
-      slide.id = uid("slide");
-      deck.slides.splice(s.page + 1, 0, slide);
-    });
-    s.goto(s.page + 1);
+    let ids:string[]=[];
+    s.editDocument(deck=>{ids=duplicatePages(deck,s.pageSelection);});
+    if(ids.length)set({page:get().deck.slides.findIndex(p=>p.id===ids[0]),pageSelection:ids,pageAnchor:ids[0]});
   },
   deletePage: () => {
     const s = get();
-    if (s.deck.slides.length < 2) return;
-    s.edit((deck) => {
-      deck.slides.splice(s.page, 1);
-    });
+    s.editDocument(deck=>deletePages(deck,s.pageSelection));
     s.goto(Math.min(s.page, get().deck.slides.length - 1));
   },
   reorderPage: (from, to) => {
-    const s = get(),
-      id = s.deck.slides[s.page].id;
-    s.edit((d) => {
-      d.slides.splice(to, 0, d.slides.splice(from, 1)[0]);
-    });
-    s.goto(get().deck.slides.findIndex((x) => x.id === id));
+    if(!get().pageSelection.includes(get().deck.slides[from]?.id))get().selectPage(from);
+    get().moveSelectedPages(to+(from<to?1:0));
   },
   applySource: (xml) => {
     const parsed = parseSlideX(xml);

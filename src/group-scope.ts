@@ -50,7 +50,7 @@ export function resolveScope(root: SlideContainer, path: string[]) {
   const groups: SlideElement[] = [];
   for (const id of path) {
     const group = elements.find((el) => el.id === id && el.type === "group");
-    if (!group || group.locked) break;
+    if (!group || group.locked || group.hidden) break;
     groups.push(group);
     elements = group.elements || [];
     matrix = multiply(matrix, elementMatrix(group));

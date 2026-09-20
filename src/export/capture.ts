@@ -54,12 +54,16 @@ export async function withBrowser<T>(fn: (browser: Browser) => T | Promise<T>): 
   }
 }
 
-async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
+export async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
   const t0 = Date.now();
   for (;;) {
     // __SLX_READY__ 为渲染页注入的全局标记，DOM 类型上不存在 → 窄化 any
     const ok = await page.evaluate(() => (window as any).__SLX_READY__ === true).catch(() => false);
-    if (ok) return;
+    if (ok) {
+      const missing=await page.evaluate(()=>Array.from(document.images).filter(img=>!img.complete||!img.naturalWidth).map(img=>img.getAttribute('src')));
+      if(missing.length)throw Error(`导出图片资源加载失败：${missing.join(', ')}`);
+      return;
+    }
     if (Date.now() - t0 > timeoutMs) throw Error('页面渲染未就绪，已取消导出');
     await new Promise(r => setTimeout(r, 120));
   }

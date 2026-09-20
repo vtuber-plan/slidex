@@ -57,7 +57,7 @@ try {
       fs.copyFileSync(result.files.at(-1),path.join(dir,'image.pptx'));
       const editable=await page.evaluate(async()=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:'pptx',editable:true})})).json());
       assert.ok(editable.ok,editable.error);const native=await unzipIndependent(fs.readFileSync(editable.files.at(-1)));assert.ok(native.get('ppt/slides/slide1.xml').toString().includes('<p:sp>'));
-      fs.copyFileSync(editable.files.at(-1),path.join(dir,'editable.pptx'));console.log('  ✓ packaged editable pptx export');
+      fs.copyFileSync(editable.files.find(file=>file.endsWith('.pptx')),path.join(dir,'editable.pptx'));console.log('  ✓ packaged editable pptx export');
     }
   }
   // The packaged smoke window remains hidden; visual capture is covered by react-electron.cjs.

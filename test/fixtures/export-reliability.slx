@@ -1,0 +1,25 @@
+<deck version="1" width="960" height="540" title="导出可靠性验收">
+  <slide id="native" background="#F8FAFC" transition="fade">
+    <group id="outer" x="30" y="30" w="420" h="200" rotation="30" flip-h="true">
+      <text id="cjk" x="10" y="10" w="380" h="70" font-size="22" font-family="Microsoft YaHei">中文连续输入与 <b>粗体</b> <a href="https://example.com">链接</a></text>
+      <group id="inner" x="25" y="100" w="300" h="80" flip-v="true">
+        <shape id="rect" name="roundRect" x="0" y="0" w="150" h="70" fill="#3B82F6"/>
+        <formula id="equation" x="170" y="0" w="100" h="70" tex="x^2"/>
+      </group>
+    </group>
+    <table id="merged" x="30" y="280" w="600" h="200">
+      <cols>0.2,0.3,0.5</cols><rows>0.3,0.3,0.4</rows>
+      <tr><td row-span="2" col-span="2" fill="#DBEAFE">中文合并 <b>加粗</b></td><td>右侧</td></tr>
+      <tr><td><a href="https://example.com">链接</a></td></tr>
+      <tr><td>甲</td><td>乙</td><td>长中文文字换行验收内容</td></tr>
+    </table>
+    <text id="missing-font" x="650" y="300" w="270" h="90" font-family="SlideX Missing Font QA">缺失字体测试</text>
+    <animation target="rect" effect="fade-in"/>
+  </slide>
+  <slide id="fallback" background="#FFFFFF">
+    <text id="inline-math" x="20" y="20" w="350" h="100">行内公式 \(x^2\)</text>
+    <table id="math-table" x="20" y="150" w="350" h="100"><cols>1</cols><tr><td>\(a+b\)</td></tr></table>
+    <chart id="chart" x="420" y="20" w="450" h="350"><data cols="name,value"><row>A,10</row><row>B,20</row></data><series type="bar" x="name" y="value"/></chart>
+    <image id="cropped" x="30" y="310" w="260" h="140" src="export-image.svg" fit="cover" crop="0.1 0.1 0.2 0.2" rotation="15"/>
+  </slide>
+</deck>

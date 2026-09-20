@@ -50,12 +50,16 @@ import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
 import { EditingTools } from "./EditingTools";
 import { Diagnostic, ErrorMessage } from "./Diagnostics";
+import {PageList} from './PageList';
+import {LayoutMenu} from './LayoutMenu';
+import {useLayoutPreferences} from './layoutPreferences';
 import { PanelResize, usePanelSize } from "./PanelResize";
 import { serializeDeck } from "../src/serializer";
 import { parseSlideX, SHAPE_NAMES } from "../src/ir";
 import { formatSlideX } from "../src/format";
 import { parsePages } from "../src/export/pages";
 import { shapeSvg as shapePath } from "../src/render/shapes";
+import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
 import type { ElementType } from "../src/types";
 
 declare global {
@@ -76,6 +80,7 @@ export default function App() {
   const [rightCollapsed,setRightCollapsed]=useState(localStorage.getItem('slidex-right-collapsed')==='true');
   useEffect(()=>{localStorage.setItem('slidex-left-collapsed',String(leftCollapsed));localStorage.setItem('slidex-right-collapsed',String(rightCollapsed));},[leftCollapsed,rightCollapsed]);
   const [leftWidth, setLeftWidth] = usePanelSize("left", 168);
+  const {settings:layoutSettings}=useLayoutPreferences();
   const [rightWidth, setRightWidth] = usePanelSize("right", 300);
   const [openFile, setOpenFile] = useState(false), [filePath, setFilePath] = useState("");
   const [viewport, setViewport] = useState(window.innerWidth);
@@ -110,6 +115,7 @@ export default function App() {
   const [exportFormat,setExportFormat]=useState('png');
   const [pptxEditable,setPptxEditable]=useState(true);
   const [exportDownloads,setExportDownloads]=useState<string[]>([]);
+  const [exportReport,setExportReport]=useState<import('../src/export/report').ExportReport|null>(null);
   const [pageMode,setPageMode]=useState('all');
   const [pageRange,setPageRange]=useState('');
   const [exportScale,setExportScale]=useState(2);
@@ -126,15 +132,16 @@ export default function App() {
     [exports, setExports] = useState<string[]>([]),
     [exporting, setExporting] = useState(false),
     [library, setLibrary] = useState<"shape" | "icon" | null>(null),
+    [shapeCategory,setShapeCategory]=useState(''),
     [search, setSearch] = useState("");
   const [autosave, setAutosave] = useState(
     localStorage.getItem("slidex-autosave") !== "false",
   );
   useEffect(()=>{
-    void fetch('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language,appearance:dark?'dark':'light',autosave})})
-      .then(response=>{if(!response.ok)throw Error('偏好设置保存失败');})
+    void fetch('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language,appearance:dark?'dark':'light',autosave,layout:layoutSettings})})
+      .then(async response=>{if(!response.ok)throw Error('偏好设置保存失败');await response.json();})
       .catch(error=>useEditor.setState({error:String(error)}));
-  },[language,dark,autosave]);
+  },[language,dark,autosave,layoutSettings]);
   const session = useMemo(() => uid("present"), []),
     committedDeck = s.gesture || s.deck,
     serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
@@ -261,7 +268,7 @@ export default function App() {
         state.redo();
       } else if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        state.select(container(state).elements.map((x) => x.id));
+        state.select(container(state).elements.filter(x=>!x.hidden).map((x) => x.id));
       } else if (mod && e.key.toLowerCase() === "c") state.copy();
       else if (mod && e.key.toLowerCase() === "x") {
         state.copy();
@@ -319,6 +326,7 @@ export default function App() {
       if (!data.ok) throw Error(data.error);
       if(data.canceled)return;
       setExportDownloads(data.downloads||[]);
+      setExportReport(data.report||null);
       setExportOptions(false);
       setExports(data.files || []);
     } catch (e) {
@@ -500,6 +508,7 @@ export default function App() {
                   <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setExportFormat('png');setPageMode('current');setImageManifest(true);setExportOptions(true);}}>{t("导出图片给 LLM…")}</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
+              <LayoutMenu/>
               <span className="separator" />
               <Tool
                 label={t("撤销")}
@@ -604,39 +613,7 @@ export default function App() {
                     <Plus size={16} />
                   </Tool>
                 </div>
-                <div className="filmstrip-pages">
-                  {s.deck.slides.map((slide, i) => (
-                    <div
-                      key={slide.id || i}
-                      className={`filmstrip-item ${s.page === i && !s.master ? "active" : ""}`}
-                      draggable
-                      onDragStart={(e) =>
-                        e.dataTransfer.setData("page", String(i))
-                      }
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        const from = e.dataTransfer.getData("page");
-                        if (from !== "") s.reorderPage(+from, i);
-                      }}
-                    >
-                      <button
-                        onClick={() => s.goto(i)}
-                        aria-label={t(`第 ${i + 1} 页`)}
-                      >
-                        <Thumbnail
-                          deck={committedDeck}
-                          slide={committedDeck.slides[i]}
-                        />
-                        <span>
-                          <b>{String(i + 1).padStart(2, "0")}</b>
-                          {slide.animations.length > 0 && (
-                            <Sparkles size={11} />
-                          )}
-                        </span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <PageList deck={committedDeck}/>
                 <div className="filmstrip-actions">
                   <Button variant="soft" onClick={s.addPage}>
                     <Plus size={14} />
@@ -648,11 +625,15 @@ export default function App() {
                     </Tool>
                     <Tool
                       label={t("删除页面")}
-                      disabled={s.deck.slides.length <= 1}
                       onClick={s.deletePage}
                     >
                       <Trash2 size={15} />
                     </Tool>
+                  </div>
+                  <small className="page-selection-count">{t('已选页面')}：{s.pageSelection.length}</small>
+                  <div className="page-move-actions">
+                    <button disabled={s.pageSelection.includes(s.deck.slides[0].id)} onClick={()=>s.moveSelectedPages(Math.min(...s.pageSelection.map(id=>s.deck.slides.findIndex(p=>p.id===id)))-1)}>{t('页面上移')}</button>
+                    <button disabled={s.pageSelection.includes(s.deck.slides.at(-1)!.id)} onClick={()=>s.moveSelectedPages(Math.max(...s.pageSelection.map(id=>s.deck.slides.findIndex(p=>p.id===id)))+2)}>{t('页面下移')}</button>
                   </div>
                 </div>
               </aside>
@@ -791,7 +772,7 @@ export default function App() {
                   <label>{t("格式")}<select aria-label={t("导出格式")} disabled={exporting} value={exportFormat} onChange={e=>setExportFormat(e.target.value)}>{['png','pdf','pptx','html'].map(f=><option key={f} value={f}>{f.toUpperCase()}</option>)}</select></label>
                   {exportFormat==='pptx'&&<>
                     <label>{t("PPTX 模式")}<select aria-label={t("PPTX 模式")} disabled={exporting} value={pptxEditable?'editable':'image'} onChange={e=>setPptxEditable(e.target.value==='editable')}><option value="editable">{t("可编辑优先")}</option><option value="image">{t("视觉保真（整页图片）")}</option></select></label>
-                    <p className="export-mode-help">{t(pptxEditable?'文字、基础形状和部分图片可编辑；复杂内容转为图片，字体与排版可能有差异。':'每页是一张图片，优先保留视觉；无法在 PowerPoint 中逐个编辑文字和对象。')}</p>
+                    <p className="export-mode-help">{t(pptxEditable?'支持的文字、形状、表格和组合保留为可编辑对象；其余内容转成图片，详见导出报告。':'每页是一张图片，优先保留视觉；无法在 PowerPoint 中逐个编辑文字和对象。')}</p>
                   </>}
                   {exportFormat==='png' && <>
                     <label>{t("页面")}<select aria-label={t("导出页面")} disabled={exporting} value={pageMode} onChange={e=>setPageMode(e.target.value)}><option value="all">{t("全部页面")}</option><option value="current">{t("当前页面")}</option><option value="range">{t("页码范围")}</option></select></label>
@@ -867,6 +848,7 @@ export default function App() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                {library==='shape'&&<select aria-label={t('形状分类')} value={shapeCategory} onChange={e=>setShapeCategory(e.target.value)}><option value="">{t('全部形状')}</option>{[...new Set(SHAPE_PRESETS.map(p=>p.category))].map(c=><option key={c} value={c}>{t(c)}</option>)}</select>}
                 <div className="asset-grid">
                   {(library === "shape"
                     ? [...SHAPE_NAMES].filter((n) => n !== "custom")
@@ -904,7 +886,7 @@ export default function App() {
                       ]
                   )
                     .filter((n) =>
-                      n.toLowerCase().includes(search.toLowerCase()),
+                      (n+' '+(shapePreset(n)?.label||'')+' '+t(shapePreset(n)?.label||'')).toLowerCase().includes(search.toLowerCase())&&(library!=='shape'||!shapeCategory||shapePreset(n)?.category===shapeCategory),
                     )
                     .map((name) => (
                       <button
@@ -912,6 +894,7 @@ export default function App() {
                         onClick={() => {
                           s.insert(library!, {
                             name: library === "icon" ? `fas:${name}` : name,
+                            ...(library==='shape'?{adj:undefined}:{}),
                           });
                           setLibrary(null);
                         }}
@@ -926,7 +909,7 @@ export default function App() {
                         ) : (
                           <i className={`fa-solid fa-${name}`} />
                         )}
-                        <span>{name}</span>
+                        <span>{library==='shape'?t(shapePreset(name)?.label||name):name}</span>
                       </button>
                     ))}
                 </div>
@@ -943,6 +926,12 @@ export default function App() {
                 <Dialog.Description mb="3">
                   {t("点击文件下载。")}
                 </Dialog.Description>
+                {exportReport&&<div role="status">
+                  <p>{t(exportReport.status==='degraded'?'导出完成，部分内容存在降级':'导出能力报告')}</p>
+                  <p>{t('原生对象')}：{exportReport.summary.native} · {t('图片回退')}：{exportReport.summary.rasterized} · {t('未保留属性')}：{exportReport.summary.unsupported}</p>
+                  {exportReport.fonts.some(font=>font.available===false)&&<p>{t('缺失字体')}：{exportReport.fonts.filter(font=>font.available===false).map(font=>font.family).join(', ')}</p>}
+                  <p>{t('详细原因和对象位置见下载列表中的报告文件。')}</p>
+                </div>}
                 {exports.map((file,index) => (
                   <p key={file}>
                     <a

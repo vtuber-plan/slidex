@@ -105,7 +105,7 @@ try {
   // 画布重渲染（colgroup 宽度 + tr 高度百分比）
   const trHeights = await page.$$eval('#canvasHost tr', trs => trs.map(tr => tr.style.height));
   t('canvas re-rendered with new column widths', await page.$eval('#canvasHost', el => el.innerHTML.includes('width:50%') && el.innerHTML.includes('width:25%')));
-  t('canvas re-rendered with new row heights', trHeights[0] === '100%' && trHeights[1] === '200%', JSON.stringify(trHeights));
+  t('canvas re-rendered with normalized row heights', trHeights[0] === '80px' && trHeights[1] === '160px', JSON.stringify(trHeights));
 
   // 缩略图同步重渲染
   const thumbHtml = await page.$eval('#thumbs .thumb.active .scalebox', el => el.innerHTML).catch(() => '');

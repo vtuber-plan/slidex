@@ -78,6 +78,8 @@ function styleAttrs(style: StyleAttrs, order: string[]): string {
 function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): string {
   const attrs: string[] = [];
   if (c.id) attrs.push(`id="${esc(c.id)}"`);
+  if(c.guidesX?.length)attrs.push(`guides-x="${c.guidesX.map(fmt).join(' ')}"`);
+  if(c.guidesY?.length)attrs.push(`guides-y="${c.guidesY.map(fmt).join(' ')}"`);
   if (isMaster) {
     // master 只有 id + background
   } else if (c.type && c.type !== 'content' && c.type !== 'master') attrs.push(`type="${esc(c.type)}"`);
@@ -98,8 +100,11 @@ function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): 
     const parts = [`target="${esc(a.target)}"`, `effect="${esc(a.effect)}"`];
     if (a.trigger && a.trigger !== 'onClick') parts.push(`trigger="${esc(a.trigger)}"`);
     if (a.direction && a.direction !== 'up') parts.push(`direction="${esc(a.direction)}"`);
-    if (a.duration) parts.push(`duration="${fmt(a.duration)}"`);
+    if (a.duration!==undefined) parts.push(`duration="${fmt(a.duration)}"`);
     if (a.delay) parts.push(`delay="${fmt(a.delay)}"`);
+    if(a.angle!==undefined)parts.push(`angle="${fmt(a.angle)}"`);
+    if(a.color)parts.push(`color="${esc(a.color)}"`);
+    if(a.path)parts.push(`path="${esc(a.path)}"`);
     lines.push(`${pad}${IND}<animation ${parts.join(' ')}/>`);
   }
   lines.push(`${pad}</${isMaster ? 'master' : 'slide'}>`);
@@ -109,7 +114,7 @@ function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): 
 // 元素属性顺序：id/几何/变换 → schema 定义顺序
 const GEOM_ATTRS = ['id', 'x', 'y', 'w', 'h', 'rotation', 'opacity', 'flip-h', 'flip-v'];
 const CELL_ATTR_ORDER = ['fill', 'color', 'font-size', 'bold', 'italic', 'font-family', 'line-height', 'align', 'valign', 'border-bottom', 'border-top', 'border-left', 'border-right', 'row-span', 'col-span', 'style'];
-const SERIES_ATTR_ORDER = ['x', 'y', 'name', 'fill', 'stroke', 'stroke-width', 'stack', 'smooth', 'marker', 'dash', 'inner-radius', 'data-labels'];
+const SERIES_ATTR_ORDER = ['x', 'y', 'size', 'name', 'fill', 'stroke', 'stroke-width', 'stack', 'smooth', 'marker', 'dash', 'inner-radius', 'data-labels'];
 
 export function serializeElement(el: SlideElement, pad: string = IND): string {
   const schema = ELEMENT_SCHEMA[el.type];

@@ -2,6 +2,7 @@
 // custom：解析 path 并从 view-box 线性缩放到 bounds
 
 import type { SlideElement } from '../types.js';
+import {shapePolygon} from '../shape-library.js';
 
 const num = (v: unknown, d: number): number => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
@@ -19,7 +20,11 @@ export function shapeSvg(el: SlideElement): { d: string; viewBox: string; fillRu
 }
 
 function geomFor(name: string, w: number, h: number, adj: number[], el: SlideElement): Geom {
+  const polygon=shapePolygon(el);
+  if(polygon)return {d:'M'+polygon.map(p=>p.join(',')).join(' L')+' Z'};
   switch (name) {
+    case 'flowDocument': return {d:`M0,0 H${w} V${h*.8} C${w*.65},${h*.5} ${w*.35},${h*1.1} 0,${h*.8} Z`};
+    case 'flowTerminator': return geomFor('roundRect',w,h,[Math.min(w,h)/2],el);
     case 'rect': return { d: `M0,0 H${w} V${h} H0 Z` };
     case 'roundRect': {
       const r = clamp(num(adj[0], 8), 0, Math.min(w, h) / 2);
@@ -50,7 +55,7 @@ function geomFor(name: string, w: number, h: number, adj: number[], el: SlideEle
       };
     }
     case 'star5': {
-      const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2, r = R * 0.382;
+      const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2, r = R * clamp(num(adj[0],.382),.05,.95);
       const pts: string[] = [];
       for (let k = 0; k < 10; k++) {
         const ang = -Math.PI / 2 + k * Math.PI / 5;

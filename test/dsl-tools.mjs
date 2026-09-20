@@ -31,7 +31,7 @@ assert.equal(cli('format',file,'--write').status,0);assert.equal(cli('format',fi
 assert.equal(cli('export',file,'--pages').status,1);
 const validated=cli('validate',file,'--json');assert.equal(validated.status,0);assert.equal(JSON.parse(validated.stdout).ok,true);
 const result=await exportDeck(file,{format:'png',pages:'2-3',scale:1,manifest:true});
-assert.deepEqual(result.files.map(f=>path.basename(f)),['deck-02.png','deck-03.png','deck-images.json']);
+assert.deepEqual(result.files.map(f=>path.basename(f)),['deck-02.png','deck-03.png','deck-images.json','deck.png.report.json']);
 assert.ok(!fs.existsSync(path.join(dir,'out','deck-01.png')));
 const manifest=JSON.parse(fs.readFileSync(result.files[2],'utf8'));assert.deepEqual(manifest.pages.map(p=>[p.page,p.id]),[[2,'second'],[3,'third']]);
 for(const file of result.files.slice(0,2)){const png=fs.readFileSync(file);assert.equal(png.readUInt32BE(16),320);assert.equal(png.readUInt32BE(20),240);}

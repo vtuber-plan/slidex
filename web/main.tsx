@@ -34,6 +34,7 @@ async function boot() {
       if(values.language==='zh'||values.language==='en')setLocale(values.language);
       if(values.appearance==='light'||values.appearance==='dark')localStorage.setItem('slidex-appearance',values.appearance);
       if(typeof values.autosave==='boolean')localStorage.setItem('slidex-autosave',String(values.autosave));
+      if(values.layout&&typeof values.layout==='object')localStorage.setItem('slidex-layout',JSON.stringify(values.layout));
     }
   } catch (error) { console.warn('Preferences unavailable; using local settings.',error); }
   createRoot(document.getElementById("root")!).render(

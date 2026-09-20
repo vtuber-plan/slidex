@@ -38,7 +38,7 @@ export function createPlayer(
     const el = find(a.target);
     if (!el) return Promise.resolve();
     const opacity = Number(el.style.opacity || 1),
-      base = el.style.transform || "",
+      base = getComputedStyle(el).transform === 'none' ? '' : getComputedStyle(el).transform,
       end = base || "none";
     const shift =
       a.direction === "left"
@@ -55,6 +55,11 @@ export function createPlayer(
             ? "inset(0 0 100% 0)"
             : "inset(100% 0 0 0)";
     const effects: Record<string, Keyframe[]> = {
+      'fly-out':[{transform:end,opacity},{transform:`${shift} ${base}`,opacity:0}],
+      'zoom-out':[{transform:end,opacity},{transform:`${base} scale(.1)`,opacity:0}],
+      'wipe-out':[{clipPath:'inset(0 0 0 0)'},{clipPath:clip}],
+      spin:[{transform:end},{transform:`${base} rotate(${a.angle??360}deg)`}],
+      'motion-path':(a.path||'0,0 100,0').trim().split(/\s+/).map(point=>{const [x,y]=point.split(',').map(Number);return {transform:`translate(${x}px,${y}px) ${base}`};}),
       appear: [{ visibility: "hidden" }, { visibility: "visible" }],
       disappear: [{ visibility: "visible" }, { visibility: "hidden" }],
       "fade-in": [{ opacity: 0 }, { opacity }],
@@ -81,6 +86,12 @@ export function createPlayer(
         { transform: end },
       ],
     };
+    if(a.effect==='color'){
+      const descendants=Array.from(el.querySelectorAll<HTMLElement>('svg path,svg rect,svg circle,svg polygon,svg text,.slx-text,[style*="color"]'));
+      const animations=[el,...descendants].map(target=>{const style=getComputedStyle(target),key=target instanceof SVGElement?'fill':'color',before=style[key];
+        const anim=target.animate([{[key]:before},{[key]:a.color||'#FFCC00',offset:.5},{[key]:before}],{duration:Math.max(1,a.duration),delay:a.delay,fill:'both'});playing.push(anim);return anim.finished.catch(()=>{});});
+      return Promise.all(animations).then(()=>{});
+    }
     if (!effects[a.effect]) return Promise.resolve();
     el.style.visibility = "";
     const animation = el.animate(effects[a.effect], {
@@ -122,6 +133,7 @@ export function createPlayer(
     });
     const first = new Set<string>();
     for (const a of [...(master?.animations || []), ...slide.animations]) {
+      if(!find(a.target))continue;
       if (!first.has(a.target) && entrances.has(a.effect))
         find(a.target)?.style.setProperty("visibility", "hidden");
       first.add(a.target);

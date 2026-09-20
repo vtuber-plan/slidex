@@ -112,11 +112,16 @@ async function main() {
       const pages = flag('--pages');
       if (hasFlag('--pages') && (!pages || pages.startsWith('--'))) die('--pages 需要页码，例如 1,3-5');
       const { exportDeck } = await import('./export/export.js');
-      console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
+      const json=hasFlag('--json');
+      if(!json)console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
       const t0 = Date.now();
-      const r = await exportDeck(path.resolve(file), { format, scale, editable, pages, manifest: hasFlag('--manifest') });
+      let r;
+      try { r = await exportDeck(path.resolve(file), { format, scale, editable, pages, manifest: hasFlag('--manifest') }); }
+      catch(error){if(json){console.log(JSON.stringify({status:'failed',error:String((error as Error).message)}));process.exitCode=1;break;}throw error;}
+      if(json){console.log(JSON.stringify(r));break;}
       for (const f of r.files) console.log('  → ' + f);
       console.log(`完成，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      if(r.status==='degraded')console.log('存在导出降级或字体替代，详见 .report.json。');
       break;
     }
     case 'app': {
@@ -145,6 +150,7 @@ async function main() {
   slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
                                         导出（输出到 deck 同目录 out/）
                  [--pages 1,3-5] [--manifest] PNG 页码范围及 LLM 图片清单
+                 [--json]             输出机器可读结果及导出能力报告
   slidex app [deck.slx]                以 Electron 桌面应用打开编辑器
 环境变量:
   CHROME_PATH   导出用浏览器路径（默认自动探测 Chrome/Edge）`);
@@ -155,4 +161,4 @@ async function main() {
 function die(msg: string): never { console.error(msg); process.exit(1); }
 
 
-main().catch(e => { console.error(e && (e as Error).stack || e); process.exit(1); });
+main().catch(e => { if(cmd==='export'&&hasFlag('--json'))console.log(JSON.stringify({status:'failed',error:String(e && (e as Error).message||e)}));else console.error(e && (e as Error).stack || e); process.exit(1); });

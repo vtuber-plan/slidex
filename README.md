@@ -30,6 +30,8 @@
 - **AI 友好**：受控 XML 子集 + 明确的校验错误（带行列号），LLM 一次生成即可用；编辑器任何操作都可切换到「源码」视图对照。
 - **React Studio 编辑器**：React + Tailwind CSS + Radix Themes，缩略图排序、画布多选/框选/吸附/缩放/旋转、组合、图层和撤销重做；双击文本打开 ProseMirror 编辑组件。
 - **结构化内容编辑**：表格单元格选区、合并拆分和边框；图表数据网格与系列面板；图片上传与裁剪预览；形状/图标库；动画排序与整页预览。
+- **页面与布局管理**：页面多选及批量复制/删除/移动、层级图层树、独立显示名称和持久化显隐；标尺、固定参考线与可选网格吸附。使用与验收见 [布局编辑](docs/layout-editing.md)（源码更新，尚未打包进 rc.6）。
+- **内容能力扩展**：36 种形状及参数控制点、雷达/气泡/瀑布图、路径/旋转/颜色强调与退出动画、可视化时间线；基础五类图表和基础动画支持原生 PPTX 子集，详见 [能力与验收边界](docs/content-capabilities.md)（尚未打包进 rc.6）。
 - **文档可靠性**：串行自动保存、外部修改冲突检查、当前浏览器最近 20 个保存版本、源码校验和桌面保存桥。
 - **动画与切换**：`<animation>` 编排入场/强调/退出（onClick / withPrevious / afterPrevious），页面 `transition` 切换；放映模式完整播放；导出 PNG/PDF/PPTX 为最终态。
 - **母版**：`<master>` 定义页骨架（logo/页脚等），页面一行引用。
@@ -37,7 +39,7 @@
   - `PNG` — 每页一张高清位图（2x）；
   - `PDF` — 矢量文本、可选中复制；
   - `PPTX` — CLI 默认每页嵌入整页高清图，保持布局，不能逐个编辑对象；Office 图片重采样可能产生像素差异（备注为真文本备注）；
-  - `PPTX --editable` — **可编辑混合导出**：文本、内置形状、受支持的图片、直线箭头映射为原生对象，复杂元素转图片；字体和排版可能存在差异。桌面窗口默认选择此模式；
+  - `PPTX --editable` — **可编辑混合导出**：文本、内置形状、受支持的图片、直线箭头、普通表格和组合映射为原生对象，复杂元素转图片；字体和排版可能存在差异。桌面窗口默认选择此模式；
   - `HTML` — 单文件放映包（内联本地媒体、KaTeX、图标及内置字体；项目内字体 CSS/字体文件可内联，用户配置的远程字体和图片仍需网络）。
 - **富文本 + LaTeX 公式**：`<p>/<strong>/<span style>` 富文本子集，行内 `\( ... \)` KaTeX 公式，独立 `<formula>` 块级公式。
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
@@ -59,6 +61,8 @@ npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ## 桌面应用与分发（v1.7.0-rc.6）
 
 本轮为候选版本：修复 PPTX 文件结构与 PowerPoint 兼容性；桌面导出弹出保存位置选择。PPTX 统一入口，默认可编辑优先，也可选整页图片保留视觉。启动 `release/1.7.0-rc.6/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [导出修复与保真边界](docs/release-1.7.0-rc.6.md)。
+
+后续源码已加入原生表格/组合导出、导出能力报告和失败恢复；这些改进尚未打包进上述 rc.6。每次导出附带 `.report.json`，CLI 可用 `--json` 获取结构化结果。能力矩阵、使用方式和验收边界见 [导出可靠性](docs/export-reliability.md)。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
 - **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：

@@ -138,38 +138,31 @@ sec('5. richtext-runs 与可编辑导出规划');
   const kinds = plan.items.map(i => i.kind + ':' + i.el.id).join(',');
   t('母版元素进规划', kinds.includes('text:logo'));
   t('text/shape 原生', kinds.includes('text:t') && kinds.includes('shape:s'));
-  t('custom/chart 裁图', kinds.includes('crop:cs') && kinds.includes('crop:ch'));
+  t('custom 裁图 / 基础图表原生', kinds.includes('crop:cs') && kinds.includes('chart:ch'));
 }
 
 // ── 6. PPTX zip 结构 ──
 sec('6. PPTX 结构');
 {
-  const file = path.join(ROOT, 'examples/quickstart/out/deck.pptx');
-  if (fs.existsSync(file)) {
-    const buf = fs.readFileSync(file);
+  const {buildPptx}=await import('../dist/export/pptx.js');
+  const {unzipIndependent}=await import('./pptx-integrity.mjs');
+  const os=await import('node:os');
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-package-'));
+  try {
+    const png=path.join(temp,'pixel.png');
+    fs.writeFileSync(png,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZAAAAABJRU5ErkJggg==','base64'));
+    const buf=buildPptx({pngFiles:Array(6).fill(png),width:960,height:540,notes:['Note']});
     t('ZIP 魔数 PK', buf[0] === 0x50 && buf[1] === 0x4b);
     // 中央目录签名存在
     const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
     t('EOCD 存在', eocd > 0);
-    const names = [];
-    let p = 0;
-    while (p < buf.length - 4) {
-      if (buf.readUInt32LE(p) === 0x04034b50) {
-        const nameLen = buf.readUInt16LE(p + 26);
-        names.push(buf.slice(p + 30, p + 30 + nameLen).toString('utf8'));
-        // 跳到下一个（用压缩区长度）
-        const compLen = buf.readUInt32LE(p + 18);
-        p = p + 30 + nameLen + compLen;
-      } else p++;
-    }
+    const names = [...(await unzipIndependent(buf)).keys()];
     t('包含 presentation.xml', names.includes('ppt/presentation.xml'));
     t('包含 [Content_Types].xml', names.includes('[Content_Types].xml'));
     t('slide 数量 = 6', names.filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).length === 6, names.join(','));
     t('备注页存在', names.some(n => n.startsWith('ppt/notesSlides/notesSlide')));
     t('媒体图片存在', names.filter(n => n.startsWith('ppt/media/image')).length >= 1);
-  } else {
-    t('PPTX 已生成（跳过：先运行 node dist/cli.js export examples/quickstart/deck.slx -f pptx）', false);
-  }
+  } finally {fs.rmSync(temp,{recursive:true,force:true});}
 }
 
 // ── 7. 差距补齐套件（子进程跑独立脚本；两个需要 Chrome 的在无 Chrome 机器上跳过）──
@@ -192,6 +185,13 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/react-menus.mjs', hasChrome],
     ['test/dsl-tools.mjs', hasChrome],
     ['test/pptx-integrity.mjs', true],
+    ['test/export-reliability.mjs', true],
+    ['test/layout-operations.mjs', true],
+    ['test/content-capabilities.mjs', true],
+    ['test/react-content.mjs', hasChrome],
+    ['test/content-export.mjs', hasChrome],
+    ['test/react-layout.mjs', hasChrome],
+    ['test/export-browser.mjs', hasChrome],
     ['test/react-appearance.mjs', hasChrome],
     ['test/release-offline.mjs', hasChrome],
     ['test/gap-warnings.mjs', true],

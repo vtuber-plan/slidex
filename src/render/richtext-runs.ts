@@ -108,10 +108,7 @@ export function richToRuns(content: unknown, baseStyle: RunBaseStyle = {}): Rich
 
   // 无块级标签：按行分段
   if (!/<\s*(p|ul|ol|li)\b/i.test(src)) {
-    for (const line of src.split('\n').map(x => x.trim()).filter(Boolean)) {
-      paragraphs.push({ runs: [{ ...base, href: null, text: line }] });
-    }
-    return result;
+    src=src.split('\n').map(line=>`<p>${line.trim()||'<br/>'}</p>`).join('');
   }
 
   const tagRe = /<\s*(\/?)\s*([a-zA-Z0-9]+)((?:"[^"]*"|'[^']*'|[^>"]*)*)>/g;

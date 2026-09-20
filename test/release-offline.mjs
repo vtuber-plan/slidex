@@ -98,9 +98,11 @@ try {
   );
   check("no runtime errors", errors.length === 0);
   await page.goto(base, { waitUntil: "networkidle0" });
-  await page.locator("button::-p-text(EN)").click();
-  await page.click('[aria-label="Source"]');
-  await page.locator("summary::-p-text(Diagnostics)").click();
+  await page.evaluate(()=>{localStorage.setItem('slidex-language','en');});
+  await page.reload({waitUntil:'networkidle0'});
+  await page.locator('.command-bar button::-p-text(Tools)').click();
+  await page.locator('[role="menuitem"]::-p-text(DSL source and diagnostics)').click();
+  await page.waitForSelector('.diagnostic-item');
   check(
     "English diagnostic includes actionable summary",
     await page.$$eval(".diagnostic-item", (els) =>
@@ -109,7 +111,7 @@ try {
   );
   for (const format of ["html", "png", "pdf", "pptx"]) {
     const result = await exportDeck(file, { format, scale: 1 }),
-      last = result.files.at(-1),
+      last = result.files.find(file=>file.endsWith('.'+format)),
       data = fs.readFileSync(last);
     check(
       `${format} export produces nonempty artifact`,

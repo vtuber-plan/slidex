@@ -28,18 +28,96 @@ export function useLocale() {
 }
 const en: Record<string, string> = Object.fromEntries(
  `
+高级形状参数|Advanced shape parameters
+形状分类|Shape category
+全部形状|All shapes
+基本形状|Basic shapes
+标注|Callouts
+流程图|Flowchart
+星形|Stars
+形状调整控制点|Shape adjustment handle
+矩形|Rectangle
+圆角矩形|Rounded rectangle
+椭圆|Ellipse
+三角形|Triangle
+菱形|Diamond
+直角三角形|Right triangle
+平行四边形|Parallelogram
+梯形|Trapezoid
+五边形|Pentagon
+六边形|Hexagon
+七边形|Heptagon
+八边形|Octagon
+十边形|Decagon
+十二边形|Dodecagon
+右箭头|Right arrow
+左箭头|Left arrow
+上箭头|Up arrow
+下箭头|Down arrow
+左右箭头|Left-right arrow
+上下箭头|Up-down arrow
+五角箭头|Home plate
+圆环|Donut
+4角星|4-point star
+5角星|5-point star
+6角星|6-point star
+8角星|8-point star
+10角星|10-point star
+12角星|12-point star
+十字形|Cross
+对话标注|Speech callout
+流程：处理|Process
+流程：判断|Decision
+流程：输入输出|Input/output
+流程：文档|Document
+流程：开始结束|Terminator
+动画时间线|Animation timeline
+点击步骤按最早时间排列；实际播放等待点击。|Steps show earliest timing; playback waits for clicks.
+路径坐标|Path coordinates
+旋转角度|Rotation angle
+强调颜色|Emphasis color
+SIZE 数据|Size data
 偏好设置…|Preferences…
 导出前保存文档。桌面版随后选择保存位置；浏览器版输出到文档旁的 out 文件夹。|Saves first, then asks for a destination on desktop. Browser exports go to the adjacent out folder.
 PPTX 模式|PPTX mode
 可编辑优先|Prefer editable objects
 视觉保真（整页图片）|Visual fidelity (full-slide images)
 文字、基础形状和部分图片可编辑；复杂内容转为图片，字体与排版可能有差异。|Text, basic shapes and some images are editable. Complex content becomes images; fonts and layout may differ.
+支持的文字、形状、表格和组合保留为可编辑对象；其余内容转成图片，详见导出报告。|Supported text, shapes, tables and groups remain editable. Other content becomes images; see the export report for details.
 每页是一张图片，优先保留视觉；无法在 PowerPoint 中逐个编辑文字和对象。|Each slide is an image to preserve appearance. Text and objects cannot be edited individually in PowerPoint.
 偏好设置|Preferences
 设置自动保存，仅影响当前设备的编辑器。|Preferences are saved automatically for this device.
 语言|Language
 外观|Appearance
 工具|Tools
+页面列表|Slide list
+已选页面|Selected slides
+页面上移|Move slides up
+页面下移|Move slides down
+显示名称|Display name
+重命名图层|Rename layer
+图层名称|Layer name
+显示对象|Show object
+隐藏对象|Hide object
+展开组合|Expand group
+收起组合|Collapse group
+显示标尺|Show rulers
+显示参考线|Show guides
+显示网格|Show grid
+启用吸附|Enable snapping
+参考线与网格…|Guides and grid…
+参考线与网格|Guides and grid
+参考线随页面保存，不参与放映和导出。网格与吸附为设备偏好。|Guides are saved with the slide and excluded from playback and export. Grid and snapping are device preferences.
+网格间距|Grid spacing
+垂直参考线|Vertical guide
+水平参考线|Horizontal guide
+垂直参考线位置|Vertical guide position
+水平参考线位置|Horizontal guide position
+删除参考线|Delete guide
+添加参考线|Add guide
+清除参考线|Clear guides
+水平标尺|Horizontal ruler
+垂直标尺|Vertical ruler
 导出…|Export…
 DSL 源码与检查…|DSL source and diagnostics…
 语法检查|Check syntax
@@ -209,6 +287,13 @@ XML 源码|XML source
 搜索名称…|Search names…
 搜索资源|Search assets
 导出完成|Export complete
+导出完成，部分内容存在降级|Export complete with limitations
+导出能力报告|Export capability report
+原生对象|Native objects
+图片回退|Rasterized objects
+未保留属性|Unsupported properties
+缺失字体|Missing fonts
+详细原因和对象位置见下载列表中的报告文件。|See the report in the download list for details and object locations.
 点击文件下载。|Click a file to download.
 完成|Done
 幻灯片概览|Slide overview
@@ -487,6 +572,8 @@ const options: Record<string, [string, string]> = {
   area: ["面积图", "Area"],
   pie: ["饼图", "Pie"],
   scatter: ["散点图", "Scatter"],
+  radar:['雷达图','Radar'],bubble:['气泡图','Bubble'],waterfall:['瀑布图','Waterfall'],
+  color:['颜色强调','Color emphasis'], 'motion-path':['路径动画','Motion path'],'wipe-out':['擦除退出','Wipe out'],
   onClick: ["单击时", "On click"],
   withPrevious: ["与上一动画同时", "With previous"],
   afterPrevious: ["上一动画之后", "After previous"],

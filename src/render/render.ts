@@ -158,6 +158,7 @@ export function renderSlide(deck: Deck, slide: SlideContainer, opts: RenderSlide
 }
 
 function renderElement(el: SlideElement, deck: Deck, media: string, isMaster?: string): string {
+  if(el.hidden)return '';
   const idAttr = el.id ? ` data-id="${esc(el.id)}"${isMaster ? ' data-master="1"' : ''}` : (isMaster ? ' data-master="1"' : '');
   const tf: string[] = [];
   if (el.rotation) tf.push(`rotate(${el.rotation}deg)`);
@@ -392,7 +393,7 @@ function renderIcon(el: SlideElement, deck: Deck): string {
 }
 
 // ── 表格 ──
-const DEFAULT_TABLE_STYLE: DefaultTableStyle = {
+export const DEFAULT_TABLE_STYLE: DefaultTableStyle = {
   cell: { 'font-size': '', color: '', 'line-height': '1.35', 'border-bottom': '1 solid #E2E8F0', align: 'left middle' },
   header: { fill: '#E8EDF2', bold: 'true', color: '' },
   body: [{ fill: '#FFFFFF' }, { fill: '#F6F8FA' }],
@@ -400,10 +401,10 @@ const DEFAULT_TABLE_STYLE: DefaultTableStyle = {
 function renderTable(el: SlideElement, deck: Deck): string {
   const theme = el.style && el.style.startsWith('$') ? deck.theme.tableStyles[el.style.slice(1)] : null;
   const ts: AnyTableStyle = theme || DEFAULT_TABLE_STYLE;
-  // 注：原式第二个实参是逗号表达式（spread 的是数字 1 而非数组，无 cols 时会原样抛错）——按原行为保留
-  const ncols = el.cols?.length || Math.max(1, ...(((el.rowsData || []).map(r => r.reduce((a: number, c: TableCell) => a + Number(c['col-span'] || 1), 0)), 1) as unknown as number[]));
-  const colW: number[] = (el.cols?.length === ncols) ? (el.cols ?? []) : Array(ncols).fill(1 / ncols);
-  const rowH: number[] | null = el.rowsRatio?.length === (el.rowsData || []).length ? el.rowsRatio ?? null : null;
+  const ncols = el.cols?.length || Math.max(1, ...(el.rowsData || []).map(r => r.reduce((a: number, c: TableCell) => a + Number(c['col-span'] || 1), 0)));
+  const normalize=(values:number[])=>{const total=values.reduce((a,b)=>a+b,0);return values.map(value=>value/total);};
+  const colW: number[] = (el.cols?.length === ncols) ? normalize(el.cols ?? []) : Array(ncols).fill(1 / ncols);
+  const rowH: number[] | null = el.rowsRatio?.length === (el.rowsData || []).length ? normalize(el.rowsRatio ?? []) : null;
 
   // 覆盖网格（合并）
   const covered: boolean[][] = [];
@@ -434,7 +435,6 @@ function renderTable(el: SlideElement, deck: Deck): string {
       const st = cellStyle(cell, gr, gc, cs, ts, nrows, ncols, deck);
       const html = renderRichText(cell.text || '', { deck });
       const attrs = [
-        rs > 1 ? `rowspan="${rs}"` : '', cs > 1 ? `colspan="${cs}"` : '',
         st.fill ? `background:${st.fill}` : '',
         st.color ? `color:${st.color}` : '',
         st.fontSize ? `font-size:${f(st.fontSize)}px` : '',
@@ -445,9 +445,9 @@ function renderTable(el: SlideElement, deck: Deck): string {
         st.borders.top || st.borders.right || st.borders.bottom || st.borders.left ? `border-color:${st.borders.bottom?.color || st.borders.top?.color || '#E2E8F0'}` : '',
       ].filter(Boolean).join(';');
       const bcss = (['top', 'right', 'bottom', 'left'] as const).map(side => st.borders[side] ? `border-${side}:${st.borders[side]?.css}` : '').filter(Boolean).join(';');
-      tds.push(`<td style="${[attrs, bcss].filter(Boolean).join(';')};padding:6px 9px;overflow:hidden">${html || '&nbsp;'}</td>`);
+      tds.push(`<td${rs > 1 ? ` rowspan="${rs}"` : ''}${cs > 1 ? ` colspan="${cs}"` : ''} style="${[attrs, bcss].filter(Boolean).join(';')};padding:6px 9px;overflow:hidden"><div class="slx-richtext">${html || '&nbsp;'}</div></td>`);
     });
-    const hAttr = rowH ? ` style="height:${f(rowH[r] * 100)}%"` : '';
+    const hAttr = rowH ? ` style="height:${f(rowH[r] * (el.h || 0))}px"` : '';
     rowsHtml.push(`<tr${hAttr}>${tds.join('')}</tr>`);
   });
 
@@ -459,7 +459,7 @@ function renderTable(el: SlideElement, deck: Deck): string {
   return `<table style="${outer}"><colgroup>${colgroup}</colgroup>${rowsHtml.join('')}</table>`;
 }
 
-function cellStyle(cell: TableCell, r: number, c: number, cs: number, ts: AnyTableStyle, nrows: number, ncols: number, deck: Deck): CellStyleOut {
+export function cellStyle(cell: TableCell, r: number, c: number, cs: number, ts: AnyTableStyle, nrows: number, ncols: number, deck: Deck): CellStyleOut {
   const get = (style: StyleAttrs | null | undefined, key: string): string => style?.[key] ?? '';
   const out: CellStyleOut = { fill: '', color: '', fontSize: 0, bold: false, italic: false, lineHeight: '', ha: 'left', va: 'middle', borders: {} };
   const isHeader = r === 0 && ts.header;

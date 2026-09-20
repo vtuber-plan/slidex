@@ -27,6 +27,9 @@ import { ImageCrop } from "./ImageCrop";
 import { MultiInspector } from "./MultiInspector";
 import { resolveTextStyle } from "../src/render/render";
 import { Appearance, FillPanel, ColorControl } from "./Appearance";
+import {LayerTree} from './LayerTree';
+import {AnimationTimeline} from './AnimationTimeline';
+import {shapePreset,shapeAdjustment} from '../src/shape-library';
 
 const labels: Record<string, string> = {
   x: "X",
@@ -47,6 +50,8 @@ const labels: Record<string, string> = {
   "flip-h": "水平翻转",
   "flip-v": "垂直翻转",
   locked: "锁定",
+  label: "显示名称",
+  hidden: "隐藏对象",
   "lock-aspect": "锁定比例",
   src: "图片地址",
   crop: "裁剪比例",
@@ -136,6 +141,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                     <TablePanel key={el.id} element={el} />
                   )}
                   {el.type === "chart" && <ChartPanel element={el} />}
+                  {el.type==='shape'&&shapePreset(el.name)?.adjustment&&<Field label={t('形状参数')} type="number" min={shapePreset(el.name)!.adjustment!.min} max={el.name==='roundRect'?Math.min(el.w||0,el.h||0)/2:shapePreset(el.name)!.adjustment!.max} value={shapeAdjustment(el)} onChange={v=>{const p=shapePreset(el.name)!.adjustment!,max=el.name==='roundRect'?Math.min(el.w||0,el.h||0)/2:p.max;const value=Number(v);if(Number.isFinite(value))s.patch(el.id,{adj:[Math.max(p.min,Math.min(max,value)),...(el.name==='rightArrow'?String(el.adj||'').trim().split(/[\s,]+/).slice(1):[])].join(' ')});}}/>}
                   <ElementFields element={el} />
                   <Appearance key={`appearance-${el.id}`} element={el} />
                   {["text", "code", "formula"].includes(el.type) && (
@@ -223,43 +229,7 @@ export function Inspector({ preview }: { preview: () => void }) {
                 {t("个")}
               </span>
             </div>
-            {[...slide.elements].reverse().map((el) => (
-              <div
-                key={el.id}
-                className={`layer ${s.selection.includes(el.id) ? "active" : ""}`}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData("layer", el.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  const id = e.dataTransfer.getData("layer");
-                  if (!id || id === el.id) return;
-                  s.edit((_, slide) => {
-                    const from = slide.elements.findIndex((x) => x.id === id),
-                      to = slide.elements.findIndex((x) => x.id === el.id);
-                    if (from >= 0)
-                      slide.elements.splice(
-                        to,
-                        0,
-                        slide.elements.splice(from, 1)[0],
-                      );
-                  });
-                }}
-              >
-                <button
-                  className="layer-name"
-                  onClick={() => s.select([el.id])}
-                >
-                  {ELEMENT_SCHEMA[el.type].label}
-                  <small>{el.id}</small>
-                </button>
-                <Tool
-                  label={el.locked ? t("解锁") : t("锁定")}
-                  onClick={() => s.patch(el.id, { locked: !el.locked })}
-                >
-                  {el.locked ? <Lock size={14} /> : <Unlock size={14} />}
-                </Tool>
-              </div>
-            ))}
+            <LayerTree/>
           </div>
         </Tabs.Content>
         <Tabs.Content value="animation">
@@ -303,8 +273,10 @@ export function Inspector({ preview }: { preview: () => void }) {
                 {t("动画")}
               </Button>
             </div>
+            <AnimationTimeline animations={slide.animations}/>
             {slide.animations.map((a, i) => (
               <div
+                id={`animation-step-${i}`}
                 className="animation-card"
                 key={i}
                 draggable
@@ -397,11 +369,14 @@ export function Inspector({ preview }: { preview: () => void }) {
                     ])}
                     onChange={(value) =>
                       s.edit((_, slide) => {
-                        Object.assign(slide.animations[i], { [key]: value });
+                        Object.assign(slide.animations[i], { [key]: value },key==='effect'&&value==='motion-path'?{path:a.path||'0,0 100,0'}:key==='effect'&&value==='color'?{color:a.color||'#FFCC00'}:{});
                       })
                     }
                   />
                 ))}
+                {a.effect==='motion-path'&&<Field label={t('路径坐标')} value={a.path||'0,0 100,0'} onChange={path=>s.edit((_,slide)=>{slide.animations[i].path=path;})}/>}
+                {a.effect==='spin'&&<Field label={t('旋转角度')} type="number" value={a.angle??360} onChange={v=>s.edit((_,slide)=>{slide.animations[i].angle=Number(v);})}/>}
+                {a.effect==='color'&&<label>{t('强调颜色')}<input aria-label={t('强调颜色')} type="color" value={a.color||'#FFCC00'} onChange={e=>s.edit((_,slide)=>{slide.animations[i].color=e.target.value;})}/></label>}
                 <div className="field-grid">
                   {(["duration", "delay"] as const).map((key) => (
                     <Field
@@ -461,9 +436,10 @@ function ElementFields({ element: el }: { element: SlideElement }) {
   ];
   const field = ([key, kind, def]: AttrSpec) => {
     const value = effective[camel(key)] ?? el[camel(key)] ?? el[key] ?? def,
-      label = t(labels[key] || key);
+      label = t(key==='adj'?'高级形状参数':labels[key] || key);
     const change = (v: string) =>
       patch(el.id, {
+        ...(key==='name'&&el.type==='shape'?{adj:undefined}:{}),
         [camel(key)]: kind === "num" ? (v === "" ? undefined : Number(v)) : v,
       });
     if (kind === "bool")
@@ -1091,7 +1067,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
                         update((el) => {
                           const text = e.target.value;
                           el.chartData!.rows[r][c] =
-                            text.trim() && Number.isFinite(+text)
+                            !text.trim()?null:Number.isFinite(+text)
                               ? +text
                               : text;
                         })
@@ -1172,7 +1148,7 @@ function ChartPanel({ element }: { element: SlideElement }) {
               })
             }
           />
-          {(["x", "y"] as const).map((key) => (
+          {(["x", "y", ...(series.type==='bubble'?['size']:[])] as Array<'x'|'y'|'size'>).map((key) => (
             <Choice
               key={key}
               label={t(`${key.toUpperCase()} 数据`)}

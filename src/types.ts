@@ -51,6 +51,8 @@ export interface SlideElement {
   href?: string;
   alt?: string;
   locked?: boolean;
+  label?: string;
+  hidden?: boolean;
   lockAspect?: boolean;
   content?: string;
   fill?: string;
@@ -121,6 +123,7 @@ export interface ChartSeries {
   type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | string;
   x?: string;
   y?: string;
+  size?: string;
   name?: string;
   fill?: string;
   stroke?: string;
@@ -142,6 +145,9 @@ export interface AxisSpec {
 }
 
 export interface Animation {
+  angle?: number;
+  color?: string;
+  path?: string;
   target: string;
   effect: string;
   trigger: string;
@@ -152,6 +158,8 @@ export interface Animation {
 }
 
 export interface SlideContainer {
+  guidesX?: number[];
+  guidesY?: number[];
   id: string;
   type: string;
   background: Fill | null;

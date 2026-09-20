@@ -44,7 +44,7 @@ function unzip(buf) {
 const deckXml = `<?xml version="1.0" encoding="UTF-8"?>
 <deck version="1" title="gap">
   <slide background="#FFFFFF">
-    <image id="img1" x="40" y="40" w="120" h="80" src="gap-tmp-1x1.png"/>
+    <image id="img1" x="40" y="40" w="120" h="80" src="gap-tmp-1x1.png" fit="fill"/>
     <text id="t1" x="40" y="160" w="500" h="80" letter-spacing="2" shadow="4 2 2 #00000080">
       <p>See <a href="https://example.com/docs?a=1&amp;b=2">docs</a> or <a href="mailto:hi@example.com">mail</a> us</p>
     </text>

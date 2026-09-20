@@ -21,9 +21,14 @@ import { TextOverflow } from "./TextOverflow";
 import type { SlideElement } from "../src/types";
 import { resizeElement } from "../src/geometry";
 import { scaleContents } from "../src/selection";
+import {LayoutOverlay} from './LayoutOverlay';
+import {useLayoutPreferences} from './layoutPreferences';
+import {snapLayout} from '../src/layout-guides';
+import {shapePreset,shapeAdjustment} from '../src/shape-library';
 
 export function Canvas() {
   useLocale();
+  const {settings:layout}=useLayoutPreferences();
   const s = useEditor(),
     slide = container(s),
     currentScope = scope(s),
@@ -66,7 +71,7 @@ export function Canvas() {
   const hitElement = (target: HTMLElement) => {
     let hit = target.closest<HTMLElement>(".slx-el");
     while (hit) {
-      const found = slide.elements.find((el) => el.id === hit!.dataset.id);
+      const found = slide.elements.find((el) => el.id === hit!.dataset.id&&!el.hidden);
       if (found) return found;
       hit = hit.parentElement?.closest<HTMLElement>(".slx-el") || null;
     }
@@ -103,7 +108,7 @@ export function Canvas() {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const target = e.currentTarget as HTMLElement,
-      selected = original.filter((x) => ids.includes(x.id) && !x.locked);
+      selected = original.filter((x) => ids.includes(x.id) && !x.locked&&!x.hidden);
     if (el) s.begin();
     const move = (event: PointerEvent) => {
       const q = point(event);
@@ -119,12 +124,12 @@ export function Canvas() {
         return;
       }
       const snap: { x?: number; y?: number } = {};
-      if (!handle && selected.length && !event.altKey) {
+      if (!handle && selected.length && !event.altKey&&layout.snap) {
         const left = Math.min(...selected.map((x) => x.x || 0)),
           top = Math.min(...selected.map((x) => x.y || 0));
         const right = Math.max(...selected.map((x) => (x.x || 0) + (x.w || 0))),
           bottom = Math.max(...selected.map((x) => (x.y || 0) + (x.h || 0)));
-        const others = original.filter((x) => !ids.includes(x.id));
+        const others = original.filter((x) => !ids.includes(x.id)&&!x.hidden);
         const xs = [
           0,
           (currentScope.group?.w ?? s.deck.width) / 2,
@@ -165,11 +170,25 @@ export function Canvas() {
           dy = y.delta;
           snap.y = y.t;
         }
+        const root=rootContainer(s),snapped=snapLayout(selected,currentScope.matrix,{x:dx,y:dy},{xs:layout.guides?root.guidesX||[]:[],ys:layout.guides?root.guidesY||[]:[],grid:layout.grid?layout.gridStep:0,tolerance:5/scale});
+        dx=snapped.x;dy=snapped.y;
       }
       setGuides(snap);
+      if(handle&&handle!=='rotate'&&handle!=='adjust'&&layout.snap&&!event.altKey){
+        const root=rootContainer(s),snapped=snapLayout([{type:'shape',id:'handle',x:q.x,y:q.y,w:0,h:0}],currentScope.matrix,{x:0,y:0},{xs:layout.guides?root.guidesX||[]:[],ys:layout.guides?root.guidesY||[]:[],grid:layout.grid?layout.gridStep:0,tolerance:5/scale});
+        dx+=snapped.x;dy+=snapped.y;
+      }
       s.preview((_, slide) =>
         selected.forEach((old) => {
           const next = slide.elements.find((x) => x.id === old.id)!;
+          if(handle==='adjust'){
+            const spec=shapePreset(old.name)?.adjustment;
+            if(spec){const local=inversePoint(elementMatrix(old),q),max=old.name==='roundRect'?Math.min(old.w||0,old.h||0)/2:spec.max;
+              const value=old.name==='roundRect'?local.x:local.x/(old.w||1);
+              const tail=old.name==='rightArrow'?String(old.adj||'').trim().split(/[\s,]+/).slice(1):[];
+              next.adj=[Math.round(Math.max(spec.min,Math.min(max,value))*1000)/1000,...tail].join(' ');
+            }return;
+          }
           if (!handle) {
             next.x = (old.x || 0) + dx;
             next.y = (old.y || 0) + dy;
@@ -219,7 +238,7 @@ export function Canvas() {
         const q = point(event),
           x = Math.min(p.x, q.x),
           y = Math.min(p.y, q.y);
-        const found = original.filter((el) =>
+        const found = original.filter((el) => !el.hidden&&
           [
             [0, 0],
             [el.w || 0, 0],
@@ -275,7 +294,7 @@ export function Canvas() {
                       : undefined
                   }
                 >
-                  {group.id}
+                  {group.label||group.id}
                 </button>
               </span>
             ))}
@@ -342,6 +361,7 @@ export function Canvas() {
                   const el =
                     hitElement(e.target as HTMLElement) ||
                     [...slide.elements].reverse().find((el) => {
+                      if(el.hidden)return false;
                       const local = inversePoint(elementMatrix(el), p);
                       return (
                         local.x >= 0 &&
@@ -376,7 +396,7 @@ export function Canvas() {
                   {slide.elements
                     .filter(
                       (el) =>
-                        s.selection.includes(el.id) && el.id !== s.editing,
+                        s.selection.includes(el.id) && el.id !== s.editing&&!el.hidden,
                     )
                     .map((el) => (
                       <div
@@ -393,6 +413,12 @@ export function Canvas() {
                       >
                         {!el.locked && s.selection.length === 1 && (
                           <>
+                            {el.type==='shape'&&shapePreset(el.name)?.adjustment&&<button aria-label={t('形状调整控制点')} className="shape-adjust-handle" style={{left:el.name==='roundRect'?shapeAdjustment(el):shapeAdjustment(el)*(el.w||1),top:(el.h||1)/2,width:10/scale,height:10/scale}} onPointerDown={e=>{e.stopPropagation();start(e,'adjust',el);}} onKeyDown={e=>{
+                              if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+                              e.preventDefault();e.stopPropagation();const spec=shapePreset(el.name)!.adjustment!,max=el.name==='roundRect'?Math.min(el.w||0,el.h||0)/2:spec.max;
+                              const step=(el.name==='roundRect'?1:.01)*(e.shiftKey?10:1)*(e.key==='ArrowLeft'||e.key==='ArrowDown'?-1:1);
+                              s.patch(el.id,{adj:[Math.round(Math.max(spec.min,Math.min(max,shapeAdjustment(el)+step))*1000)/1000,...(el.name==='rightArrow'?String(el.adj||'').trim().split(/[\s,]+/).slice(1):[])].join(' ')});
+                            }}/>}
                             {[
                               "nw",
                               "n",
@@ -443,6 +469,7 @@ export function Canvas() {
                     />
                   )}
                 </div>
+                <LayoutOverlay scale={scale} board={board}/>
               </div>
             </div>
           </div>

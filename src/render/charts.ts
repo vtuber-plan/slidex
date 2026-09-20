@@ -3,6 +3,7 @@
 
 import { DEFAULT_CHART_COLORS, resolveColor } from '../ir.js';
 import type { ChartData, ChartSeries, Deck, SlideElement } from '../types.js';
+import {advancedPlot} from './charts-advanced.js';
 
 const INK = '#3A4453';
 const GRID = '#E4E8EE';
@@ -37,7 +38,8 @@ export function renderChart(el: SlideElement, deck: Deck): string {
   const legendT = legendPos === 'top' ? fs * 2 : 0;
 
   const hasPie = series.some(s => s.type === 'pie');
-  const style: PlotResult = hasPie
+  const advanced=series.some(s=>s.type==='radar'||s.type==='waterfall');
+  const style: PlotResult = advanced?advancedPlot(el,deck,{x:pad.l,y:pad.t+titleH+legendT,w:W-pad.l-pad.r-legendW,h:H-pad.t-pad.b-titleH-legendH-legendT}):hasPie
     ? piePlot(el, deck, { x: pad.l, y: pad.t + titleH + legendT, w: W - pad.l - pad.r - legendW, h: H - pad.t - pad.b - titleH - legendH - legendT })
     : cartesianPlot(el, deck, { x: pad.l, y: pad.t + titleH + legendT, w: W - pad.l - pad.r - legendW, h: H - pad.t - pad.b - titleH - legendH - legendT });
 
@@ -70,15 +72,9 @@ function cartesianPlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
   const rows = data.rows;
 
   const cats: string[] = []; // 类目（去重保序）
-  const isScatter = series.every(s => s.type === 'scatter') && series.length > 0;
+  const isScatter = series.every(s => s.type === 'scatter'||s.type==='bubble') && series.length > 0;
   const catCol = horizontal ? series[0]?.y : series[0]?.x;
-  const catIsString = (() => {
-    if (isScatter) return false;
-    if (horizontal ? !!yAxis.type : !!xAxis.type && xAxis.type === 'category') return true;
-    const ci = col(catCol);
-    if (ci < 0) return true;
-    return rows.some(r => typeof r[ci] === 'string');
-  })();
+  const catIsString = !isScatter;
 
   if (catIsString && !isScatter) {
     const ci = col(catCol);
@@ -88,10 +84,10 @@ function cartesianPlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
   // 每系列取数：{cat, value}
   const dataOf = (s: ChartSeries): DataPoint[] => rows.map(r => ({
     cat: String(r[col(horizontal ? s.y : s.x)]),
-    xv: Number(r[col(horizontal ? s.y : s.x)]),
-    value: Number(r[col(horizontal ? s.x : s.y)]),
+    xv: r[col(horizontal ? s.y : s.x)]==null?NaN:Number(r[col(horizontal ? s.y : s.x)]),
+    value: r[col(horizontal ? s.x : s.y)]==null?NaN:Number(r[col(horizontal ? s.x : s.y)]),
     raw: r,
-  })).filter(d => Number.isFinite(d.value) || catIsString);
+  })).filter(d => Number.isFinite(d.value));
 
   // 值域
   let vmin = Infinity, vmax = -Infinity;
@@ -124,12 +120,15 @@ function cartesianPlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
     xmin = Infinity; xmax = -Infinity;
     for (const s of series) for (const d of dataOf(s)) { if (Number.isFinite(d.xv)) { xmin = Math.min(xmin, d.xv); xmax = Math.max(xmax, d.xv); } }
     if (!Number.isFinite(xmin)) { xmin = 0; xmax = 1; }
+    if(xAxis.min!==undefined&&Number.isFinite(Number(xAxis.min)))xmin=Number(xAxis.min);
+    if(xAxis.max!==undefined&&Number.isFinite(Number(xAxis.max)))xmax=Number(xAxis.max);
     if (xmin === xmax) xmax = xmin + 1;
     const xt = niceTicks(xmin, xmax); xmin = xt.lo; xmax = xt.hi; xTicks = xt.ticks;
   }
 
   // 布局
   const m = { t: 4, r: 8, b: 2, l: 2 };
+  if(series.some(s=>s.type==='bubble')){const inset=Math.min(box.w,box.h)*.1; m.t+=inset;m.r+=inset;m.b+=inset;m.l+=inset;}
   const maxTickLabel = Math.max(...tk.ticks.map(t => tickText(t, fmt).length), 3) * fs * 0.62;
   const catLabelW = Math.max(...cats.map(c => c.length), 4) * fs * 0.62;
   if (horizontal) {
@@ -243,14 +242,17 @@ function cartesianPlot(el: SlideElement, deck: Deck, box: Box): PlotResult {
       if (mk !== 'none') {
         for (const p of pts) svg.push(`<circle cx="${f(p[0])}" cy="${f(p[1])}" r="${f(fs * 0.28)}" fill="${stroke}" stroke="#fff" stroke-width="1"/>`);
       }
-    } else if (s.type === 'scatter') {
+    } else if (s.type === 'scatter'||s.type==='bubble') {
       const fillC = s.fill ? resolveColor(s.fill, deck) : DEFAULT_CHART_COLORS[si % DEFAULT_CHART_COLORS.length];
       legendItems.push({ label, color: fillC, shape: 'circle' });
       for (const d of ds) {
         if (!Number.isFinite(d.xv) || !Number.isFinite(d.value)) continue;
         const cx = px + ((d.xv - xmin) / (xmax - xmin)) * pw;
         const cy = vToP(d.value);
-        svg.push(`<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(fs * 0.35)}" fill="${withAlpha(fillC, 'CC')}" stroke="${fillC}" stroke-width="1"/>`);
+        const size=Number(d.raw[col(s.size)]),maxSize=Math.max(1,...ds.map(p=>Number(p.raw[col(s.size)])||0));
+        if(s.type==='bubble'&&(!(size>0)||!Number.isFinite(size)))continue;
+        const radius=s.type==='bubble'?Math.sqrt(size/maxSize)*Math.min(pw,ph)*.08:fs*.35;
+        svg.push(`<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(radius)}" fill="${withAlpha(fillC, '99')}" stroke="${fillC}" stroke-width="1"/>`);
       }
     }
 

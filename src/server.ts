@@ -153,16 +153,17 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (p === '/api/preferences') {
-      if (!opts.preferencesFile) { send(res, 200, {native:false}); return; }
+      if (!opts.preferencesFile) { if(req.method==='POST')await readBody(req); send(res, 200, {native:false}); return; }
       if (req.method === 'GET') {
         const values=fs.existsSync(opts.preferencesFile)?JSON.parse(fs.readFileSync(opts.preferencesFile,'utf8')):{};
         send(res,200,{native:true,values});return;
       }
       if (req.method === 'POST') {
-        const {language,appearance,autosave}=await readBody(req);
+        const {language,appearance,autosave,layout}=await readBody(req);
         if (!['zh','en'].includes(String(language)) || !['light','dark'].includes(String(appearance)) || typeof autosave!=='boolean') {send(res,400,{error:'偏好设置无效'});return;}
+        if(layout!==undefined){const value=layout as Record<string,unknown>;if(!value||typeof value!=='object'||!['rulers','guides','grid','snap'].every(key=>typeof value[key]==='boolean')||typeof value.gridStep!=='number'||!Number.isFinite(value.gridStep)||value.gridStep<2||value.gridStep>200){send(res,400,{error:'布局偏好设置无效'});return;}}
         fs.mkdirSync(path.dirname(opts.preferencesFile),{recursive:true});
-        fs.writeFileSync(opts.preferencesFile+'.tmp',JSON.stringify({language,appearance,autosave},null,2));
+        fs.writeFileSync(opts.preferencesFile+'.tmp',JSON.stringify({language,appearance,autosave,layout},null,2));
         fs.renameSync(opts.preferencesFile+'.tmp',opts.preferencesFile);
         send(res,200,{ok:true});return;
       }
@@ -225,14 +226,14 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         let destination:{directory?:string;outputFile?:string}={};
         if(chooseDestination && opts.pickExport){
           const picked=await opts.pickExport(format,deckFile);
-          if(!picked){send(res,200,{ok:true,canceled:true});return;}
+          if(!picked){send(res,200,{ok:true,canceled:true,status:'canceled'});return;}
           destination=picked;
         }
         const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest, ...destination });
         const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
         send(res, 200, { ok: true, ...result, downloads });
       } catch (e) {
-        send(res, 200, { ok: false, error: String(e && (e as Error).message || e) });
+        send(res, 200, { ok: false, status:'failed', error: String(e && (e as Error).message || e) });
       }
       return;
     }
