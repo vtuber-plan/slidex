@@ -126,10 +126,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
+      - name: Use npm with trusted publishing support
+        run: npm install --global npm@11
       - name: Verify npm destination
         run: |
-          node -e "if (!/^@[a-z0-9][a-z0-9._-]*\/slidex$/.test(process.env.NPM_PACKAGE_NAME || '')) throw Error('Set repository variable NPM_PACKAGE_NAME to an owned npm scope, for example @your-scope/slidex')"
+          node -e "if (process.env.NPM_PACKAGE_NAME !== '@xiahan/slidex') throw Error('Set repository variable NPM_PACKAGE_NAME to @xiahan/slidex')"
+          node -e "const [major,minor]=process.versions.node.split('.').map(Number); if (major < 22 || (major === 22 && minor < 14)) throw Error('Trusted publishing requires Node >= 22.14')"
+          npm --version
           npm run check:release
       - run: npm ci
       - run: npm run build
@@ -137,12 +141,5 @@ jobs:
         run: |
           npm pkg set "name=$NPM_PACKAGE_NAME"
           npm pack --dry-run --ignore-scripts
-      - name: Configure npm registry
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-      - name: Publish CLI and editor to npm
-        run: npm publish --ignore-scripts --access public --provenance --tag "$NPM_DIST_TAG"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish CLI and editor to npm via OIDC
+        run: npm publish --ignore-scripts --access public --tag "$NPM_DIST_TAG"
