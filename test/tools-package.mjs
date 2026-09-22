@@ -9,8 +9,8 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-installed-tools-'));
 // Use Node's npm entrypoint where available to avoid shell interpolation of paths.
 const npmCli=process.env.npm_execpath;
 if(!npmCli)throw Error('Run this test with npm run test:tools');
-const installed=spawnSync(process.execPath,[npmCli,'install','--prefix',temp,'--omit=dev','--ignore-scripts','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:180000});
-assert.equal(installed.status,0,installed.stderr);
+const installed=spawnSync(process.execPath,[npmCli,'install','--prefix',temp,'--omit=dev','--ignore-scripts','--prefer-offline','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:600000});
+assert.equal(installed.status,0,installed.error?.message||installed.stderr||installed.stdout);
 const pkg=path.join(temp,'node_modules/slidex'),cli=path.join(pkg,'dist/cli.js');
 assert.ok(fs.existsSync(path.join(pkg,'skills/slidex/SKILL.md')));assert.ok(fs.existsSync(path.join(pkg,'app/web/index.html')));assert.ok(!fs.existsSync(path.join(temp,'node_modules/electron')));
 const run=(args,expected=0)=>{const r=spawnSync(process.execPath,[cli,...args],{cwd:temp,encoding:'utf8',timeout:90000});assert.equal(r.status,expected,r.stderr||r.stdout);return r.stdout;};
