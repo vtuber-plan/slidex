@@ -100,7 +100,7 @@ export function FillPanel({
     i: number,
     patch: Partial<{ pos: number; color: string }>,
   ) => {
-    if (value?.type !== "gradient") return;
+    if (value?.type !== "gradient" && value?.type !== "radial-gradient") return;
     const stops = value.stops
       .map((s, index) => (index === i ? { ...s, ...patch } : s))
       .sort((a, b) => a.pos - b.pos);
@@ -124,6 +124,10 @@ export function FillPanel({
                       { pos: 1, color: "#ffffff" },
                     ],
                   }
+                : e.target.value === "radial-gradient"
+                  ? { type: "radial-gradient", cx: 0.5, cy: 0.5, stops: [
+                      { pos: 0, color: "#6366f1" }, { pos: 1, color: "#ffffff" },
+                    ] }
                 : e.target.value === "image"
                   ? { type: "image", src: "", fit: "cover", opacity: 1 }
                   : { type: "solid", color: "#ffffff" },
@@ -132,19 +136,22 @@ export function FillPanel({
         >
           <option value="solid">{t("纯色")}</option>
           <option value="gradient">{t("渐变")}</option>
+          <option value="radial-gradient">{t("径向渐变")}</option>
           <option value="image">{t("图片")}</option>
         </select>
       </label>
-      {value?.type === "gradient" ? (
+      {value?.type === "gradient" || value?.type === "radial-gradient" ? (
         <>
           <div
             className="gradient-preview"
             aria-label={t("渐变预览")}
             style={{
-              background: `linear-gradient(${value.angle + 90}deg,${value.stops.map((s) => `${resolveColor(s.color, deck)} ${s.pos * 100}%`).join(",")})`,
+              background: value.type === "gradient"
+                ? `linear-gradient(${value.angle + 90}deg,${value.stops.map((s) => `${resolveColor(s.color, deck)} ${s.pos * 100}%`).join(",")})`
+                : `radial-gradient(ellipse farthest-corner at ${value.cx * 100}% ${value.cy * 100}%,${value.stops.map((s) => `${resolveColor(s.color, deck)} ${s.pos * 100}%`).join(",")})`,
             }}
           />
-          <Field
+          {value.type === "gradient" ? <Field
             label={t("渐变角度")}
             type="number"
             value={value.angle}
@@ -152,7 +159,11 @@ export function FillPanel({
               if (v !== "" && Number.isFinite(+v))
                 onChange({ ...value, angle: ((+v % 360) + 360) % 360 });
             }}
-          />
+          /> : <div className="field-grid">{(["cx", "cy"] as const).map(key => <Field
+            key={key} label={key === "cx" ? t("中心 X (%)") : t("中心 Y (%)")}
+            type="number" min={0} max={100} value={+(value[key] * 100).toFixed(2)}
+            onChange={v => { if (v !== "" && Number.isFinite(+v)) onChange({ ...value, [key]: Math.min(1, Math.max(0, +v / 100)) }); }}
+          />)}</div>}
           {value.stops.map((stop, i) => (
             <div className="gradient-stop" key={i}>
               <ColorControl

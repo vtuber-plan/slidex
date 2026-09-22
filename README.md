@@ -111,12 +111,16 @@ node test/gui.present.mjs   # 放映动画时间线
 npm install -g ./release/1.7.0-rc.7/slidex-1.7.0-rc.7.tgz
 slidex help
 slidex validate mydeck/deck.slx --json
+slidex inspect mydeck/deck.slx
+slidex patch mydeck/deck.slx patch.json --dry-run
 slidex export mydeck/deck.slx -f png --pages 1,3-5 --manifest --json
 ```
 
 需要 Node.js（CI 验证 Node 22）；PNG/PDF/PPTX 导出还需要本机 Chrome/Edge/Chromium，可用 `CHROME_PATH` 指定。CLI 包安装生产依赖时需要 npm 网络访问；Skill 本身不包含运行时。
 
 项目技能位于 [skills/slidex/SKILL.md](skills/slidex/SKILL.md)，指导 AI 编写/修改 DSL、稳定保留 ID、校验、格式化、按页渲染检查及解释导出降级。将 ZIP 内的 `slidex` 文件夹复制到支持 `SKILL.md` 的代理技能目录即可；Codex 可使用其配置的 skills 目录。它不会要求额外交付用户未请求的格式。
+
+按 ID 增量修改可通过 CLI 或本地 `POST /api/patch` 提交，必须携带项目版本，支持预演与批量原子保存；操作格式见 [AI 增量修改协议](docs/ai-patch.md)。
 
 `npm run test:tools -- --render` 在隔离目录安装生成的 CLI 包，验证命令、浏览器编辑器入口、PNG 清单及 Skill ZIP。Skill 的编写遵循简短入口、按需读取参考和保留用户任务范围的原则。
 

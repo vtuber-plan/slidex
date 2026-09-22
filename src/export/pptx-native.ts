@@ -100,6 +100,7 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored 
   // Unsupported visual properties must not silently disappear from native objects.
   if (el.opacity !== undefined && el.opacity !== 1 && el.type !== 'image') { crop('opacity'); return; }
   if (el.type === 'shape' && el.fillObj?.type === 'image') { crop('image-fill'); return; }
+  if ((el.type === 'shape' || el.type === 'text') && el.fillObj?.type === 'radial-gradient') { crop('radial-gradient'); return; }
   if ((mirrored||el.flipH||el.flipV) && (el.type==='text'||el.type==='table')) {crop('mirrored-text');return;}
   switch (el.type) {
     case 'chart':
@@ -131,6 +132,7 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored 
       return;
     }
     case 'image':
+      if (el.maskShape && el.maskShape !== 'rect') { crop('image-mask'); return; }
       // Browser cover/contain sizing must be preserved until native sizing is measured.
       if (/\.(png|jpe?g|gif)(?:[?#].*)?$/i.test(String(el.src)) && el.fit === 'fill') items.push({ kind: 'pic', el });
       else crop('image-rendering');
@@ -256,7 +258,7 @@ function shapeSpXml(el: SlideElement, deck: Deck, idNum: number): string {
   const polygon=shapePolygon(el);
   const geometry=polygon?`<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${emu(el.w)}" h="${emu(el.h)}">${polygon.map(([x,y],i)=>`<a:${i?'lnTo':'moveTo'}><a:pt x="${emu(x)}" y="${emu(y)}"/></a:${i?'lnTo':'moveTo'}>`).join('')}<a:close/></a:path></a:pathLst></a:custGeom>`:`<a:prstGeom prst="${prst}">${adjXml(el)}</a:prstGeom>`;
   const fill = el.fillObj
-    ? (el.fillObj.type === 'gradient' ? gradFillXml(el.fillObj, deck) : el.fillObj.type === 'image' ? '' : fillXml(el.fillObj.color, deck))
+    ? (el.fillObj.type === 'gradient' ? gradFillXml(el.fillObj, deck) : el.fillObj.type === 'solid' ? fillXml(el.fillObj.color, deck) : '')
     : el.fill ? fillXml(el.fill, deck) : '<a:noFill/>';
   const ln = el.stroke ? linePropsXml(el, deck) : '<a:ln><a:noFill/></a:ln>';
   return `<p:sp>

@@ -174,6 +174,13 @@ DSL 源码与检查…|DSL source and diagnostics…
 阴影设置|Shadow settings
 渐变预览|Gradient preview
 渐变角度|Gradient angle
+径向渐变|Radial gradient
+中心 X (%)|Center X (%)
+中心 Y (%)|Center Y (%)
+图片蒙版|Image mask
+缓动|Easing
+线性|Linear
+重复次数|Repeat count
 色标|Color stop
 色标透明度|Stop opacity
 位置|Position

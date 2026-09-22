@@ -11,7 +11,7 @@ export function AnimationTimeline({ animations }: { animations: Animation[] }) {
       start = end;
     } else if (a.trigger === "afterPrevious") start = end;
     const from = start + a.delay,
-      to = from + Math.max(1, a.duration);
+      to = from + Math.max(1, a.duration) * (a.repeat || 1);
     end = Math.max(end, to);
     return { a, i, from, to, click };
   });

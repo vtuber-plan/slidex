@@ -102,6 +102,8 @@ function serializeContainer(c: SlideContainer, pad: string, isMaster: boolean): 
     if (a.direction && a.direction !== 'up') parts.push(`direction="${esc(a.direction)}"`);
     if (a.duration!==undefined) parts.push(`duration="${fmt(a.duration)}"`);
     if (a.delay) parts.push(`delay="${fmt(a.delay)}"`);
+    if (a.easing && a.easing !== 'ease-out') parts.push(`easing="${esc(a.easing)}"`);
+    if (a.repeat !== undefined && a.repeat !== 1) parts.push(`repeat="${fmt(a.repeat)}"`);
     if(a.angle!==undefined)parts.push(`angle="${fmt(a.angle)}"`);
     if(a.color)parts.push(`color="${esc(a.color)}"`);
     if(a.path)parts.push(`path="${esc(a.path)}"`);
@@ -215,6 +217,10 @@ export function serializeElement(el: SlideElement, pad: string = IND): string {
 }
 
 function fillChild(fill: Fill, pad: string, tag = 'fill'): string {
+  if (fill.type === 'radial-gradient') {
+    const stops = fill.stops.map(s => `${pad}${IND}<stop pos="${fmt(s.pos)}" color="${esc(s.color)}"/>`).join('\n');
+    return `${pad}<${tag} type="radial-gradient" cx="${fmt(fill.cx)}" cy="${fmt(fill.cy)}">\n${stops}\n${pad}</${tag}>`;
+  }
   if (fill.type === 'gradient') {
     const stops = fill.stops.map(s => `${pad}${IND}<stop pos="${fmt(s.pos)}" color="${esc(s.color)}"/>`).join('\n');
     return `${pad}<${tag} type="gradient" angle="${fmt(fill.angle || 0)}">\n${stops}\n${pad}</${tag}>`;

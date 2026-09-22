@@ -17,6 +17,7 @@ import {languageInfo} from './language.js';
 import {serializeDeck} from './serializer.js';
 import {isLocale} from './locales.js';
 import {createDocument} from './file-commands.js';
+import {applyProjectPatch,PatchError} from './patch.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'app');
@@ -239,6 +240,26 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const saved=saveProject(project,xml);cached=saved;
       let historyWarning='';try{history.saved(deckFile,xml);}catch(error){historyWarning='文档已保存，但历史记录写入失败：'+String((error as Error).message);}
       send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, mtimeMs: fs.statSync(deckFile).mtimeMs,version:saved.version,historyWarning });
+      return;
+    }
+    if (req.method === 'POST' && p === '/api/patch') {
+      if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) { send(res, 403, { ok: false, error: '跨站请求不被允许' }); return; }
+      const body = await readBody(req);
+      if (body._tooLarge) { send(res, 413, { ok: false, error: '请求体过大' }); return; }
+      const project = loadProject(deckFile);
+      try {
+        const result = applyProjectPatch(project, body);
+        if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') { send(res, 400, { ok: false, error: 'dryRun 必须是布尔值' }); return; }
+        if (body.dryRun) { send(res, 200, { ok: true, dryRun: true, version: project.version, ...result }); return; }
+        const saved = saveProject(project, result.xml); cached = saved;
+        let historyWarning = '';
+        try { history.saved(deckFile, result.xml); } catch (error) { historyWarning = '文档已保存，但历史记录写入失败：' + String((error as Error).message); }
+        send(res, 200, { ok: true, dryRun: false, version: saved.version, changes: result.changes, warnings: result.warnings, historyWarning });
+      } catch (error) {
+        if (error instanceof PatchError) send(res, error.code === 'conflict' ? 409 : 400, { ok: false, code: error.code, error: error.message, version: project.version });
+        else if (/项目文件.*变化|项目文件.*修改/.test(String(error))) send(res, 409, { ok: false, code: 'conflict', error: String(error), version: loadProject(deckFile).version });
+        else throw error;
+      }
       return;
     }
     if (req.method === 'POST' && p === '/api/media') {

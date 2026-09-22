@@ -31,6 +31,7 @@ export interface XMLParseResult {
 export type Fill =
   | { type: 'solid'; color: string }
   | { type: 'gradient'; angle: number; stops: Array<{ pos: number; color: string }> }
+  | { type: 'radial-gradient'; cx: number; cy: number; stops: Array<{ pos: number; color: string }> }
   | { type: 'image'; src: string; fit?: string; opacity?: number };
 
 export type ElementType = 'text' | 'shape' | 'line' | 'image' | 'icon' | 'table' | 'chart' | 'code' | 'formula' | 'group';
@@ -86,6 +87,7 @@ export interface SlideElement {
   src?: string;
   fit?: string;
   crop?: string;
+  maskShape?: string;
   radius?: number;
   lang?: string;
   lineNumbers?: boolean;
@@ -145,6 +147,8 @@ export interface AxisSpec {
 }
 
 export interface Animation {
+  easing?: string;
+  repeat?: number;
   angle?: number;
   color?: string;
   path?: string;

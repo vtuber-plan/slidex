@@ -55,6 +55,7 @@ const labels: Record<string, string> = {
   "lock-aspect": "锁定比例",
   src: "图片地址",
   crop: "裁剪比例",
+  "mask-shape": "图片蒙版",
   radius: "圆角",
   shadow: "阴影",
   href: "链接",
@@ -393,6 +394,11 @@ export function Inspector({ preview }: { preview: () => void }) {
                     />
                   ))}
                 </div>
+                <Choice label={t("缓动")} value={a.easing || "ease-out"}
+                  choices={[["linear", t("线性")], ["ease", "ease"], ["ease-in", "ease-in"], ["ease-out", "ease-out"], ["ease-in-out", "ease-in-out"]]}
+                  onChange={easing => s.edit((_, slide) => { slide.animations[i].easing = easing; })}/>
+                <Field label={t("重复次数")} type="number" min={1} max={20} value={a.repeat || 1}
+                  onChange={v => { if (v !== "" && Number.isFinite(+v)) s.edit((_, slide) => { slide.animations[i].repeat = Math.min(20, Math.max(1, Math.round(+v))); }); }}/>
               </div>
             ))}
           </div>
@@ -454,6 +460,7 @@ function ElementFields({ element: el }: { element: SlideElement }) {
       );
     const enums: Record<string, string[]> = {
       fit: ["cover", "contain", "fill"],
+      "mask-shape": ["rect", "ellipse", "diamond", "triangle", "hexagon"],
       "stroke-dash": ["solid", "dash", "dot"],
       legend: ["none", "top", "bottom", "left", "right"],
       "arrow-start": ["none", "arrow", "stealth", "diamond", "oval"],

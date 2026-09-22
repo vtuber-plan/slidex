@@ -192,6 +192,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/large-project-browser.mjs', hasChrome],
     ['test/file-menu-locales.mjs', hasChrome],
     ['test/content-capabilities.mjs', true],
+    ['test/depth-patch.mjs', true],
     ['test/react-content.mjs', hasChrome],
     ['test/content-export.mjs', hasChrome],
     ['test/react-layout.mjs', hasChrome],

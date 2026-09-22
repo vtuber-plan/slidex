@@ -32,6 +32,7 @@ interface TextStyle {
 }
 
 type GradFill = Extract<Fill, { type: 'gradient' }>;
+type RadialFill = Extract<Fill, { type: 'radial-gradient' }>;
 
 /** 默认表格样式（仅含出现的键；其余键与 TableStyle 取并集为可选）。 */
 interface DefaultTableStyle {
@@ -149,7 +150,7 @@ export function renderSlide(deck: Deck, slide: SlideContainer, opts: RenderSlide
   const bg = slide.background || (master && master.background) || null;
   if (bg) {
     if (bg.type === 'solid') bgCss = resolveColor(bg.color, deck);
-    else if (bg.type === 'gradient') { bgImage = gradientCss(bg, deck); }
+    else if (bg.type === 'gradient' || bg.type === 'radial-gradient') { bgImage = gradientCss(bg, deck); }
     else if (bg.type === 'image') { bgInner = `<img src="${mediaSrc(bg.src, media)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${bg.fit === 'fill' ? 'fill' : bg.fit === 'contain' ? 'contain' : 'cover'};${bg.opacity !== undefined && bg.opacity !== 1 ? `opacity:${bg.opacity};` : ''}" draggable="false"/>`; }
   }
   const masterEls = master ? master.elements.map(el => renderElement(el, deck, media, '1')).join('\n') : '';
@@ -241,7 +242,7 @@ function renderText(el: SlideElement, deck: Deck, mediaBase: string): string {
   const html = renderRichText(el.content || '', { deck });
   const fill = el.fillObj;
   const fillCss = fill?.type === 'solid' ? `background:${resolveColor(fill.color, deck)}`
-    : fill?.type === 'gradient' ? `background:${gradientCss(fill, deck)}`
+    : fill?.type === 'gradient' || fill?.type === 'radial-gradient' ? `background:${gradientCss(fill, deck)}`
     : fill?.type === 'image' ? `background-image:url("${esc(mediaSrc(fill.src, mediaBase))}");background-size:${fill.fit === 'contain' ? 'contain' : fill.fit === 'fill' ? '100% 100%' : 'cover'};background-position:center`
     : '';
   const css = [
@@ -272,7 +273,7 @@ function renderShape(el: SlideElement, deck: Deck, mediaBase: string): string {
   let defs = '', fillRef: string | undefined = 'none';
   if (fill) {
     if (fill.type === 'solid') fillRef = resolveColor(fill.color, deck);
-    else if (fill.type === 'gradient') { const g = gradientDef(fill, deck); defs = g.defs; fillRef = `url(#${g.id})`; }
+    else if (fill.type === 'gradient' || fill.type === 'radial-gradient') { const g = gradientDef(fill, deck); defs = g.defs; fillRef = `url(#${g.id})`; }
     else if (fill.type === 'image') {
       const gid = `slxg${gradSeq++}`;
       defs = `<defs><pattern id="${gid}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${esc(mediaSrc(fill.src, mediaBase))}" width="1" height="1" preserveAspectRatio="${fill.fit === 'fill' ? 'none' : fill.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}"/></pattern></defs>`;
@@ -286,17 +287,22 @@ function renderShape(el: SlideElement, deck: Deck, mediaBase: string): string {
   return `<svg width="100%" height="100%" viewBox="${viewBox}" preserveAspectRatio="none" style="display:block;${shadow ? `filter:drop-shadow(${f(shadow.dx)}px ${f(shadow.dy)}px ${f(shadow.blur)}px ${resolveColor(shadow.color, deck)})` : ''}">${defs}<path d="${d}" fill="${fillRef}"${fillRule !== 'nonzero' ? ` fill-rule="${fillRule}"` : ''} stroke="${stroke}" stroke-width="${f(sw)}"${dash}/></svg>`;
 }
 
-function gradientDef(fill: GradFill, deck: Deck): { id: string; defs: string } {
+function gradientDef(fill: GradFill | RadialFill, deck: Deck): { id: string; defs: string } {
   const id = `slxg${gradSeq++}`;
+  const stops = (fill.stops || []).map(s => `<stop offset="${f((s.pos || 0) * 100)}%" stop-color="${resolveColor(s.color, deck)}"/>`).join('');
+  if (fill.type === 'radial-gradient') {
+    const r = Math.max(...[0, 1].flatMap(x => [0, 1].map(y => Math.hypot(x - fill.cx, y - fill.cy))));
+    return { id, defs: `<defs><radialGradient id="${id}" cx="${f(fill.cx)}" cy="${f(fill.cy)}" r="${f(r)}">${stops}</radialGradient></defs>` };
+  }
   const ang = ((fill.angle || 0) % 360) * Math.PI / 180;
   const x1 = f(0.5 - Math.cos(ang) / 2), y1 = f(0.5 - Math.sin(ang) / 2), x2 = f(0.5 + Math.cos(ang) / 2), y2 = f(0.5 + Math.sin(ang) / 2);
-  const stops = (fill.stops || []).map(s => `<stop offset="${f((s.pos || 0) * 100)}%" stop-color="${resolveColor(s.color, deck)}"/>`).join('');
   return { id, defs: `<defs><linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient></defs>` };
 }
-function gradientCss(fill: GradFill, deck: Deck): string {
+function gradientCss(fill: GradFill | RadialFill, deck: Deck): string {
+  const stops = (fill.stops || []).map(s => `${resolveColor(s.color, deck)} ${f((s.pos || 0) * 100)}%`).join(', ');
+  if (fill.type === 'radial-gradient') return `radial-gradient(ellipse farthest-corner at ${f(fill.cx * 100)}% ${f(fill.cy * 100)}%, ${stops})`;
   const angle = ((fill.angle || 0) % 360 + 360) % 360;
   const dir = ({ 0: 'to right', 90: 'to bottom', 180: 'to left', 270: 'to top' } as Record<number, string>)[angle] || `${angle + 90}deg`;
-  const stops = (fill.stops || []).map(s => `${resolveColor(s.color, deck)} ${f((s.pos || 0) * 100)}%`).join(', ');
   return `linear-gradient(${dir}, ${stops})`;
 }
 
@@ -356,8 +362,10 @@ function mediaSrc(src: string | undefined, mediaBase: string): string {
 }
 function renderImage(el: SlideElement, deck: Deck, mediaBase: string): string {
   const shadow = parseShadow(el.shadow);
+  const mask = ({ellipse:'ellipse(50% 50%)',diamond:'polygon(50% 0,100% 50%,50% 100%,0 50%)',triangle:'polygon(50% 0,100% 100%,0 100%)',hexagon:'polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)'} as Record<string,string>)[el.maskShape || 'rect'];
   const wrapCss = [
     'width:100%', 'height:100%', 'overflow:hidden', 'position:relative', 'box-sizing:border-box',
+    mask ? `clip-path:${mask}` : '',
     el.radius ? `border-radius:${f(el.radius)}px` : '',
     el.stroke ? `border:${f(el.strokeWidth || 1)}px solid ${resolveColor(el.stroke, deck)}` : '',
     shadow ? `box-shadow:${f(shadow.dx)}px ${f(shadow.dy)}px ${f(shadow.blur)}px ${resolveColor(shadow.color, deck)}` : '',

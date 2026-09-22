@@ -83,6 +83,28 @@ async function main() {
       else process.stdout.write(formatted);
       break;
     }
+    case 'inspect': {
+      const file = args[1]; if (!file) die('用法: slidex inspect <deck.slx>');
+      const {loadProject} = await import('./project.js');
+      const project = loadProject(file);
+      console.log(JSON.stringify({path:project.path, version:project.version, multiFile:project.multiFile, pages:project.deck.slides.map(s=>({id:s.id,objects:s.elements.map(e=>e.id)})), errors:project.errors},null,2));
+      if (project.errors.length) process.exitCode = 1;
+      break;
+    }
+    case 'patch': {
+      const file = args[1], input = args[2];
+      if (!file || !input || input.startsWith('-')) die('用法: slidex patch <deck.slx> <patch.json> [--dry-run]');
+      const {loadProject,saveProject} = await import('./project.js');
+      const {applyProjectPatch} = await import('./patch.js');
+      const project = loadProject(file), payload = JSON.parse(fs.readFileSync(path.resolve(input),'utf8'));
+      const result = applyProjectPatch(project,payload);
+      if (hasFlag('--dry-run')) console.log(JSON.stringify({ok:true,dryRun:true,version:project.version,...result},null,2));
+      else {
+        const saved = saveProject(project,result.xml);
+        console.log(JSON.stringify({ok:true,dryRun:false,version:saved.version,changes:result.changes,warnings:result.warnings},null,2));
+      }
+      break;
+    }
     case 'validate': {
       const file = args[1];
       if (!file) die('用法: slidex validate <deck.slx>');
@@ -153,6 +175,8 @@ async function main() {
   slidex format <deck.slx>            格式化到标准输出，保留富文本和代码
                  [--write | --check] 写回文件或检查格式
   slidex language <deck.slx> --offset N  JSON 补全、诊断和引用定义（UTF-16 偏移）
+  slidex inspect <deck.slx>           输出版本、页面与对象 ID（JSON）
+  slidex patch <deck.slx> <patch.json> [--dry-run]  校验并原子应用 AI 增量补丁
   slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
                                         导出（输出到 deck 同目录 out/）
                  [--pages 1,3-5] [--manifest] PNG 页码范围及 LLM 图片清单

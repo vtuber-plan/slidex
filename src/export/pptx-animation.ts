@@ -4,6 +4,8 @@ export function nativeAnimation(a: Animation, ids: Set<string>): boolean {
   return (
     ids.has(a.target) &&
     a.trigger === "onClick" &&
+    (a.easing || 'ease-out') === 'ease-out' &&
+    (a.repeat || 1) === 1 &&
     ["appear", "disappear", "fade-in", "fade-out"].includes(a.effect)
   );
 }

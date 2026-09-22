@@ -42,6 +42,8 @@ const reasons: Record<string, string> = {
   "custom-shape": "自定义形状暂不支持原生导出。",
   "complex-line": "曲线或带变换的线条按图片保留。",
   "image-rendering": "图片适配方式或格式需要浏览器渲染以保留视觉。",
+  "image-mask": "图片蒙版按浏览器外观转为图片保留。",
+  "radial-gradient": "径向渐变按浏览器外观转为图片保留。",
   "unsupported-object": "此对象类型暂不支持原生导出。",
   "mirrored-text":
     "PowerPoint 不镜像原生文字；此文本或表格按图片保留镜像外观。",

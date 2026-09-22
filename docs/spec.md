@@ -207,6 +207,8 @@ $name          主题引用（解析发生在校验阶段，渲染器拿到的�
 | `direction` | `up` | fly/wipe/float 的方向：`up \| down \| left \| right` |
 | `duration` | 各效果默认（入/出场 500ms，pulse 600ms） | 毫秒 |
 | `delay` | `0` | 毫秒 |
+| `easing` | `ease-out` | `linear \| ease \| ease-in \| ease-out \| ease-in-out` |
+| `repeat` | `1` | 重复次数，1～20 的整数；跳页或重播会取消当前播放 |
 
 放映语义：首个 `withPrevious/afterPrevious` 组在进页时自动播放；`onClick` 开新点击组，点击/空格依次播放组，组播完后下一次点击才翻页。PNG/PDF 使用文档静态布局（入场可见，不执行强调、路径和退出）。可编辑 PPTX 支持顶层原生对象的单击出现/消失/淡入/淡出及页面切换，其他效果报告为不支持。
 
@@ -346,10 +348,11 @@ bounds 变化（编辑器缩放）时按比例缩放 points。两点特例：`po
 | `src` | **必填** | 相对路径或 URL（jpg/png/gif/webp/svg） |
 | `fit` | `cover` | `cover`（填满裁剪）\| `contain`（完整留白）\| `fill`（拉伸） |
 | `crop` | — | `l,t,r,b` 四边裁剪比例（0–0.99），如 `crop="0.05,0.1,0.05,0.1"` |
+| `mask-shape` | `rect` | 图片蒙版：`rect \| ellipse \| diamond \| triangle \| hexagon`；与裁剪、旋转、翻转及组内变换一起使用 |
 | `radius` | `0` | 圆角 px（等价 roundRect 裁剪） |
 | `opacity` 同通用；`stroke` `stroke-width` `shadow` 同 shape |
 
-渲染顺序：`crop`（源矩形）→ `fit`（适配 bounds）→ `radius`/裁剪。加载失败渲染占位框并警告 `W_MEDIA_MISSING`。
+渲染顺序：`crop`（源矩形）→ `fit`（适配 bounds）→ `radius`/`mask-shape` 裁剪。非矩形蒙版的可编辑 PPTX 对象按图片保留外观，报告 `image-mask`；加载失败渲染占位框并警告 `W_MEDIA_MISSING`。
 
 ## 12. 元素：`<icon>` 图标
 
@@ -471,9 +474,14 @@ def eval_(t, env):
   <stop pos="1" color="$accent"/>
 </fill>
 <fill type="image" src="media/bg.jpg" fit="cover" opacity="0.9"/>
+<fill type="radial-gradient" cx="0.5" cy="0.5">
+  <stop pos="0" color="#FFFFFF"/>
+  <stop pos="1" color="$primary"/>
+</fill>
 ```
 
 `angle`：0 = 左→右，90 = 上→下，顺时针。
+径向渐变的 `cx`/`cy` 是 0～1 的中心位置，色标从中心向最远角扩展。可用于页面背景、文本与形状填充；可编辑 PPTX 以对象图片回退并报告 `radial-gradient`。
 
 ## 16.1 元素：`<group>` 组合
 

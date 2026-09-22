@@ -90,7 +90,7 @@ export function createPlayer(
     if(a.effect==='color'){
       const descendants=Array.from(el.querySelectorAll<HTMLElement>('svg path,svg rect,svg circle,svg polygon,svg text,.slx-text,[style*="color"]'));
       const animations=[el,...descendants].map(target=>{const style=getComputedStyle(target),key=target instanceof SVGElement?'fill':'color',before=style[key];
-        const anim=target.animate([{[key]:before},{[key]:a.color||'#FFCC00',offset:.5},{[key]:before}],{duration:Math.max(1,a.duration),delay:a.delay,fill:'both'});playing.push(anim);return anim.finished.catch(()=>{});});
+        const anim=target.animate([{[key]:before},{[key]:a.color||'#FFCC00',offset:.5},{[key]:before}],{duration:Math.max(1,a.duration),delay:a.delay,fill:'both',easing:a.easing||'ease-out',iterations:a.repeat||1});playing.push(anim);return anim.finished.catch(()=>{});});
       return Promise.all(animations).then(()=>{});
     }
     if (!effects[a.effect]) return Promise.resolve();
@@ -99,7 +99,8 @@ export function createPlayer(
       duration: Math.max(1, a.duration ?? 500),
       delay: a.delay ?? 0,
       fill: "both",
-      easing: "ease-out",
+      easing: a.easing || "ease-out",
+      iterations: a.repeat || 1,
     });
     playing.push(animation);
     return animation.finished.then(

@@ -48,7 +48,7 @@ export const ELEMENT_SCHEMA: ElementSchema = {
   },
   image: {
     label: '图片', attrs: [
-      ...GEOM, ['src', 'str'], ['fit', 'str', 'cover'], ['crop', 'str'], ['radius', 'num', 0],
+      ...GEOM, ['src', 'str'], ['fit', 'str', 'cover'], ['crop', 'str'], ['mask-shape', 'str', 'rect'], ['radius', 'num', 0],
       ['stroke', 'color'], ['stroke-width', 'num', 1], ['shadow', 'str'],
     ],
   },
@@ -84,6 +84,8 @@ export const SHAPE_NAMES = new Set([...SHAPE_PRESETS.map(p=>p.name), 'custom']);
 export const CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'scatter', 'radar', 'bubble', 'waterfall']);
 export const ANIM_EFFECTS = new Set(['appear', 'fade-in', 'fly-in', 'zoom-in', 'wipe-in', 'float-in', 'pulse', 'fade-out', 'disappear','spin','color','fly-out','zoom-out','wipe-out','motion-path']);
 export const ANIM_TRIGGERS = new Set(['onClick', 'withPrevious', 'afterPrevious']);
+export const ANIM_EASINGS = new Set(['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out']);
+export const IMAGE_MASKS = new Set(['rect', 'ellipse', 'diamond', 'triangle', 'hexagon']);
 export const TRANSITIONS = new Set(['none', 'fade', 'slide-left', 'slide-up', 'zoom']);
 const STRUCT_TAGS = new Set(['fonts', 'font', 'theme', 'palette', 'color', 'text-styles', 'style', 'table-styles', 'table-style', 'header', 'body', 'last-row', 'first-col', 'last-col', 'cell', 'background', 'fill', 'stop', 'cols', 'rows', 'tr', 'td', 'data', 'row', 'series', 'x-axis', 'y-axis', 'slide', 'master', 'animation']);
 
@@ -266,6 +268,8 @@ function buildSlideContainer(node: XMLNode, deck: Deck, errors: Diag[], warnings
         direction: c.attrs.direction || 'up',
         duration: c.attrs.duration===undefined?500:Number(c.attrs.duration),
         delay: c.attrs.delay===undefined?0:Number(c.attrs.delay),
+        easing: c.attrs.easing || 'ease-out',
+        repeat: c.attrs.repeat===undefined?1:Number(c.attrs.repeat),
         line: c.line,
         ...(c.attrs.angle!==undefined?{angle:Number(c.attrs.angle)}:{}),
         ...(c.attrs.color!==undefined?{color:c.attrs.color}:{}),
@@ -405,6 +409,10 @@ function fillFrom(node: XMLNode): Fill {
     const stops = node.children.filter(c => c.name === 'stop').map(c => ({ pos: Number(c.attrs.pos ?? c.attrs.position ?? 0), color: c.attrs.color || '#000000' }));
     return { type: 'gradient', angle: num(node.attrs.angle, 0), stops };
   }
+  if (t === 'radial-gradient') {
+    const stops = node.children.filter(c => c.name === 'stop').map(c => ({ pos: Number(c.attrs.pos ?? c.attrs.position ?? 0), color: c.attrs.color || '#000000' }));
+    return { type: 'radial-gradient', cx: Number(node.attrs.cx ?? 0.5), cy: Number(node.attrs.cy ?? 0.5), stops };
+  }
   if (t === 'image') return { type: 'image', src: node.attrs.src || '', fit: node.attrs.fit || 'cover', opacity: num(node.attrs.opacity, 1) };
   return { type: 'solid', color: '#FFFFFF' };
 }
@@ -486,6 +494,8 @@ export function validateDeck(deck: Deck, errors: Diag[] = [], warnings: Diag[] =
       if (!ANIM_EFFECTS.has(a.effect)) errors.push({ code: 'E_XML', message: `animation effect="${a.effect}" 不受支持`, line: a.line });
       if (!ANIM_TRIGGERS.has(a.trigger)) errors.push({ code: 'E_XML', message: `animation trigger="${a.trigger}" 不受支持`, line: a.line });
       if(!Number.isFinite(a.duration)||a.duration<0||a.duration>600000||!Number.isFinite(a.delay)||a.delay<0||a.delay>600000)errors.push({code:'E_ANIM_VALUE',message:'动画时长与延迟必须在 0..600000 ms',line:a.line});
+      if (!ANIM_EASINGS.has(a.easing || 'ease-out')) errors.push({code:'E_ANIM_VALUE',message:'动画缓动类型无效',line:a.line});
+      if (!Number.isInteger(a.repeat ?? 1) || (a.repeat ?? 1) < 1 || (a.repeat ?? 1) > 20) errors.push({code:'E_ANIM_VALUE',message:'动画重复次数必须是 1..20 的整数',line:a.line});
       if(a.angle!==undefined&&(!Number.isFinite(a.angle)||Math.abs(a.angle)>36000))errors.push({code:'E_ANIM_VALUE',message:'动画角度必须为 -36000..36000 的有限数值',line:a.line});
       if(!['up','down','left','right'].includes(a.direction))errors.push({code:'E_ANIM_VALUE',message:'动画方向无效',line:a.line});
       if(a.effect==='color'&&!/^#[0-9a-f]{6}$/i.test(a.color||''))errors.push({code:'E_ANIM_VALUE',message:'颜色动画需要 #RRGGBB color',line:a.line});
@@ -541,6 +551,7 @@ function validateElement(el: SlideElement, deck: Deck, errors: Diag[], warnings:
     if (!el.src) errors.push({ code: 'E_MEDIA_SRC', message: `${at} 缺少 src`, line: el.line, col: el.col });
     else if (isEscapingPath(el.src)) warnings.push({ code: 'W_PATH_ESCAPE', message: `${at} src 越出项目目录：${el.src}`, line: el.line, col: el.col });
     if (!['cover', 'contain', 'fill'].includes(el.fit || 'cover')) errors.push({ code: 'E_ATTR_VALUE', message: `${at}.fit 不受支持`, line: el.line, col: el.col });
+    if (!IMAGE_MASKS.has(el.maskShape || 'rect')) errors.push({ code: 'E_ATTR_VALUE', message: `${at}.mask-shape 不受支持`, line: el.line, col: el.col });
     if (el.crop) {
       const p = el.crop.split(/[\s,]+/).map(Number);
       if (p.length !== 4 || p.some(v => !Number.isFinite(v) || v < 0 || v >= 1) || p[0] + p[2] >= 1 || p[1] + p[3] >= 1) {
@@ -640,7 +651,8 @@ function validateChart(el: SlideElement, deck: Deck, errors: Diag[], refCheck: R
 function validateFill(fill: Fill | null | undefined, deck: Deck, errors: Diag[], warnings: Diag[], refCheck: RefCheck, ctx: string, line?: number): void {
   if (!fill) return;
   if (fill.type === 'solid') refCheck(fill.color, ctx, { line });
-  else if (fill.type === 'gradient') {
+  else if (fill.type === 'gradient' || fill.type === 'radial-gradient') {
+    if (fill.type === 'radial-gradient' && (!Number.isFinite(fill.cx) || fill.cx < 0 || fill.cx > 1 || !Number.isFinite(fill.cy) || fill.cy < 0 || fill.cy > 1)) errors.push({code:'E_FILL',message:`${ctx} 径向渐变中心必须在 0..1`,line});
     if (fill.stops.length < 2) errors.push({ code: 'E_FILL', message: `${ctx} 渐变至少需要两个 stop`, line });
     let prev = -Infinity;
     for (const stop of fill.stops) {
