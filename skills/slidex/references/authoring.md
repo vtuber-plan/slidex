@@ -30,6 +30,8 @@ slidex init my-deck
 slidex validate my-deck/deck.slx --json
 slidex format my-deck/deck.slx --check
 slidex language my-deck/deck.slx --offset 120
+slidex inspect my-deck/deck.slx
+slidex patch my-deck/deck.slx patch.json --dry-run
 slidex export my-deck/deck.slx -f png --pages 1 --scale 1 --manifest --json
 slidex export my-deck/deck.slx -f pdf --json
 slidex export my-deck/deck.slx -f pptx --editable --json

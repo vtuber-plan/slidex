@@ -59,13 +59,13 @@ npm run test:react   # 新编辑器真实浏览器回归
 npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
-## 桌面应用与分发（v1.7.0-rc.7）
+## 桌面应用与分发（v1.7.0-rc.8）
 
-本轮候选版本汇总导出可靠性、页面/图层布局、内容扩展、多文件与 Viewer 优化，以及文件菜单和语言更新。Windows 解压版入口为 `release/1.7.0-rc.7/win-unpacked/SlideX.exe`，不要与旧解压目录混用。CLI 与 Skill 也作为独立附件分发。
+本轮候选版本汇总导出可靠性、页面/图层布局、内容扩展、多文件与 Viewer 优化，以及文件菜单和语言更新。正式发布的桌面安装包、CLI 与 Skill 附件见 GitHub Releases；旧的 rc.7 本地解压版仍位于 `release/1.7.0-rc.7/win-unpacked/SlideX.exe`，不要与新版混用。
 
-本地验收结果与 GitHub Actions 的验证范围见 [rc.7 发布说明](docs/release-1.7.0-rc.7.md)。
+历史本地验收结果见 [rc.7 发布说明](docs/release-1.7.0-rc.7.md)；rc.8 的三平台验证以 GitHub Actions 运行记录为准。
 
-每次导出附带 `.report.json`，CLI 可用 `--json` 获取结构化结果。能力矩阵、使用方式和验收边界见 [导出可靠性](docs/export-reliability.md)。较早文档中的“尚未打包进 rc.6”描述的是历史状态，以上改进已纳入 rc.7 构建。
+每次导出附带 `.report.json`，CLI 可用 `--json` 获取结构化结果。能力矩阵、使用方式和验收边界见 [导出可靠性](docs/export-reliability.md)。较早文档中的“尚未打包进 rc.6”描述的是历史状态，以上改进已纳入当前候选版。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
 - **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/<版本>/`）：
@@ -105,16 +105,18 @@ node test/gui.present.mjs   # 放映动画时间线
 
 ### AI 工具与 Skill
 
-`npm run build && npm run dist:tools` 生成 `release/<版本>/slidex-<版本>.tgz` 和 `slidex-skill-<版本>.zip`。CLI 包包含编译好的浏览器编辑器，无需安装 Electron 或重新构建：
+`npm run build && npm run dist:tools` 生成 `release/<版本>/slidex-<版本>.tgz` 和 `slidex-skill-<版本>.zip`。CLI 包包含编译好的浏览器编辑器，无需安装 Electron 或重新构建。npm 首次发布成功后，从 `next` 安装：
 
 ```sh
-npm install -g ./release/1.7.0-rc.7/slidex-1.7.0-rc.7.tgz
+npm install -g @xiahan/slidex@next
 slidex help
 slidex validate mydeck/deck.slx --json
 slidex inspect mydeck/deck.slx
 slidex patch mydeck/deck.slx patch.json --dry-run
 slidex export mydeck/deck.slx -f png --pages 1,3-5 --manifest --json
 ```
+
+发布前也可以安装本地构建包：`npm install -g ./release/1.7.0-rc.8/slidex-1.7.0-rc.8.tgz`。无作用域的 npm `slidex` 属于其他项目，不要用 `npm install -g slidex`。
 
 需要 Node.js（CI 验证 Node 22）；PNG/PDF/PPTX 导出还需要本机 Chrome/Edge/Chromium，可用 `CHROME_PATH` 指定。CLI 包安装生产依赖时需要 npm 网络访问；Skill 本身不包含运行时。
 
