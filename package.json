@@ -2,6 +2,10 @@
   "name": "slidex",
   "version": "1.7.0-rc.7",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vtuber-plan/slidex.git"
+  },
   "type": "module",
   "bin": {
     "slidex": "dist/cli.js"

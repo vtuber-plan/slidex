@@ -17,8 +17,16 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`new Promise((resolve, reject) => { let count=0; const timer=setInterval(() => { if(document.querySelector('#canvasHost .slx-slide') && window.__slxSave){ clearInterval(timer); resolve(true); } else if(++count>100){clearInterval(timer);reject(Error('editor not ready'));}},100); })`);
     const result = await win.webContents.executeJavaScript(`(async () => ({ react: !!document.querySelector('.studio-shell .filmstrip'), pages: document.querySelectorAll('.filmstrip-item').length, xml: window.__slxGetXml().includes('<deck'), saved: await window.__slxSave() }))()`);
     if (!result.react || !result.pages || !result.xml || !result.saved) throw Error(JSON.stringify(result));
-    const screenshot = await win.webContents.capturePage(); fs.writeFileSync(path.join(dir, 'electron.png'), screenshot.toPNG());
-    console.log('PASS React Electron smoke:', JSON.stringify(result), 'Screenshot:', path.join(dir, 'electron.png'));
+    let screenshotPath = '';
+    try {
+      const screenshot = await win.webContents.capturePage();
+      screenshotPath = path.join(dir, 'electron.png');
+      fs.writeFileSync(screenshotPath, screenshot.toPNG());
+    } catch (error) {
+      if (!/UnknownVizError/.test(String(error))) throw error;
+      console.warn('Electron screenshot unavailable in this graphics session; DOM/edit/save smoke passed.');
+    }
+    console.log('PASS React Electron smoke:', JSON.stringify(result), screenshotPath ? 'Screenshot: '+screenshotPath : 'Screenshot: not captured');
     win.destroy(); server.close(); app.exit(0);
   } catch (e) { console.error(e); server?.close(); app.exit(1); }
 });

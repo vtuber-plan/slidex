@@ -124,6 +124,8 @@ slidex export mydeck/deck.slx -f png --pages 1,3-5 --manifest --json
 
 `npm run test:tools -- --render` 在隔离目录安装生成的 CLI 包，验证命令、浏览器编辑器入口、PNG 清单及 Skill ZIP。Skill 的编写遵循简短入口、按需读取参考和保留用户任务范围的原则。
 
+GitHub Actions 的三平台 Electron 打包与 npm 发布条件见 [CI 与发布](docs/releasing.md)。npm 上无作用域的 `slidex` 属于其他项目，正式发布须先配置自有 npm 作用域。
+
 - [docs/spec.md](docs/spec.md) — **SlideX 语言规范**（元素、属性、样式继承链、校验规则）
 - [docs/architecture.md](docs/architecture.md) — 编辑器与导出管线架构
 - [docs/roadmap.md](docs/roadmap.md) — 已完成功能与后续路线（更多图表、原生 PPTX 动画等）

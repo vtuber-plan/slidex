@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -62,6 +65,10 @@ jobs:
       - run: npm ci
       - name: Build (src / app / electron)
         run: npm run build
+      - name: Verify installed CLI and skill on this platform
+        run: |
+          npm run dist:tools
+          npm run test:tools
       - name: Package
         run: npx electron-builder ${{ matrix.args }} --publish never
         env:
@@ -90,21 +97,48 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+      - name: Create release checksums
+        run: node scripts/release-manifest.mjs artifacts
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            artifacts/**/*.exe
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.AppImage
-            artifacts/**/*.deb
-            artifacts/**/*.tgz
-            artifacts/**/tools-SHA256SUMS.txt
+          files: artifacts/**/*
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+
+  publish-npm:
+    if: github.ref_type == 'tag'
+    needs: [test, build, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME }}
+      NPM_DIST_TAG: ${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Verify npm destination
+        run: |
+          node -e "if (!/^@[a-z0-9][a-z0-9._-]*\/slidex$/.test(process.env.NPM_PACKAGE_NAME || '')) throw Error('Set repository variable NPM_PACKAGE_NAME to an owned npm scope, for example @your-scope/slidex')"
+          npm run check:release
+      - run: npm ci
+      - run: npm run build
+      - name: Prepare scoped npm package
+        run: |
+          npm pkg set "name=$NPM_PACKAGE_NAME"
+          npm pack --dry-run --ignore-scripts
+      - name: Publish CLI and editor to npm
+        run: npm publish --ignore-scripts --access public --provenance --tag "$NPM_DIST_TAG"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
