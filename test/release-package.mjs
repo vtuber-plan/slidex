@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import puppeteer from 'puppeteer-core';
 import {unzipIndependent} from './pptx-integrity.mjs';
-const executable=path.resolve(process.argv[2] || 'release/1.7.0-rc.6/win-unpacked/SlideX.exe');
+const version=JSON.parse(fs.readFileSync('package.json','utf8')).version;
+const executable=path.resolve(process.argv[2] || `release/${version}/win-unpacked/SlideX.exe`);
 const uiOnly=process.argv.includes('--ui-only');
 assert.ok(fs.existsSync(executable),'Packaged executable must exist');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-package-')),file=path.join(dir,'deck.slx');
@@ -53,10 +54,11 @@ try {
     const result=await page.evaluate(async format=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format,scale:1})})).json(),format);
     assert.ok(result.ok,`${format}: ${result.error}`);assert.ok(result.files.every(file=>fs.statSync(file).size>100));console.log('  ✓ packaged '+format+' export');
     if(format==='pptx'){
-      const parts=await unzipIndependent(fs.readFileSync(result.files.at(-1)));assert.ok(parts.has('ppt/presentation.xml'));assert.ok(parts.has('ppt/slides/slide1.xml'));
-      fs.copyFileSync(result.files.at(-1),path.join(dir,'image.pptx'));
+      const pptx=result.files.find(file=>file.endsWith('.pptx'));
+      const parts=await unzipIndependent(fs.readFileSync(pptx));assert.ok(parts.has('ppt/presentation.xml'));assert.ok(parts.has('ppt/slides/slide1.xml'));
+      fs.copyFileSync(pptx,path.join(dir,'image.pptx'));
       const editable=await page.evaluate(async()=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:'pptx',editable:true})})).json());
-      assert.ok(editable.ok,editable.error);const native=await unzipIndependent(fs.readFileSync(editable.files.at(-1)));assert.ok(native.get('ppt/slides/slide1.xml').toString().includes('<p:sp>'));
+      assert.ok(editable.ok,editable.error);const native=await unzipIndependent(fs.readFileSync(editable.files.find(file=>file.endsWith('.pptx'))));assert.ok(native.get('ppt/slides/slide1.xml').toString().includes('<p:sp>'));
       fs.copyFileSync(editable.files.find(file=>file.endsWith('.pptx')),path.join(dir,'editable.pptx'));console.log('  ✓ packaged editable pptx export');
     }
   }

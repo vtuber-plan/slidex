@@ -1,4 +1,4 @@
-import { t, useLocale, setLocale } from "./i18n";
+import { t, useLocale, setLocale,LOCALES,type Locale } from "./i18n";
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
@@ -109,8 +109,28 @@ export default function App() {
       return true;
     } catch (error) { useEditor.setState({error:String(error)}); return false; }
   }
+  async function pickOpenDocument(){
+    try{const data=await(await fetch('/api/pick-file',{method:'POST'})).json();if(!data.native)setOpenFile(true);else if(data.path)await openDocument(data.path);}catch(error){useEditor.setState({error:String(error)});}
+  }
   useEffect(() => { window.__slxOpenDocument = openDocument; return () => { delete window.__slxOpenDocument; }; }, []);
   const language = useLocale();
+  const [fileCommand,setFileCommand]=useState<'new'|'saveAs'|null>(null),[destination,setDestination]=useState(''),[fileBusy,setFileBusy]=useState(false);
+  async function createFile(mode:'new'|'saveAs',path:string){
+    setFileBusy(true);
+    try{
+      window.__slxCommitText?.();const state=useEditor.getState();
+      if(mode==='new'&&serializeDeck(state.deck)!==state.saved&&!(await state.save()))return;
+      const response=await fetch('/api/create-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,path,expectedPath:state.file,xml:mode==='saveAs'?serializeDeck(useEditor.getState().deck):undefined})});
+      const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'保存失败');
+      await useEditor.getState().load();setFileCommand(null);
+    }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);}
+  }
+  async function chooseFileCommand(mode:'new'|'saveAs'){
+    window.__slxCommitText?.();
+    try{const result=await(await fetch('/api/pick-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})})).json();
+      if(result.native){if(result.path)await createFile(mode,result.path);}else{setDestination('');setFileCommand(mode);}
+    }catch(error){useEditor.setState({error:String(error)});}
+  }
   const [preferences,setPreferences]=useState(false);
   const [exportOptions,setExportOptions]=useState(false);
   const [exportFormat,setExportFormat]=useState('png');
@@ -159,7 +179,7 @@ export default function App() {
   },[serialized,s.saved,s.file,s.ready,!!s.gesture]);
   const openSource=()=>{window.__slxCommitText?.();setXml(serializeDeck(useEditor.getState().deck));setSourceMessage('');setSource(true);};
   useEffect(()=>{
-    const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
+    const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='new'||action==='saveAs')void chooseFileCommand(action);if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
     window.addEventListener('slidex-menu',handler);return()=>window.removeEventListener('slidex-menu',handler);
   },[]);
   useEffect(() => {
@@ -242,7 +262,7 @@ export default function App() {
         preview ||
         source ||
         library ||
-        useEditor.getState().editing ||
+        e.defaultPrevented ||
         document.querySelector('[role="dialog"]')
       )
         return;
@@ -250,9 +270,13 @@ export default function App() {
         mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void state.save();
+        window.__slxCommitText?.();
+        if(e.shiftKey)void chooseFileCommand('saveAs');else void state.save();
         return;
       }
+      if(mod&&e.key.toLowerCase()==='n'){e.preventDefault();void chooseFileCommand('new');return;}
+      if(mod&&e.key.toLowerCase()==='o'){e.preventDefault();void pickOpenDocument();return;}
+      if(state.editing)return;
       if (e.key === "Escape" && state.groupPath.length && !state.gesture) {
         e.preventDefault();
         (e.target as HTMLElement).blur();
@@ -469,16 +493,9 @@ export default function App() {
                   </Button>
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content>
+                  <DropdownMenu.Item shortcut="Ctrl+N" disabled={fileBusy} onSelect={()=>void chooseFileCommand('new')}>{t('新建…')}</DropdownMenu.Item>
                   <DropdownMenu.Item
-                    onSelect={async () => {
-                      try {
-                        const data = await (await fetch("/api/pick-file", {method:"POST"})).json();
-                        if (!data.native) setOpenFile(true);
-                        else if (data.path) await openDocument(data.path);
-                      } catch (e) {
-                        useEditor.setState({ error: String(e) });
-                      }
-                    }}
+                    shortcut="Ctrl+O" onSelect={()=>void pickOpenDocument()}
                   >
                     <FolderOpen size={14} />
                     {t("打开本地文件")}
@@ -498,7 +515,9 @@ export default function App() {
                   >
                     {t("下载 XML 文档")}
                   </DropdownMenu.Item>
-                  <DropdownMenu.Item onSelect={()=>void s.save()}>{t("保存")}</DropdownMenu.Item>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item shortcut="Ctrl+S" onSelect={()=>{window.__slxCommitText?.();void s.save();}}>{t("保存")}</DropdownMenu.Item>
+                  <DropdownMenu.Item shortcut="Ctrl+Shift+S" disabled={fileBusy} onSelect={()=>void chooseFileCommand('saveAs')}>{t('另存为…')}</DropdownMenu.Item>
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item disabled={exporting} onSelect={()=>{window.__slxCommitText?.();setExportOptions(true);}}>{t("导出…")}</DropdownMenu.Item>
                   <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setPreferences(true);}}>{t("偏好设置…")}</DropdownMenu.Item>
@@ -748,6 +767,17 @@ export default function App() {
                 </Button>
               </div>
             )}
+            <Dialog.Root open={fileCommand!==null} onOpenChange={open=>{if(!open&&!fileBusy)setFileCommand(null);}}>
+              <Dialog.Content maxWidth="540px">
+                <Dialog.Title>{t(fileCommand==='new'?'新建…':'另存为…')}</Dialog.Title>
+                <Dialog.Description>{t('请选择新的 .slx 文件路径；已有文件不会被覆盖。')}</Dialog.Description>
+                <form onSubmit={e=>{e.preventDefault();if(fileCommand)void createFile(fileCommand,destination);}}>
+                  <TextField.Root aria-label={t('文件路径')} value={destination} onChange={e=>setDestination(e.target.value)} disabled={fileBusy}/>
+                  {s.error&&<p role="alert">{s.error}</p>}
+                  <div className="dialog-actions"><Button type="button" variant="soft" disabled={fileBusy} onClick={()=>setFileCommand(null)}>{t('取消')}</Button><Button type="submit" disabled={fileBusy||!destination.trim()}>{t(fileCommand==='new'?'新建':'保存')}</Button></div>
+                </form>
+              </Dialog.Content>
+            </Dialog.Root>
             <Dialog.Root open={openFile} onOpenChange={setOpenFile}>
               <Dialog.Content maxWidth="540px">
                 <Dialog.Title>{t("打开本地文件")}</Dialog.Title>
@@ -763,7 +793,8 @@ export default function App() {
                 <Dialog.Title>{t("偏好设置")}</Dialog.Title>
                 <Dialog.Description mb="4">{t("设置自动保存，仅影响当前设备的编辑器。")}</Dialog.Description>
                 <div className="settings-fields">
-                  <label>{t("语言")}<select aria-label="Language / 语言" value={language} onChange={e=>setLocale(e.target.value as 'zh'|'en')}><option value="zh">简体中文</option><option value="en">English</option></select></label>
+                  <label>{t("语言")}<select aria-label="Language / 语言" value={language} onChange={e=>setLocale(e.target.value as Locale)}>{LOCALES.map(locale=><option key={locale.id} value={locale.id}>{locale.label}</option>)}</select></label>
+                  {['ja','es'].includes(language)&&<p>{t('新增语言为预览版；未翻译的文案回退为英文。')}</p>}
                   <label>{t("外观")}<select aria-label={t("外观")} value={dark?'dark':'light'} onChange={e=>setDark(e.target.value==='dark')}><option value="light">{t("浅色界面")}</option><option value="dark">{t("深色界面")}</option></select></label>
                   <label><span>{t("自动保存")}</span><input type="checkbox" aria-label={t("自动保存")} checked={autosave} onChange={e=>setAutosave(e.target.checked)}/></label>
                 </div>

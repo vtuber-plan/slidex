@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ServerHandle } from '../dist/server.js';
 import { templateDeck } from '../dist/template.js';
+import {isLocale,extraTranslation,type Locale} from '../dist/locales.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const profilePath = app.commandLine.getSwitchValue('user-data-dir');
@@ -18,10 +19,10 @@ let presentWin: BrowserWindow | null = null;
 let server: ServerHandle | null = null;
 let baseUrl = '';
 let deckFile: string | null = null;
-let uiLang: 'zh-CN' | 'en' = 'zh-CN';
+let uiLang: Locale = 'zh';
 
 /** 双语文案：跟随编辑器语言 */
-const M = (zh: string, en: string): string => (uiLang === 'zh-CN' ? zh : en);
+const M = (zh: string, en: string): string => uiLang==='zh'?zh:extraTranslation(zh,uiLang)||en;
 
 const userDataDir = (): string => app.getPath('userData');
 
@@ -52,37 +53,11 @@ async function openDeckDialog(): Promise<void> {
 }
 
 async function newDeckDialog(): Promise<void> {
-  if (!win) return;
-  const r = await dialog.showSaveDialog(win, {
-    title: M('新建 SlideX 演示', 'New SlideX deck'),
-    defaultPath: path.join(path.dirname(deckFile || userDataDir()), 'untitled.slx'),
-    filters: [{ name: 'SlideX', extensions: ['slx'] }],
-  });
-  if (r.canceled || !r.filePath) return;
-  let file = r.filePath;
-  if (!file.toLowerCase().endsWith('.slx')) file += '.slx';
-  if (!fs.existsSync(file)) fs.writeFileSync(file, templateDeck(path.basename(file, '.slx')), 'utf8');
-  await fetch(`${baseUrl}/api/open`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: file }),
-  });
-  deckFile = file;
-  win.loadURL(baseUrl + '/');
+  await win?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('slidex-menu',{detail:'new'}))");
 }
 
 async function saveAs(): Promise<void> {
-  if (!win) return;
-  const r = await dialog.showSaveDialog(win, {
-    title: M('另存为', 'Save as'),
-    defaultPath: deckFile || path.join(userDataDir(), 'untitled.slx'),
-    filters: [{ name: 'SlideX', extensions: ['slx'] }],
-  });
-  if (r.canceled || !r.filePath) return;
-  const xml = await win.webContents.executeJavaScript('__slxGetXml()') as unknown as string;
-  fs.writeFileSync(r.filePath, xml, 'utf8');
-  deckFile = r.filePath;
-  await fetch(`${baseUrl}/api/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: deckFile }) });
-  win.loadURL(baseUrl + '/');
+  await win?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('slidex-menu',{detail:'saveAs'}))");
 }
 
 async function openPresentWindow(): Promise<void> {
@@ -175,7 +150,7 @@ async function syncLang(): Promise<void> {
     const v = await win.webContents.executeJavaScript(
       `localStorage.getItem('slidex-language') || 'zh'`
     ) as string;
-    const next: 'zh-CN' | 'en' = v === 'en' ? 'en' : 'zh-CN';
+    const next: Locale = isLocale(v)?v:'zh';
     if (next !== uiLang) { uiLang = next; buildMenu(); }
   } catch { /* 页面未就绪时忽略 */ }
 }
@@ -247,6 +222,10 @@ app.whenReady().then(async () => {
     deckFile = file;
     win?.setTitle(`SlideX — ${file}`);
     app.addRecentDocument(file);
+  }, pickDocument:async(mode,sourceFile)=>{
+    if(!win)return undefined;
+    const result=await dialog.showSaveDialog(win,{title:mode==='new'?M('新建 SlideX 演示','New SlideX deck'):M('另存为','Save as'),defaultPath:path.join(path.dirname(sourceFile),mode==='new'?'untitled.slx':path.basename(sourceFile,'.slx')+'-copy.slx'),filters:[{name:'SlideX',extensions:['slx']}]});
+    return result.canceled?undefined:result.filePath;
   }, pickExport: async (format,sourceFile) => {
     if(!win)return undefined;
     if(format==='png'){

@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {startServer} from '../dist/server.js';
+import {createDocument} from '../dist/file-commands.js';
+import {loadProject} from '../dist/project.js';
+import {withBrowser} from '../dist/export/capture.js';
+import {isLocale,extraTranslation} from '../dist/locales.js';
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-file-menu-')),file=path.join(dir,'source.slx'),dest=path.join(dir,'copies');fs.mkdirSync(dest);
+fs.writeFileSync(path.join(dir,'picture.svg'),'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="red"/></svg>');
+const xml='<deck version="1" width="960" height="540"><slide id="one"><text id="text" x="20" y="20" w="500" h="100">Original</text><image id="image" src="picture.svg" x="20" y="160" w="80" h="80"/></slide></deck>';fs.writeFileSync(file,xml);
+const copied=createDocument(path.join(dest,'embedded'),file,xml);assert.match(fs.readFileSync(copied,'utf8'),/data:image\/svg\+xml;base64/);assert.equal(loadProject(copied).errors.length,0);
+assert.throws(()=>createDocument(file,file,xml),/已存在/);assert.equal(fs.readFileSync(file,'utf8'),xml);
+assert.throws(()=>createDocument(path.join(dest,'missing'),file,xml.replace('picture.svg','missing.png')));assert.equal(fs.existsSync(path.join(dest,'missing.slx')),false);
+assert.equal(isLocale('ja'),true);assert.equal(isLocale('es'),true);assert.equal(isLocale('invalid'),false);assert.equal(extraTranslation('保存','ja'),'保存');
+const preferencesFile=path.join(dir,'profile/settings.json');let server=await startServer(file,{port:0,preferencesFile});let base=`http://127.0.0.1:${server.port}`;
+try{await withBrowser(async browser=>{
+  const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('dialog',d=>d.accept());await page.setViewport({width:1440,height:1000});
+  await page.goto(base);await page.waitForSelector('#canvasHost [data-id="text"]');
+  const menu=async()=>page.locator('button::-p-text(文件)').click();
+  await menu();for(const label of ['新建…','打开本地文件','保存','另存为…','导出…','偏好设置…'])assert.ok(await page.$(`[role="menuitem"]::-p-text(${label})`));
+  await page.locator('[role="menuitem"]::-p-text(偏好设置…)').click();await page.select('[aria-label="Language / 语言"]','ja');await page.waitForFunction(()=>document.documentElement.lang==='ja');assert.match(await page.$eval('[role="dialog"]',e=>e.textContent),/環境設定/);await page.waitForFunction(async()=>(await(await fetch('/api/preferences')).json()).values.language==='ja');await page.reload();await page.waitForSelector('#canvasHost');assert.equal(await page.evaluate(()=>document.documentElement.lang),'ja');
+  await page.locator('button::-p-text(ファイル)').click();await page.locator('[role="menuitem"]::-p-text(環境設定…)').click();await page.select('[aria-label="Language / 语言"]','es');assert.match(await page.$eval('[role="dialog"]',e=>e.textContent),/Preferencias/);await page.select('[aria-label="Language / 语言"]','zh');
+  await page.locator('[role="dialog"] button::-p-text(完成)').click();await page.waitForSelector('[role="dialog"]',{hidden:true});
+  await menu();await page.locator('[role="menuitem"]::-p-text(另存为…)').click();await page.waitForSelector('[aria-label="文件路径"]');await page.type('[aria-label="文件路径"]',path.join(dest,'ui-copy.slx'));await page.locator('[role="dialog"] button::-p-text(保存)').click();await page.waitForSelector('[role="dialog"]',{hidden:true});
+  await page.waitForFunction(async()=>{const d=await(await fetch('/api/deck')).json();return d.path.endsWith('ui-copy.slx');});assert.match(fs.readFileSync(path.join(dest,'ui-copy.slx'),'utf8'),/data:image/);assert.equal(fs.readFileSync(file,'utf8'),xml);
+  await page.evaluate(()=>localStorage.setItem('slidex-autosave','false'));
+  // Use preferences so the desktop bootstrap does not restore the previous setting.
+  await menu();await page.locator('[role="menuitem"]::-p-text(偏好设置…)').click();await page.$eval('[aria-label="自动保存"]',e=>{if(e.checked)e.click();});await page.locator('[role="dialog"] button::-p-text(完成)').click();
+  await page.click('#canvasHost [data-id="text"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' unsaved');
+  await page.click('.canvas-caption');await menu();await page.locator('[role="menuitem"]::-p-text(新建…)').click();await page.waitForSelector('[aria-label="文件路径"]');await page.type('[aria-label="文件路径"]',path.join(dir,'new.slx'));await page.locator('[role="dialog"] button::-p-text(新建)').click();await page.waitForSelector('[role="dialog"]',{hidden:true});
+  await page.waitForFunction(async()=>{const d=await(await fetch('/api/deck')).json();return d.path.endsWith('new.slx');});assert.match(fs.readFileSync(path.join(dest,'ui-copy.slx'),'utf8'),/unsaved/);assert.equal(loadProject(path.join(dir,'new.slx')).errors.length,0);
+  await page.keyboard.down('Control');await page.keyboard.down('Shift');await page.keyboard.press('s');await page.keyboard.up('Shift');await page.keyboard.up('Control');await page.waitForSelector('[role="dialog"]');await page.locator('[role="dialog"] button::-p-text(取消)').click();assert.equal(await page.evaluate(async()=>(await(await fetch('/api/deck')).json()).path),path.join(dir,'new.slx'));
+  assert.deepEqual(errors,[]);
+});
+const preference=await fetch(base+'/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:'es',appearance:'light',autosave:false})});assert.equal(preference.status,200);
+server.close();server=await startServer(file,{port:0,preferencesFile,pickDocument:async()=>undefined});base=`http://127.0.0.1:${server.port}`;assert.equal((await(await fetch(base+'/api/preferences')).json()).values.language,'es');
+assert.deepEqual(await(await fetch(base+'/api/pick-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'new'})})).json(),{native:true});
+}finally{server.close();}
+console.log('PASS file menu, guarded new/save as, cross-directory media, cancellation, locale switching and persistent preferences');

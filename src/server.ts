@@ -15,6 +15,8 @@ import {loadProject,saveProject,type Project} from './project.js';
 import {historyStore} from './revisions.js';
 import {languageInfo} from './language.js';
 import {serializeDeck} from './serializer.js';
+import {isLocale} from './locales.js';
+import {createDocument} from './file-commands.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'app');
@@ -47,7 +49,7 @@ export interface ServerHandle {
   close: () => void;
 }
 
-export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickExport?: (format: string, deckFile: string) => Promise<{directory?: string; outputFile?: string} | undefined>; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
+export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickDocument?: (mode:'new'|'saveAs',file:string)=>Promise<string|undefined>; pickExport?: (format: string, deckFile: string) => Promise<{directory?: string; outputFile?: string} | undefined>; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
   let deckFile = path.resolve(deckPath);
   let deckDir = path.dirname(deckFile);
   const outDir = () => path.join(deckDir, 'out');
@@ -100,6 +102,18 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   async function route(req: IncomingMessage, res: ServerResponse) {
     const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
+    if(p==='/api/pick-document'&&req.method==='POST'){
+      const body=await readBody(req);if(!['new','saveAs'].includes(String(body.mode))){send(res,400,{error:'无效的文件操作'});return;}
+      send(res,200,opts.pickDocument?{native:true,path:await opts.pickDocument(body.mode as 'new'|'saveAs',deckFile)}:{native:false});return;
+    }
+    if(p==='/api/create-document'&&req.method==='POST'){
+      const body=await readBody(req);
+      if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}
+      if(body.expectedPath!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      if(!['new','saveAs'].includes(String(body.mode))||typeof body.path!=='string'||!body.path.trim()||(body.mode==='saveAs'&&typeof body.xml!=='string')){send(res,400,{error:'无效的文件操作'});return;}
+      const file=createDocument(body.path.trim(),deckFile,body.mode==='saveAs'?body.xml:undefined);
+      deckFile=file;deckDir=path.dirname(file);cached=undefined;opts.onOpen?.(file);send(res,200,{ok:true,path:file});return;
+    }
     if(p==='/api/language'&&req.method==='POST'){const body=await readBody(req);if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}send(res,200,languageInfo(String(body.xml||''),Number(body.offset)||0));return;}
     if(p==='/api/revisions'&&req.method==='GET'){
       if(u.searchParams.get('path')&&path.resolve(u.searchParams.get('path')!)!==deckFile){send(res,409,{error:'文档已切换'});return;}
@@ -189,7 +203,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       }
       if (req.method === 'POST') {
         const {language,appearance,autosave,layout}=await readBody(req);
-        if (!['zh','en'].includes(String(language)) || !['light','dark'].includes(String(appearance)) || typeof autosave!=='boolean') {send(res,400,{error:'偏好设置无效'});return;}
+        if (!isLocale(language) || !['light','dark'].includes(String(appearance)) || typeof autosave!=='boolean') {send(res,400,{error:'偏好设置无效'});return;}
         if(layout!==undefined){const value=layout as Record<string,unknown>;if(!value||typeof value!=='object'||!['rulers','guides','grid','snap'].every(key=>typeof value[key]==='boolean')||typeof value.gridStep!=='number'||!Number.isFinite(value.gridStep)||value.gridStep<2||value.gridStep>200){send(res,400,{error:'布局偏好设置无效'});return;}}
         fs.mkdirSync(path.dirname(opts.preferencesFile),{recursive:true});
         fs.writeFileSync(opts.preferencesFile+'.tmp',JSON.stringify({language,appearance,autosave,layout},null,2));

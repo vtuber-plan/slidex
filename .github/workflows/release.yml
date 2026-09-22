@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -17,11 +17,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:release
       - name: Build + Test
         run: |
           npm run build
-          node dist/cli.js export examples/quickstart/deck.slx -f pptx
           node test/run.mjs
+      - run: npm run test:electron
+      - run: npm run dist:tools
+      - run: npm run test:tools -- --render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slidex-tools
+          path: |
+            release/**/*.tgz
+            release/**/slidex-skill-*.zip
+            release/**/tools-SHA256SUMS.txt
+          if-no-files-found: error
 
   build:
     needs: test
@@ -54,22 +65,30 @@ jobs:
       - name: Package
         run: npx electron-builder ${{ matrix.args }} --publish never
         env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           # 加速 CI 上的 Electron 二进制下载
           ELECTRON_BUILDER_CACHE: .cache/electron-builder
+      - name: Packaged Windows smoke
+        if: runner.os == 'Windows'
+        run: node test/release-package.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
-            release/*.exe
-            release/*.dmg
-            release/*.zip
-            release/*.AppImage
-            release/*.deb
-          retention-days: 5
+            release/*/*.exe
+            release/*/*.dmg
+            release/*/*.zip
+            release/*/*.AppImage
+            release/*/*.deb
+          if-no-files-found: error
+          retention-days: 14
 
   release:
-    needs: build
+    if: github.ref_type == 'tag'
+    needs: [test, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -77,5 +96,15 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**
+          tag_name: ${{ github.ref_name }}
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.tgz
+            artifacts/**/tools-SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

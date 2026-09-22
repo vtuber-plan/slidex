@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -16,9 +19,37 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:release
       - name: Build (src / app / electron)
         run: npm run build
-      - name: Pre-generate PPTX for structure tests
-        run: node dist/cli.js export examples/quickstart/deck.slx -f pptx
       - name: Test
-        run: npm test
+        run: node test/run.mjs
+      - name: Electron smoke
+        run: npm run test:electron
+      - name: Package CLI and skill
+        run: npm run dist:tools
+      - name: Installed CLI and PNG export smoke
+        run: npm run test:tools -- --render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slidex-tools-ci
+          path: |
+            release/**/*.tgz
+            release/**/slidex-skill-*.zip
+            release/**/tools-SHA256SUMS.txt
+          if-no-files-found: error
+  portable-tools:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run dist:tools
+      - run: npm run test:tools

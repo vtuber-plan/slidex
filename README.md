@@ -45,7 +45,8 @@
 - **元素齐全**：text / shape（内置形状 + 自定义 SVG path）/ image / line（箭头曲线）/ table（合并单元格 + 主题表格样式）/ chart（bar、line、area、pie、scatter）/ icon（Font Awesome）/ code（语法高亮）/ formula。
 - **桌面应用**：Electron 封装，原生菜单 + 文件对话框。
 - **共享 Viewer/Player**：编辑器放映与 HTML 导出使用同一播放内核；独立 Player、预览网格与演讲者视图复用 React 渲染组件。
-- **TypeScript 严格检查**：文档类型来自 src/types.ts；核心与 React UI 独立构建。Studio 当前以中文为主，原界面的中英文版本可通过 `/legacy` 访问。
+- **界面语言与文件菜单**：简体中文、英文，以及日语/西班牙语预览翻译；新建、打开、保存、另存为、导出和偏好设置集中在文件菜单。详见 [文件操作与语言说明](docs/file-menu-languages.md)（源码更新，尚未打包）。
+- **TypeScript 严格检查**：文档类型来自 src/types.ts；核心与 React UI 独立构建。
 
 ## 快速开始
 
@@ -58,25 +59,26 @@ npm run test:react   # 新编辑器真实浏览器回归
 npm run test:electron # 隐藏 Electron 窗口冒烟验证
 ```
 
-## 桌面应用与分发（v1.7.0-rc.6）
+## 桌面应用与分发（v1.7.0-rc.7）
 
-本轮为候选版本：修复 PPTX 文件结构与 PowerPoint 兼容性；桌面导出弹出保存位置选择。PPTX 统一入口，默认可编辑优先，也可选整页图片保留视觉。启动 `release/1.7.0-rc.6/win-unpacked/SlideX.exe`，避免与旧解压目录混用。详见 [导出修复与保真边界](docs/release-1.7.0-rc.6.md)。
+本轮候选版本汇总导出可靠性、页面/图层布局、内容扩展、多文件与 Viewer 优化，以及文件菜单和语言更新。Windows 解压版入口为 `release/1.7.0-rc.7/win-unpacked/SlideX.exe`，不要与旧解压目录混用。CLI 与 Skill 也作为独立附件分发。
 
-后续源码已加入原生表格/组合导出、导出能力报告和失败恢复；这些改进尚未打包进上述 rc.6。每次导出附带 `.report.json`，CLI 可用 `--json` 获取结构化结果。能力矩阵、使用方式和验收边界见 [导出可靠性](docs/export-reliability.md)。
+本地验收结果与 GitHub Actions 的验证范围见 [rc.7 发布说明](docs/release-1.7.0-rc.7.md)。
+
+每次导出附带 `.report.json`，CLI 可用 `--json` 获取结构化结果。能力矩阵、使用方式和验收边界见 [导出可靠性](docs/export-reliability.md)。较早文档中的“尚未打包进 rc.6”描述的是历史状态，以上改进已纳入 rc.7 构建。
 
 - **开发运行**：`npm run app`（Electron 加载 `dist-electron/main.js`，主进程同仓库 TypeScript）
-- **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/`（CI））：
+- **打包**（electron-builder，配置 `electron-builder.yml`，产物在 `release/<版本>/`）：
 
 | 平台 | 安装版 | 便携版 |
 |---|---|---|
 | Windows x64 / arm64 | NSIS 向导（中文/英双语、可选安装目录、品牌侧边图） | 单文件 exe |
-| Windows 通用（双架构合一） | NSIS | 单文件 exe |
 | macOS arm64 | dmg | zip |
 | Linux x64 | deb | AppImage |
 
 - 本地打包：`npm run dist:win`（mac/linux 需对应系统：`dist:mac` / `dist:linux`）
 - 品牌资产由 `npm run assets` 生成（`scripts/make-assets.mjs`，纯 Node 绘制 icon 与 NSIS 引导图）
-- CI：push/PR 跑全量测试（`.github/workflows/ci.yml`）；打 tag `v*` 自动构建四平台并发布 GitHub Release（`release.yml`）
+- CI：push/PR 跑 Windows 全量回归与 Electron 冒烟，并在 Windows/macOS/Linux 安装验证 CLI 包；版本 tag 必须匹配 package.json，发布包含桌面包、CLI 和 Skill。手动在分支运行 Release 只生成 Actions 附件，不公开发布；预发行标签标为 prerelease。本地检查不能代替远程运行记录。
 - 国内网络打包加速：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`
 
 常用命令（`npm run build` 后 `node dist/cli.js <cmd>`，或 `npm link` 后直接 `slidex`）：
@@ -100,6 +102,23 @@ node test/gui.present.mjs   # 放映动画时间线
 ```
 
 ## 文档
+
+### AI 工具与 Skill
+
+`npm run build && npm run dist:tools` 生成 `release/<版本>/slidex-<版本>.tgz` 和 `slidex-skill-<版本>.zip`。CLI 包包含编译好的浏览器编辑器，无需安装 Electron 或重新构建：
+
+```sh
+npm install -g ./release/1.7.0-rc.7/slidex-1.7.0-rc.7.tgz
+slidex help
+slidex validate mydeck/deck.slx --json
+slidex export mydeck/deck.slx -f png --pages 1,3-5 --manifest --json
+```
+
+需要 Node.js（CI 验证 Node 22）；PNG/PDF/PPTX 导出还需要本机 Chrome/Edge/Chromium，可用 `CHROME_PATH` 指定。CLI 包安装生产依赖时需要 npm 网络访问；Skill 本身不包含运行时。
+
+项目技能位于 [skills/slidex/SKILL.md](skills/slidex/SKILL.md)，指导 AI 编写/修改 DSL、稳定保留 ID、校验、格式化、按页渲染检查及解释导出降级。将 ZIP 内的 `slidex` 文件夹复制到支持 `SKILL.md` 的代理技能目录即可；Codex 可使用其配置的 skills 目录。它不会要求额外交付用户未请求的格式。
+
+`npm run test:tools -- --render` 在隔离目录安装生成的 CLI 包，验证命令、浏览器编辑器入口、PNG 清单及 Skill ZIP。Skill 的编写遵循简短入口、按需读取参考和保留用户任务范围的原则。
 
 - [docs/spec.md](docs/spec.md) — **SlideX 语言规范**（元素、属性、样式继承链、校验规则）
 - [docs/architecture.md](docs/architecture.md) — 编辑器与导出管线架构

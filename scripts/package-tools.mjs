@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {zip} from '../dist/export/pptx.js';
+const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+if(!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$/.test(pkg.version))throw Error('Invalid package version');
+const out=path.join('release',pkg.version);fs.mkdirSync(out,{recursive:true});
+const result=spawnSync(process.platform==='win32'?'npm.cmd':'npm',['pack','--json','--ignore-scripts','--pack-destination',out],{encoding:'utf8',shell:process.platform==='win32'});
+if(result.status!==0)throw Error(result.stderr||'npm pack failed');
+const pack=JSON.parse(result.stdout)[0],entries=[];
+for(const required of ['dist/cli.js','app/web/index.html','app/dist/editor.js','skills/slidex/SKILL.md'])if(!pack.files.some(f=>f.path===required))throw Error('Missing packed file: '+required);
+const collect=dir=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory())collect(file);else entries.push({name:path.relative('skills',file).split(path.sep).join('/'),data:fs.readFileSync(file)});}};collect('skills/slidex');
+const skillName=`slidex-skill-${pkg.version}.zip`;fs.writeFileSync(path.join(out,skillName),zip(entries));
+const files=[pack.filename,skillName];fs.writeFileSync(path.join(out,'tools-SHA256SUMS.txt'),files.map(name=>createHash('sha256').update(fs.readFileSync(path.join(out,name))).digest('hex')+'  '+name).join('\n')+'\n');
+console.log(JSON.stringify({version:pkg.version,files:files.map(f=>path.resolve(out,f)),skillEntries:entries.length},null,2));

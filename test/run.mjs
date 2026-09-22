@@ -171,6 +171,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
   const { spawnSync } = await import('node:child_process');
   const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const hasChrome = fs.existsSync(CHROME);
+  if(process.env.CI&&!hasChrome)throw Error('CI requires Chrome at '+CHROME+'; browser suites must not be silently skipped');
   const suites = [
     ['test/dsl-regressions.mjs', true],
     ['test/table-structure.mjs', true],
@@ -189,6 +190,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/layout-operations.mjs', true],
     ['test/project-tools.mjs', hasChrome],
     ['test/large-project-browser.mjs', hasChrome],
+    ['test/file-menu-locales.mjs', hasChrome],
     ['test/content-capabilities.mjs', true],
     ['test/react-content.mjs', hasChrome],
     ['test/content-export.mjs', hasChrome],

@@ -1,19 +1,21 @@
 import { useSyncExternalStore } from "react";
-export type Locale = "zh" | "en";
+import {LOCALES,isLocale,extraTranslation,type Locale} from '../src/locales';
+export {LOCALES,isLocale};
+export type {Locale};
 let locale: Locale =
-  localStorage.getItem("slidex-language") === "en" ? "en" : "zh";
+  isLocale(localStorage.getItem('slidex-language')) ? localStorage.getItem('slidex-language') as Locale : 'zh';
 const listeners = new Set<() => void>();
-document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
+document.documentElement.lang = LOCALES.find(l=>l.id===locale)!.lang;
 export function setLocale(next: Locale) {
-  if (next === locale) return;
+  if (!isLocale(next)||next === locale) return;
   locale = next;
   localStorage.setItem("slidex-language", next);
-  document.documentElement.lang = next === "en" ? "en" : "zh-CN";
+  document.documentElement.lang = LOCALES.find(l=>l.id===locale)!.lang;
   listeners.forEach((fn) => fn());
 }
 window.addEventListener("storage", (event) => {
   if (event.key === "slidex-language")
-    setLocale(event.newValue === "en" ? "en" : "zh");
+    setLocale(isLocale(event.newValue)?event.newValue:'zh');
 });
 export function useLocale() {
   return useSyncExternalStore(
@@ -28,6 +30,11 @@ export function useLocale() {
 }
 const en: Record<string, string> = Object.fromEntries(
  `
+新建…|New…
+另存为…|Save as…
+新建|Create
+请选择新的 .slx 文件路径；已有文件不会被覆盖。|Choose a new .slx file path. Existing files will not be overwritten.
+新增语言为预览版；未翻译的文案回退为英文。|New languages are previews; untranslated labels fall back to English.
 补全|Complete
 跳转定义|Go to definition
 定义位置|Definition
@@ -539,6 +546,7 @@ Ctrl+Enter 完成 · Esc 取消 · Ctrl+Z 撤销文字修改|Ctrl+Enter: done ·
 export function t(text: string): string {
   if (locale === "zh") return text;
   const normalized = text.replace(/\s+/g, " ").trim();
+  const translated=extraTranslation(normalized,locale);if(translated!==undefined)return translated;
   if (en[normalized] !== undefined) return en[normalized];
   return text
     .replace(/^第 (\d+) 页$/, "Slide $1")
@@ -603,4 +611,4 @@ const options: Record<string, [string, string]> = {
   spin: ["旋转", "Spin"],
 };
 export const optionLabel = (value: string) =>
-  options[value]?.[locale === "en" ? 1 : 0] || value;
+  options[value] ? (locale==='zh'?options[value][0]:extraTranslation(options[value][0],locale)||options[value][1]) : value;

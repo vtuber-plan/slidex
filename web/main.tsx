@@ -1,4 +1,4 @@
-import { t, setLocale } from "./i18n";
+import { t, setLocale, isLocale } from "./i18n";
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "@radix-ui/themes/styles.css";
@@ -31,7 +31,7 @@ async function boot() {
     if(!response.ok)throw Error('Unable to load preferences');
     const {native,values}=await response.json();
     if(native&&values){
-      if(values.language==='zh'||values.language==='en')setLocale(values.language);
+      if(isLocale(values.language))setLocale(values.language);
       if(values.appearance==='light'||values.appearance==='dark')localStorage.setItem('slidex-appearance',values.appearance);
       if(typeof values.autosave==='boolean')localStorage.setItem('slidex-autosave',String(values.autosave));
       if(values.layout&&typeof values.layout==='object')localStorage.setItem('slidex-layout',JSON.stringify(values.layout));

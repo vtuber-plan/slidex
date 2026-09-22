@@ -1,17 +1,21 @@
 {
   "name": "slidex",
-  "version": "1.7.0-rc.6",
+  "version": "1.7.0-rc.7",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "type": "module",
   "bin": {
     "slidex": "dist/cli.js"
   },
   "main": "dist-electron/main.js",
+  "files": ["dist", "dist-electron", "app", "!app/ts", "!app/types", "docs", "skills", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "dev:web": "vite --host 127.0.0.1",
     "test:react": "node test/react-editor.mjs",
     "test:electron": "electron test/react-electron.cjs",
+    "dist:tools": "node scripts/package-tools.mjs",
+    "test:tools": "node test/tools-package.mjs",
+    "check:release": "node scripts/check-release.mjs",
     "assets": "node scripts/make-assets.mjs",
     "start": "npm run build && node dist/cli.js serve examples/quickstart/deck.slx",
     "app": "npm run build && electron dist-electron/main.js",
