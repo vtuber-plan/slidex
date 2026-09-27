@@ -131,7 +131,7 @@ async function renderDeck(
         }
         const scratch = fs.mkdtempSync(path.join(os.tmpdir(),'slidex-pptx-'));
         try {
-        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale: Math.max(2, scale), outDir: scratch, deckW: deck.width, deckH: deck.height, base });
+        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale, outDir: scratch, deckW: deck.width, deckH: deck.height, base });
         const buf = buildPptx({
           pngFiles: pngs, width: deck.width, height: deck.height,
           title: deck.title || base, notes: deck.slides.map(s => s.notes || ''),

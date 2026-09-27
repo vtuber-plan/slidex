@@ -1,107 +1,128 @@
-import { useRef, useState } from "react";
-import { Button, TextArea } from "@radix-ui/themes";
-import { languageInfo, type Completion } from "../src/language";
-import { t, useLocale } from "./i18n";
-export function SourceEditor({
-  value,
-  onChange,
-}: {
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import Editor, { loader, type OnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import { languageInfo } from "../src/language";
+import type { Diag } from "../src/types";
+import { t } from "./i18n";
+
+self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+loader.config({ monaco });
+monaco.languages.register({ id: "slidex" });
+monaco.languages.setMonarchTokensProvider("slidex", {
+  tokenizer: {
+    root: [
+      [/<!--/, "comment", "@comment"],
+      [/<\/?[\w:-]+/, "tag"],
+      [/[?/]?>/, "delimiter"],
+      [/[\w:-]+(?=\s*=)/, "attribute.name"],
+      [/"[^"]*"|'[^']*'/, "string"],
+      [/[<>]/, "delimiter"],
+    ],
+    comment: [[/-->/, "comment", "@pop"], [/[^-]+/, "comment"], [/-/, "comment"]],
+  },
+});
+monaco.editor.defineTheme("slidex-light", { base: "vs", inherit: true, rules: [
+  { token: "tag", foreground: "2556A8" }, { token: "attribute.name", foreground: "9A4D00" },
+  { token: "string", foreground: "16803C" }, { token: "comment", foreground: "738092" },
+], colors: {} });
+monaco.editor.defineTheme("slidex-dark", { base: "vs-dark", inherit: true, rules: [
+  { token: "tag", foreground: "89B4FA" }, { token: "attribute.name", foreground: "F4BF75" },
+  { token: "string", foreground: "A6E3A1" }, { token: "comment", foreground: "8190A5" },
+], colors: {} });
+
+export interface SourceEditorHandle {
+  jumpTo: (line: number, column: number) => void;
+  focus: () => void;
+}
+
+export const SourceEditor = forwardRef<SourceEditorHandle, {
   value: string;
   onChange: (value: string) => void;
-}) {
-  useLocale();
-  const ref = useRef<HTMLTextAreaElement>(null),
-    [items, setItems] = useState<Completion[]>([]),
-    [message, setMessage] = useState("");
-  const complete = () => {
-    setItems(languageInfo(value, ref.current?.selectionStart || 0).completions);
+  diagnostics: Diag[];
+  dark: boolean;
+}>(function SourceEditor({ value, onChange, diagnostics, dark }, ref) {
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const model = useRef<monaco.editor.ITextModel | null>(null);
+  const providers = useRef<monaco.IDisposable[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    jumpTo(line, column) {
+      editor.current?.revealPositionInCenter({ lineNumber: line, column });
+      editor.current?.setPosition({ lineNumber: line, column });
+      editor.current?.focus();
+    },
+    focus() { editor.current?.focus(); },
+  }), []);
+
+  useEffect(() => {
+    if (!model.current) return;
+    monaco.editor.setModelMarkers(model.current, "slidex", diagnostics.map(d => ({
+      startLineNumber: Math.max(1, d.line || 1),
+      startColumn: Math.max(1, d.col || 1),
+      endLineNumber: Math.max(1, d.line || 1),
+      endColumn: Math.max(2, (d.col || 1) + 1),
+      message: `${d.code}: ${d.message}`,
+      severity: d.code.startsWith("W_") ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
+      code: d.code,
+    })));
+  }, [diagnostics]);
+
+  useEffect(() => () => { providers.current.forEach(p => p.dispose()); providers.current = []; }, []);
+
+  const onMount: OnMount = (instance, api) => {
+    editor.current = instance;
+    model.current = instance.getModel();
+    api.editor.setModelMarkers(instance.getModel()!, "slidex", diagnostics.map(d => ({
+      startLineNumber: Math.max(1, d.line || 1), startColumn: Math.max(1, d.col || 1),
+      endLineNumber: Math.max(1, d.line || 1), endColumn: Math.max(2, (d.col || 1) + 1),
+      message: `${d.code}: ${d.message}`,
+      severity: d.code.startsWith("W_") ? api.MarkerSeverity.Warning : api.MarkerSeverity.Error,
+      code: d.code,
+    })));
+    providers.current = [
+      api.languages.registerCompletionItemProvider("slidex", {
+        triggerCharacters: ["<", " ", "\"", "'", "="],
+        provideCompletionItems(current: monaco.editor.ITextModel, position: monaco.Position) {
+          if (current !== model.current) return { suggestions: [] };
+          const info = languageInfo(current.getValue(), current.getOffsetAt(position));
+          return { suggestions: info.completions.map(c => {
+            const start = current.getPositionAt(c.from), end = current.getPositionAt(c.to);
+            return {
+              label: c.label, insertText: c.insertText,
+              kind: api.languages.CompletionItemKind.Property,
+              range: new api.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+            };
+          }) };
+        },
+      }),
+      api.languages.registerDefinitionProvider("slidex", {
+        provideDefinition(current: monaco.editor.ITextModel, position: monaco.Position) {
+          if (current !== model.current) return null;
+          const found = languageInfo(current.getValue(), current.getOffsetAt(position)).definition;
+          if (!found) return null;
+          return { uri: current.uri, range: new api.Range(found.line, found.col, found.line, found.col + 1) };
+        },
+      }),
+    ];
+    instance.focus();
   };
-  const definition = () => {
-    const item = languageInfo(
-      value,
-      ref.current?.selectionStart || 0,
-    ).definition;
-    if (item) {
-      const input = ref.current;
-      if (input) {
-        input.focus();
-        input.setSelectionRange(item.offset, item.offset + 1);
-        input.scrollTop = Math.max(
-          0,
-          (item.line - 3) *
-            (parseFloat(getComputedStyle(input).lineHeight) || 20),
-        );
-      }
-      setMessage(`${t("定义位置")} ${item.line}:${item.col}`);
-    } else setMessage(t("未找到引用定义"));
-  };
-  return (
-    <>
-      <TextArea
-        ref={ref}
-        className="source-editor"
-        value={value}
-        rows={22}
-        aria-label={t("XML 源码")}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setItems([]);
-        }}
-        onKeyDown={(e) => {
-          if (e.ctrlKey && e.code === "Space") {
-            e.preventDefault();
-            complete();
-          }
-          if (e.key === "F12") {
-            e.preventDefault();
-            definition();
-          }
-          if (e.key === "Escape" && items.length) {
-            e.preventDefault();
-            e.stopPropagation();
-            setItems([]);
-          }
-        }}
-      />
-      <div className="source-tools">
-        <Button variant="soft" onClick={complete}>
-          {t("补全")} Ctrl+Space
-        </Button>
-        <Button variant="soft" onClick={definition}>
-          {t("跳转定义")} F12
-        </Button>
-        <span role="status">{message}</span>
-      </div>
-      {!!items.length && (
-        <div
-          className="source-completions"
-          role="list"
-          aria-label={t("补全建议")}
-        >
-          {items.slice(0, 40).map((item) => (
-            <button
-              key={item.label}
-              onClick={() => {
-                onChange(
-                  value.slice(0, item.from) +
-                    item.insertText +
-                    value.slice(item.to),
-                );
-                setItems([]);
-                requestAnimationFrame(() => {
-                  ref.current?.focus();
-                  ref.current?.setSelectionRange(
-                    item.from + item.insertText.length,
-                    item.from + item.insertText.length,
-                  );
-                });
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
+
+  return <div className="source-monaco" aria-label={t("XML 源码")}>
+    <Editor
+      path="slidex-current.xml"
+      language="slidex"
+      value={value}
+      theme={dark ? "slidex-dark" : "slidex-light"}
+      onChange={next => onChange(next ?? "")}
+      onMount={onMount}
+      options={{
+        automaticLayout: true, fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 14,
+        lineHeight: 22, minimap: { enabled: false }, wordWrap: "on", scrollBeyondLastLine: false,
+        formatOnPaste: false, tabSize: 2, insertSpaces: true, suggestOnTriggerCharacters: true,
+        quickSuggestions: true, padding: { top: 16, bottom: 16 }, folding: false,
+        bracketPairColorization: { enabled: false }, matchBrackets: "never",
+      }}
+    />
+  </div>;
+});

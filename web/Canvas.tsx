@@ -15,6 +15,8 @@ import {
 } from "../src/group-scope";
 import { SlideSurface } from "./SlideSurface";
 import { RichText } from "./RichText";
+import { FormulaCanvasEditor, TableCellCanvasEditor, type CellLocation } from "./CanvasContentEditors";
+import { tableGrid } from "./table";
 import { PanelResize, usePanelSize } from "./PanelResize";
 import { useCanvasNavigation } from "./useCanvasNavigation";
 import { TextOverflow } from "./TextOverflow";
@@ -36,6 +38,7 @@ export function Canvas() {
     board = useRef<HTMLDivElement>(null);
   const cancelPointer = useRef<(() => void) | null>(null);
   const textEntryPoint = useRef<{left:number;top:number} | undefined>(undefined);
+  const [tableCell, setTableCell] = useState<CellLocation | null>(null);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancelPointer.current?.();
@@ -304,7 +307,7 @@ export function Canvas() {
               </Button>
             )}
           </nav>
-          {edited && !edited.locked && (
+          {edited?.type === "text" && !edited.locked && (
             <RichText
               key={edited.id}
               element={edited}
@@ -315,6 +318,39 @@ export function Canvas() {
                 textEntryPoint.current = undefined;
                 if (content !== undefined) s.patch(edited.id, { content });
                 useEditor.setState({ editing: "" });
+              }}
+            />
+          )}
+          {edited?.type === "formula" && !edited.locked && (
+            <FormulaCanvasEditor
+              key={edited.id}
+              element={edited}
+              canvas={board}
+              scale={scale}
+              onDone={(tex) => {
+                if (tex !== undefined) s.patch(edited.id, { tex });
+                useEditor.setState({ editing: "" });
+              }}
+            />
+          )}
+          {edited?.type === "table" && tableCell && !edited.locked && (
+            <TableCellCanvasEditor
+              key={`${edited.id}:${tableCell.row}:${tableCell.col}`}
+              element={edited}
+              cell={tableCell}
+              canvas={board}
+              entryPoint={textEntryPoint.current}
+              onDone={(content, next) => {
+                textEntryPoint.current = undefined;
+                if (content !== undefined) s.edit((_, current) => {
+                  const table = current.elements.find((el) => el.id === edited.id);
+                  if (!table?.rowsData) return;
+                  const width = table.cols?.length || Math.max(1, ...table.rowsData.map((row) => row.reduce((n, cell) => n + Number(cell["col-span"] || 1), 0)));
+                  const position = tableGrid(table.rowsData, width)[tableCell.row]?.[tableCell.col];
+                  if (position) table.rowsData[position.row][position.index].text = content;
+                });
+                setTableCell(next || null);
+                if (!next) useEditor.setState({ editing: "" });
               }}
             />
           )}
@@ -377,6 +413,19 @@ export function Canvas() {
                   if (el?.type === "text" && !el.locked) {
                     textEntryPoint.current = {left:e.clientX,top:e.clientY};
                     useEditor.setState({ editing: el.id });
+                  }
+                  if (el?.type === "formula" && !el.locked) {
+                    useEditor.setState({ editing: el.id });
+                  }
+                  if (el?.type === "table" && !el.locked) {
+                    const cell = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)
+                      ?.closest<HTMLTableCellElement>("td[data-cell-row]");
+                    if (cell?.closest<HTMLElement>(".slx-el")?.dataset.id !== el.id) return;
+                    if (cell) {
+                      textEntryPoint.current = {left:e.clientX,top:e.clientY};
+                      setTableCell({row:Number(cell.dataset.cellRow),col:Number(cell.dataset.cellCol)});
+                      useEditor.setState({ editing: el.id });
+                    }
                   }
                 }}
               >

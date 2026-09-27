@@ -41,6 +41,7 @@ interface EditorState {
   focusLayer:(id:string,add?:boolean)=>void;
   patchLayer:(id:string,attrs:Partial<SlideElement>)=>void;
   reorderLayer:(id:string,target:string)=>void;
+  moveLayer:(id:string,position:"forward"|"backward"|"front"|"back")=>void;
   master: string;
   groupPath: string[];
   enterGroup: (id: string) => void;
@@ -151,6 +152,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s=get(),root=rootContainer(s),from=findLayer(root.elements,id),to=findLayer(root.elements,target);
     if(!from||!to||from.element.locked||to.element.locked||from.parents.some(el=>el.locked)||from.parents.map(el=>el.id).join('/')!==to.parents.map(el=>el.id).join('/'))return;
     s.edit(deck=>{const found=findLayer(rootContainer({...s,deck}).elements,id)!;const list=found.parents.at(-1)?.elements||rootContainer({...s,deck}).elements;const a=list.findIndex(el=>el.id===id),b=list.findIndex(el=>el.id===target);list.splice(b,0,list.splice(a,1)[0]);});
+  },
+  moveLayer:(id,position)=>{
+    const s=get(),found=findLayer(rootContainer(s).elements,id);
+    if(!found||found.element.locked||found.parents.some(el=>el.locked))return;
+    const siblings=found.parents.at(-1)?.elements||rootContainer(s).elements;
+    const index=siblings.findIndex(el=>el.id===id);
+    const destination=position==="front"?siblings.length-1:position==="back"?0:index+(position==="forward"?1:-1);
+    if(destination<0||destination>=siblings.length||destination===index||siblings.slice(Math.min(index,destination),Math.max(index,destination)+1).some(el=>el.id!==id&&el.locked))return;
+    s.edit(deck=>{
+      const current=findLayer(rootContainer({...s,deck}).elements,id)!;
+      const list=current.parents.at(-1)?.elements||rootContainer({...s,deck}).elements;
+      list.splice(destination,0,list.splice(index,1)[0]);
+    });
   },
   master: "",
   groupPath: [],
@@ -545,7 +559,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 }));
 
-export async function uploadImage(file: File, replaceId?: string) {
+export async function uploadMedia(file: File): Promise<string | null> {
   try {
     const data = await new Promise<string>((resolve, reject) => {
       const r = new FileReader();
@@ -561,9 +575,16 @@ export async function uploadImage(file: File, replaceId?: string) {
     });
     const result = await r.json();
     if (!result.ok) throw Error(result.error);
-    if (replaceId) useEditor.getState().patch(replaceId, { src: result.src });
-    else useEditor.getState().insert("image", { src: result.src });
+    return result.src;
   } catch (e) {
     useEditor.setState({ error: String(e) });
+    return null;
   }
+}
+
+export async function uploadImage(file: File, replaceId?: string) {
+  const src = await uploadMedia(file);
+  if (!src) return;
+  if (replaceId) useEditor.getState().patch(replaceId, { src });
+  else useEditor.getState().insert("image", { src });
 }

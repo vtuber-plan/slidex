@@ -1,8 +1,8 @@
 import { t, useLocale } from "./i18n";
 import { useState } from "react";
 import { Button, Dialog, TextField, DropdownMenu } from "@radix-ui/themes";
-import { Search, Paintbrush, AlignHorizontalSpaceAround } from "lucide-react";
-import { useEditor, container, clone } from "./store";
+import { Search, Paintbrush, AlignHorizontalSpaceAround, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter } from "lucide-react";
+import { useEditor, container, scope, clone } from "./store";
 import type { SlideElement } from "../src/types";
 import { Tool } from "./ui";
 import { selectionModel, updateSelection } from "../src/selection";
@@ -35,28 +35,41 @@ export function EditingTools() {
     [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [replacement, setReplacement] = useState(""),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [alignReference, setAlignReference] = useState<"selection" | "page">("selection");
   const current = selectionModel(container(s).elements, s.selection).editable;
-  const distribute = (axis: "x" | "y") =>
+  const align = (axis: "x" | "y", position: number) =>
+    s.edit((deck, slide) => {
+      const els = slide.elements.filter((el) => s.selection.includes(el.id) && !el.locked);
+      if (!els.length) return;
+      const size = axis === "x" ? "w" : "h";
+      const start = alignReference === "page" ? 0 : Math.min(...els.map((el) => el[axis] || 0));
+      const end = alignReference === "page"
+        ? (axis === "x" ? scope(s).group?.w ?? deck.width : scope(s).group?.h ?? deck.height)
+        : Math.max(...els.map((el) => (el[axis] || 0) + (el[size] || 0)));
+      els.forEach((el) => { el[axis] = start + (end - start - (el[size] || 0)) * position; });
+    });
+  const distribute = (axis: "x" | "y", anchor: "gap" | "start" | "center" | "end" = "gap") =>
     s.edit((_, slide) => {
+      const size = axis === "x" ? "w" : "h";
+      const coordinate = (el: SlideElement) => (el[axis] || 0) + (el[size] || 0) * (anchor === "end" ? 1 : anchor === "center" ? 0.5 : 0);
       const els = slide.elements
-        .filter((e) => s.selection.includes(e.id) && !e.locked)
-        .sort((a, b) => (a[axis] || 0) - (b[axis] || 0));
+        .filter((el) => s.selection.includes(el.id) && !el.locked)
+        .sort((a, b) => coordinate(a) - coordinate(b));
       if (els.length < 3) return;
-      const dimension = axis === "x" ? "w" : "h",
-        first = els[0][axis] || 0,
-        last = els.at(-1)!,
-        end = (last[axis] || 0) + (last[dimension] || 0),
-        gap =
-          (end -
-            first -
-            els.reduce((sum, el) => sum + (el[dimension] || 0), 0)) /
-          (els.length - 1);
-      let position = first;
-      els.forEach((el) => {
-        el[axis] = position;
-        position += (el[dimension] || 0) + gap;
-      });
+      const start = (el: SlideElement) => el[axis] || 0;
+      const length = (el: SlideElement) => el[size] || 0;
+      const point = (el: SlideElement) => start(el) + length(el) * (anchor === "end" ? 1 : anchor === "center" ? 0.5 : 0);
+      if (anchor !== "gap") {
+        const first = point(els[0]), last = point(els.at(-1)!);
+        els.slice(1, -1).forEach((el, index) => { el[axis] = first + (last - first) * (index + 1) / (els.length - 1) - length(el) * (anchor === "end" ? 1 : anchor === "center" ? 0.5 : 0); });
+        return;
+      }
+      const first = start(els[0]);
+      const last = els.at(-1)!;
+      const gap = (start(last) + length(last) - first - els.reduce((sum, el) => sum + length(el), 0)) / (els.length - 1);
+      let cursor = first + length(els[0]) + gap;
+      els.slice(1, -1).forEach((el) => { el[axis] = cursor; cursor += length(el) + gap; });
     });
   const matches: { page: number; id: string; text: string }[] = [];
   if (query)
@@ -85,18 +98,42 @@ export function EditingTools() {
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content>
+          <DropdownMenu.Label>{t("相对于")}</DropdownMenu.Label>
+          <DropdownMenu.RadioGroup value={alignReference} onValueChange={(value) => setAlignReference(value as "selection" | "page")}>
+            <DropdownMenu.RadioItem value="selection">{t("选中对象")}</DropdownMenu.RadioItem>
+            <DropdownMenu.RadioItem value="page">{t("页面或组合")}</DropdownMenu.RadioItem>
+          </DropdownMenu.RadioGroup>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Label>{t("对齐对象")}</DropdownMenu.Label>
+          {([
+            ["左对齐", AlignStartVertical, "x", 0], ["水平居中", AlignCenterVertical, "x", 0.5], ["右对齐", AlignEndVertical, "x", 1],
+            ["顶部对齐", AlignStartHorizontal, "y", 0], ["垂直居中", AlignCenterHorizontal, "y", 0.5], ["底部对齐", AlignEndHorizontal, "y", 1],
+          ] as const).map(([label, Icon, axis, position]) => (
+            <DropdownMenu.Item key={label} disabled={!current.length} onSelect={() => align(axis, position)}><Icon size={16} />{t(label)}</DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Separator />
+          <DropdownMenu.Label>{t("分布对象")}</DropdownMenu.Label>
           <DropdownMenu.Item
             disabled={current.length < 3}
             onSelect={() => distribute("x")}
           >
+            <AlignHorizontalSpaceAround size={16} />
             {t("水平等距分布")}
           </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={current.length < 3}
             onSelect={() => distribute("y")}
           >
+            <AlignHorizontalSpaceAround size={16} style={{ transform: "rotate(90deg)" }} />
             {t("垂直等距分布")}
           </DropdownMenu.Item>
+          {([
+            ["等距分布左边缘", "x", "start", AlignStartVertical], ["等距分布水平中心", "x", "center", AlignHorizontalDistributeCenter], ["等距分布右边缘", "x", "end", AlignEndVertical],
+            ["等距分布上边缘", "y", "start", AlignStartHorizontal], ["等距分布垂直中心", "y", "center", AlignVerticalDistributeCenter], ["等距分布下边缘", "y", "end", AlignEndHorizontal],
+          ] as const).map(([label, axis, anchor, Icon]) => (
+            <DropdownMenu.Item key={label} disabled={current.length < 3} onSelect={() => distribute(axis, anchor)}><Icon size={16} />{t(label)}</DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Separator />
           {(["w", "h"] as const).map((key) => (
             <DropdownMenu.Item
               key={key}

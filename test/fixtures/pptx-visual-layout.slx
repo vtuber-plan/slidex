@@ -1,0 +1,29 @@
+<deck version="1" width="960" height="540" title="PPTX visual QA - layout">
+  <slide id="tables" background="#FFFFFF">
+    <table id="plain" x="55" y="60" w="390" h="320">
+      <cols>0.25 0.45 0.30</cols><rows>0.25 0.25 0.25 0.25</rows>
+      <tr><td fill="#DCEAFF">A</td><td fill="#DCEAFF">Long heading</td><td fill="#DCEAFF">C</td></tr>
+      <tr><td>1</td><td>12.5</td><td>甲</td></tr>
+      <tr><td>2</td><td>24.0</td><td>乙</td></tr>
+      <tr><td>3</td><td>6.25</td><td>丙</td></tr>
+    </table>
+    <table id="merged" x="500" y="60" w="390" h="320">
+      <cols>0.3 0.3 0.4</cols><rows>0.3 0.3 0.4</rows>
+      <tr><td row-span="2" col-span="2" fill="#FCEBCF">Merged 中文</td><td>Top</td></tr>
+      <tr><td>Middle</td></tr>
+      <tr><td>One</td><td>Two</td><td>Three</td></tr>
+    </table>
+  </slide>
+  <slide id="charts" background="#FAFBFD">
+    <chart id="bar-legend" x="45" y="80" w="425" h="350" title="Revenue" legend="bottom">
+      <data cols="quarter,actual,target"><row>Q1,12,15</row><row>Q2,23,20</row><row>Q3,17,22</row><row>Q4,29,27</row></data>
+      <series type="bar" x="quarter" y="actual" name="Actual"/>
+      <series type="bar" x="quarter" y="target" name="Target"/>
+    </chart>
+    <chart id="line-legend" x="490" y="80" w="425" h="350" title="Trend" legend="bottom">
+      <data cols="quarter,actual,target"><row>Q1,12,15</row><row>Q2,23,20</row><row>Q3,17,22</row><row>Q4,29,27</row></data>
+      <series type="line" x="quarter" y="actual" name="Actual"/>
+      <series type="line" x="quarter" y="target" name="Target"/>
+    </chart>
+  </slide>
+</deck>

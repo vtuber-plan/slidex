@@ -11,7 +11,16 @@
     "slidex": "dist/cli.js"
   },
   "main": "dist-electron/main.js",
-  "files": ["dist", "dist-electron", "app", "!app/ts", "!app/types", "docs", "skills", "LICENSE"],
+  "files": [
+    "dist",
+    "dist-electron",
+    "app",
+    "!app/ts",
+    "!app/types",
+    "docs",
+    "skills",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "dev:web": "vite --host 127.0.0.1",
@@ -33,9 +42,11 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.7.2",
+    "@monaco-editor/react": "^4.7.0",
     "@radix-ui/themes": "^3.3.0",
     "katex": "^0.18.7",
     "lucide-react": "^1.47.0",
+    "monaco-editor": "^0.52.2",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-history": "^1.5.0",
     "prosemirror-keymap": "^1.2.3",

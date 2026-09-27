@@ -119,7 +119,7 @@ export function parseXML(xml: string, opts: ParseXMLOptions = {}): XMLParseResul
         i = p + cm[0].length;
         return { name, attrs, children, content: '', line: posOf(start).line, col: posOf(start).col, selfClose: false };
       }
-      if (s[p] === '<') { i = p; const child = parseElement(depth + 1); if (child) children.push(child); p = i; continue; }
+      if (s[p] === '<') { i = p; const child = parseElement(depth + 1); if (child) children.push(child); if (i <= p) i = n; p = i; continue; }
       // 结构标签内的游离文本
       const tx = s.slice(p, p + 20).replace(/\n.*/s, '');
       err(p, 'E_XML', `标签 <${name}> 内不应有文本内容：${JSON.stringify(tx)}`);

@@ -10,6 +10,7 @@ import {
   buildPptxEditable,
 } from "../dist/export/pptx-native.js";
 import { createExportReport } from "../dist/export/report.js";
+import { chartPart } from "../dist/export/pptx-charts.js";
 import { publishExport } from "../dist/export/publish.js";
 import { unzipIndependent } from "./pptx-integrity.mjs";
 
@@ -89,6 +90,25 @@ assert.match(
   renderSlide(deck, deck.slides[0]),
   /<td rowspan="2" colspan="2" style=/,
 );
+const chartDeck = parseSlideX(fs.readFileSync(new URL('./fixtures/pptx-visual-charts.slx', import.meta.url), 'utf8'));
+assert.deepEqual(chartDeck.errors, []);
+for (const slide of chartDeck.deck.slides) {
+  const xml = chartPart(slide.elements[0], chartDeck.deck);
+  if (slide.id !== 'pie') {
+    assert.match(xml, /<c:majorGridlines><c:spPr>.*?E4E8EE/);
+    assert.match(xml, /<c:majorUnit val="(?:5|2)"\/>/);
+  }
+  if (['positive', 'negative', 'horizontal'].includes(slide.id)) {
+    assert.match(xml, /<c:gapWidth val="67"\/>/);
+    assert.match(xml, /<c:invertIfNegative val="0"\/>/);
+  }
+}
+assert.match(chartPart(chartDeck.deck.slides[0].elements[0], chartDeck.deck), /<c:max val="20"\/><c:min val="0"\/>/);
+assert.match(chartPart(chartDeck.deck.slides[1].elements[0], chartDeck.deck), /<c:max val="15"\/><c:min val="-10"\/>/);
+assert.match(chartPart(chartDeck.deck.slides[4].elements[0], chartDeck.deck), /<c:max val="8"\/><c:min val="2"\/>/);
+const groupedDeck = parseSlideX(fs.readFileSync(new URL('./fixtures/pptx-visual-layout.slx', import.meta.url), 'utf8'));
+assert.deepEqual(groupedDeck.errors, []);
+assert.match(chartPart(groupedDeck.deck.slides[1].elements[0], groupedDeck.deck), /<c:gapWidth val="134"\/>/);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slidex-publish-test-"));
 try {
   const scratch = path.join(dir, "scratch");

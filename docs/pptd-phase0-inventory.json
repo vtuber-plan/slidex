@@ -1,0 +1,734 @@
+{
+  "schemaVersion": 1,
+  "rootName": "ppt",
+  "projectCount": 32,
+  "loadedProjectCount": 32,
+  "declaredPageCount": 736,
+  "loadedPageCount": 736,
+  "pageFileCount": 736,
+  "unreferencedPages": [],
+  "elementCount": 8745,
+  "elementTypes": {
+    "line": 4,
+    "shape": 2083,
+    "table": 72,
+    "text": 6586
+  },
+  "shapes": {
+    "rect": 2083
+  },
+  "chartTypes": {},
+  "animationEffects": {},
+  "fillTypes": {
+    "solid": 2819
+  },
+  "sizes": {
+    "[960, 540]": 32
+  },
+  "pageTypes": {
+    "chapter": 64,
+    "content": 576,
+    "cover": 32,
+    "final": 32,
+    "table_of_contents": 32
+  },
+  "richTextTags": {
+    "p": 5001,
+    "span": 1664,
+    "strong": 2618
+  },
+  "fontFamilies": {
+    "latin=MiSans|ea=MiSans": 483
+  },
+  "textStyleRefs": {
+    "$body": 889,
+    "$bodyTight": 1485,
+    "$caption": 34,
+    "$footnote": 1440,
+    "$kicker": 736,
+    "$mono": 52,
+    "$pageTitle": 608
+  },
+  "tableStyleRefs": {
+    "$default": 72
+  },
+  "mergedTableCells": 0,
+  "examples": {
+    "element:line": "01-pl-proof-object/pages/05_concept_a.page",
+    "element:shape": "01-pl-proof-object/pages/01_cover.page",
+    "element:table": "01-pl-proof-object/pages/05_concept_a.page",
+    "element:text": "01-pl-proof-object/pages/01_cover.page",
+    "pageType:chapter": "01-pl-proof-object/pages/13_part1end.page",
+    "pageType:content": "01-pl-proof-object/pages/03_review.page",
+    "pageType:cover": "01-pl-proof-object/pages/01_cover.page",
+    "pageType:final": "01-pl-proof-object/pages/23_next.page",
+    "pageType:table_of_contents": "01-pl-proof-object/pages/02_route.page",
+    "shape:rect": "01-pl-proof-object/pages/01_cover.page",
+    "tableStyle:$default": "01-pl-proof-object/pages/05_concept_a.page",
+    "text:splitFontFamily": "01-pl-proof-object/pages/01_cover.page",
+    "textStyle:$body": "01-pl-proof-object/pages/03_review.page",
+    "textStyle:$bodyTight": "01-pl-proof-object/pages/02_route.page",
+    "textStyle:$caption": "01-pl-proof-object/pages/03_review.page",
+    "textStyle:$footnote": "01-pl-proof-object/pages/01_cover.page",
+    "textStyle:$kicker": "01-pl-proof-object/pages/01_cover.page",
+    "textStyle:$mono": "02-inductive-syntax/pages/05_concept_a.page",
+    "textStyle:$pageTitle": "01-pl-proof-object/pages/02_route.page"
+  },
+  "fieldCounts": {
+    "element.line.arrow": 4,
+    "element.line.border": 4,
+    "element.line.border.color": 4,
+    "element.line.border.style": 4,
+    "element.line.border.width": 4,
+    "element.line.bounds": 4,
+    "element.line.curve": 4,
+    "element.line.elementId": 4,
+    "element.line.elementType": 4,
+    "element.line.points": 4,
+    "element.line.viewBox": 4,
+    "element.shape.bounds": 2083,
+    "element.shape.elementId": 2083,
+    "element.shape.elementType": 2083,
+    "element.shape.fill": 2083,
+    "element.shape.fill.color": 2083,
+    "element.shape.fill.type": 2083,
+    "element.shape.shapeName": 2083,
+    "element.table.bounds": 72,
+    "element.table.columnWidths": 72,
+    "element.table.elementId": 72,
+    "element.table.elementType": 72,
+    "element.table.rowHeights": 72,
+    "element.table.rows": 72,
+    "element.table.rows[][].bold": 221,
+    "element.table.rows[][].text": 992,
+    "element.table.style": 72,
+    "element.text.bounds": 6586,
+    "element.text.content": 6586,
+    "element.text.content.align": 704,
+    "element.text.content.color": 1151,
+    "element.text.content.fontFamily": 483,
+    "element.text.content.fontFamily.ea": 483,
+    "element.text.content.fontFamily.latin": 483,
+    "element.text.content.fontSize": 604,
+    "element.text.content.letterSpacing": 257,
+    "element.text.content.lineHeight": 484,
+    "element.text.content.style": 5244,
+    "element.text.content.text": 6586,
+    "element.text.elementId": 6586,
+    "element.text.elementType": 6586,
+    "manifest.customFonts": 32,
+    "manifest.customFonts[].family": 32,
+    "manifest.customFonts[].src": 32,
+    "manifest.pages": 32,
+    "manifest.size": 32,
+    "manifest.theme": 32,
+    "manifest.theme.colors": 32,
+    "manifest.theme.colors.accent": 32,
+    "manifest.theme.colors.ink": 32,
+    "manifest.theme.colors.line": 32,
+    "manifest.theme.colors.muted": 32,
+    "manifest.theme.colors.paper": 32,
+    "manifest.theme.colors.paperDeep": 32,
+    "manifest.theme.colors.primary": 32,
+    "manifest.theme.colors.primaryDark": 32,
+    "manifest.theme.colors.success": 32,
+    "manifest.theme.colors.tint": 32,
+    "manifest.theme.tableStyles": 32,
+    "manifest.theme.tableStyles.default": 32,
+    "manifest.theme.tableStyles.default.bodyStyles": 32,
+    "manifest.theme.tableStyles.default.bodyStyles[].fill": 64,
+    "manifest.theme.tableStyles.default.bodyStyles[].fill.color": 64,
+    "manifest.theme.tableStyles.default.bodyStyles[].fill.type": 64,
+    "manifest.theme.tableStyles.default.cellStyle": 32,
+    "manifest.theme.tableStyles.default.cellStyle.align": 32,
+    "manifest.theme.tableStyles.default.cellStyle.border": 32,
+    "manifest.theme.tableStyles.default.cellStyle.border[].color": 32,
+    "manifest.theme.tableStyles.default.cellStyle.border[].style": 32,
+    "manifest.theme.tableStyles.default.cellStyle.border[].width": 32,
+    "manifest.theme.tableStyles.default.cellStyle.color": 32,
+    "manifest.theme.tableStyles.default.cellStyle.fontSize": 32,
+    "manifest.theme.tableStyles.default.cellStyle.lineHeight": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.align": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.bold": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.border": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.color": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.fill": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.fill.color": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.fill.type": 32,
+    "manifest.theme.tableStyles.default.firstRowStyle.fontSize": 32,
+    "manifest.theme.textStyles": 32,
+    "manifest.theme.textStyles.body": 32,
+    "manifest.theme.textStyles.body.color": 32,
+    "manifest.theme.textStyles.body.fontFamily": 32,
+    "manifest.theme.textStyles.body.fontFamily.ea": 32,
+    "manifest.theme.textStyles.body.fontFamily.latin": 32,
+    "manifest.theme.textStyles.body.fontSize": 32,
+    "manifest.theme.textStyles.body.lineHeight": 32,
+    "manifest.theme.textStyles.bodyTight": 32,
+    "manifest.theme.textStyles.bodyTight.color": 32,
+    "manifest.theme.textStyles.bodyTight.fontFamily": 32,
+    "manifest.theme.textStyles.bodyTight.fontFamily.ea": 32,
+    "manifest.theme.textStyles.bodyTight.fontFamily.latin": 32,
+    "manifest.theme.textStyles.bodyTight.fontSize": 32,
+    "manifest.theme.textStyles.bodyTight.lineHeight": 32,
+    "manifest.theme.textStyles.caption": 32,
+    "manifest.theme.textStyles.caption.color": 32,
+    "manifest.theme.textStyles.caption.fontFamily": 32,
+    "manifest.theme.textStyles.caption.fontFamily.ea": 32,
+    "manifest.theme.textStyles.caption.fontFamily.latin": 32,
+    "manifest.theme.textStyles.caption.fontSize": 32,
+    "manifest.theme.textStyles.footnote": 32,
+    "manifest.theme.textStyles.footnote.color": 32,
+    "manifest.theme.textStyles.footnote.fontFamily": 32,
+    "manifest.theme.textStyles.footnote.fontFamily.ea": 32,
+    "manifest.theme.textStyles.footnote.fontFamily.latin": 32,
+    "manifest.theme.textStyles.footnote.fontSize": 32,
+    "manifest.theme.textStyles.kicker": 32,
+    "manifest.theme.textStyles.kicker.color": 32,
+    "manifest.theme.textStyles.kicker.fontFamily": 32,
+    "manifest.theme.textStyles.kicker.fontFamily.ea": 32,
+    "manifest.theme.textStyles.kicker.fontFamily.latin": 32,
+    "manifest.theme.textStyles.kicker.fontSize": 32,
+    "manifest.theme.textStyles.kicker.letterSpacing": 32,
+    "manifest.theme.textStyles.mono": 32,
+    "manifest.theme.textStyles.mono.color": 32,
+    "manifest.theme.textStyles.mono.fontFamily": 32,
+    "manifest.theme.textStyles.mono.fontFamily.ea": 32,
+    "manifest.theme.textStyles.mono.fontFamily.latin": 32,
+    "manifest.theme.textStyles.mono.fontSize": 32,
+    "manifest.theme.textStyles.mono.lineHeight": 32,
+    "manifest.theme.textStyles.pageTitle": 32,
+    "manifest.theme.textStyles.pageTitle.bold": 32,
+    "manifest.theme.textStyles.pageTitle.color": 32,
+    "manifest.theme.textStyles.pageTitle.fontFamily": 32,
+    "manifest.theme.textStyles.pageTitle.fontFamily.ea": 32,
+    "manifest.theme.textStyles.pageTitle.fontFamily.latin": 32,
+    "manifest.theme.textStyles.pageTitle.fontSize": 32,
+    "manifest.title": 32,
+    "manifest.version": 32,
+    "page.background": 736,
+    "page.background.color": 736,
+    "page.background.type": 736,
+    "page.elements": 736,
+    "page.pageType": 736
+  },
+  "projects": [
+    {
+      "manifest": "01-pl-proof-object/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 293,
+      "elementTypes": {
+        "line": 1,
+        "shape": 70,
+        "table": 3,
+        "text": 219
+      },
+      "shapes": {
+        "rect": 70
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "02-inductive-syntax/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 302,
+      "elementTypes": {
+        "shape": 74,
+        "table": 1,
+        "text": 227
+      },
+      "shapes": {
+        "rect": 74
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "03-parse-tree-ast/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 289,
+      "elementTypes": {
+        "line": 2,
+        "shape": 69,
+        "table": 1,
+        "text": 217
+      },
+      "shapes": {
+        "rect": 69
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "04-ast-mathematical-parser/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 288,
+      "elementTypes": {
+        "shape": 72,
+        "table": 2,
+        "text": 214
+      },
+      "shapes": {
+        "rect": 72
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "05-induction-determinism/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 267,
+      "elementTypes": {
+        "shape": 57,
+        "table": 2,
+        "text": 208
+      },
+      "shapes": {
+        "rect": 57
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "06-typed-arithmetic/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 283,
+      "elementTypes": {
+        "shape": 69,
+        "table": 1,
+        "text": 213
+      },
+      "shapes": {
+        "rect": 69
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "07-binding-free-variables/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 284,
+      "elementTypes": {
+        "shape": 70,
+        "table": 1,
+        "text": 213
+      },
+      "shapes": {
+        "rect": 70
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "08-capture-avoiding-substitution/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 281,
+      "elementTypes": {
+        "shape": 67,
+        "table": 2,
+        "text": 212
+      },
+      "shapes": {
+        "rect": 67
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "09-lambda-cbv/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 263,
+      "elementTypes": {
+        "shape": 59,
+        "table": 2,
+        "text": 202
+      },
+      "shapes": {
+        "rect": 59
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "10-stlc-typing/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 274,
+      "elementTypes": {
+        "shape": 64,
+        "table": 1,
+        "text": 209
+      },
+      "shapes": {
+        "rect": 64
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "11-canonical-forms/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 265,
+      "elementTypes": {
+        "shape": 60,
+        "table": 3,
+        "text": 202
+      },
+      "shapes": {
+        "rect": 60
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "12-mupl-specification/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 263,
+      "elementTypes": {
+        "shape": 63,
+        "table": 3,
+        "text": 197
+      },
+      "shapes": {
+        "rect": 63
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "13-weakening/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 276,
+      "elementTypes": {
+        "shape": 68,
+        "table": 2,
+        "text": 206
+      },
+      "shapes": {
+        "rect": 68
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "14-substitution-lemma/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 269,
+      "elementTypes": {
+        "shape": 64,
+        "table": 4,
+        "text": 201
+      },
+      "shapes": {
+        "rect": 64
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "15-progress/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 271,
+      "elementTypes": {
+        "shape": 64,
+        "table": 3,
+        "text": 204
+      },
+      "shapes": {
+        "rect": 64
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "16-preservation/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 270,
+      "elementTypes": {
+        "shape": 63,
+        "table": 3,
+        "text": 204
+      },
+      "shapes": {
+        "rect": 63
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "17-type-safety/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 274,
+      "elementTypes": {
+        "shape": 67,
+        "table": 1,
+        "text": 206
+      },
+      "shapes": {
+        "rect": 67
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "18-coq-inductive-definitions/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 264,
+      "elementTypes": {
+        "shape": 67,
+        "table": 3,
+        "text": 194
+      },
+      "shapes": {
+        "rect": 67
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "19-coq-determinism/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 266,
+      "elementTypes": {
+        "shape": 63,
+        "table": 3,
+        "text": 200
+      },
+      "shapes": {
+        "rect": 63
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "20-coq-typing-lemmas/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 267,
+      "elementTypes": {
+        "shape": 66,
+        "table": 2,
+        "text": 199
+      },
+      "shapes": {
+        "rect": 66
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "21-coq-progress-preservation/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 271,
+      "elementTypes": {
+        "shape": 65,
+        "table": 2,
+        "text": 204
+      },
+      "shapes": {
+        "rect": 65
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "22-proof-debugging/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 264,
+      "elementTypes": {
+        "shape": 64,
+        "table": 3,
+        "text": 197
+      },
+      "shapes": {
+        "rect": 64
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "23-independent-spec/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 262,
+      "elementTypes": {
+        "shape": 60,
+        "table": 3,
+        "text": 199
+      },
+      "shapes": {
+        "rect": 60
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "24-independent-paper-proof/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 267,
+      "elementTypes": {
+        "shape": 62,
+        "table": 2,
+        "text": 203
+      },
+      "shapes": {
+        "rect": 62
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "25-independent-coq/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 271,
+      "elementTypes": {
+        "line": 1,
+        "shape": 66,
+        "table": 2,
+        "text": 202
+      },
+      "shapes": {
+        "rect": 66
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "26-research-review/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 261,
+      "elementTypes": {
+        "shape": 63,
+        "table": 4,
+        "text": 194
+      },
+      "shapes": {
+        "rect": 63
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "27-state-store-effects/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 261,
+      "elementTypes": {
+        "shape": 61,
+        "table": 4,
+        "text": 196
+      },
+      "shapes": {
+        "rect": 61
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "28-denotational-compositionality/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 268,
+      "elementTypes": {
+        "shape": 64,
+        "table": 2,
+        "text": 202
+      },
+      "shapes": {
+        "rect": 64
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "29-hoare-logic/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 269,
+      "elementTypes": {
+        "shape": 61,
+        "table": 3,
+        "text": 205
+      },
+      "shapes": {
+        "rect": 61
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "30-subtyping-inference/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 286,
+      "elementTypes": {
+        "shape": 69,
+        "table": 1,
+        "text": 216
+      },
+      "shapes": {
+        "rect": 69
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "31-polymorphism-recursion/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 278,
+      "elementTypes": {
+        "shape": 66,
+        "table": 1,
+        "text": 211
+      },
+      "shapes": {
+        "rect": 66
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    },
+    {
+      "manifest": "32-program-equivalence/deck.pptd",
+      "declaredPages": 23,
+      "loadedPages": 23,
+      "elements": 278,
+      "elementTypes": {
+        "shape": 66,
+        "table": 2,
+        "text": 210
+      },
+      "shapes": {
+        "rect": 66
+      },
+      "chartTypes": {},
+      "animationEffects": {}
+    }
+  ],
+  "issues": []
+}

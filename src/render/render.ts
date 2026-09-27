@@ -243,7 +243,7 @@ function renderText(el: SlideElement, deck: Deck, mediaBase: string): string {
   const fill = el.fillObj;
   const fillCss = fill?.type === 'solid' ? `background:${resolveColor(fill.color, deck)}`
     : fill?.type === 'gradient' || fill?.type === 'radial-gradient' ? `background:${gradientCss(fill, deck)}`
-    : fill?.type === 'image' ? `background-image:url("${esc(mediaSrc(fill.src, mediaBase))}");background-size:${fill.fit === 'contain' ? 'contain' : fill.fit === 'fill' ? '100% 100%' : 'cover'};background-position:center`
+    : fill?.type === 'image' && fill.src ? `background-image:url(${esc(JSON.stringify(mediaSrc(fill.src, mediaBase)))});background-size:${fill.fit === 'contain' ? 'contain' : fill.fit === 'fill' ? '100% 100%' : 'cover'};background-position:center`
     : '';
   const css = [
     `display:flex`, `flex-direction:column`,
@@ -396,8 +396,9 @@ function renderIcon(el: SlideElement, deck: Deck): string {
   const pfx = rest.length ? pfxRaw : 'fas';
   const cls = rest.length ? rest.join(':') : pfxRaw;
   const faClass = ({ fas: 'fa-solid', far: 'fa-regular', fab: 'fa-brands' } as Record<string, string>)[pfx] || 'fa-solid';
+  const iconClass = rest.length && !cls.startsWith('fa-') ? `fa-${cls}` : cls;
   const size = Math.min(el.w || 48, el.h || 48);
-  return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:${resolveColor(el.fill || '#1A1A1A', deck)}"><i class="${faClass} ${cls}" style="font-size:${f(size)}px;line-height:1" aria-hidden="true"></i></div>`;
+  return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:${resolveColor(el.fill || '#1A1A1A', deck)}"><i class="${faClass} ${iconClass}" style="font-size:${f(size)}px;line-height:1" aria-hidden="true"></i></div>`;
 }
 
 // ── 表格 ──
@@ -453,7 +454,7 @@ function renderTable(el: SlideElement, deck: Deck): string {
         st.borders.top || st.borders.right || st.borders.bottom || st.borders.left ? `border-color:${st.borders.bottom?.color || st.borders.top?.color || '#E2E8F0'}` : '',
       ].filter(Boolean).join(';');
       const bcss = (['top', 'right', 'bottom', 'left'] as const).map(side => st.borders[side] ? `border-${side}:${st.borders[side]?.css}` : '').filter(Boolean).join(';');
-      tds.push(`<td${rs > 1 ? ` rowspan="${rs}"` : ''}${cs > 1 ? ` colspan="${cs}"` : ''} style="${[attrs, bcss].filter(Boolean).join(';')};padding:6px 9px;overflow:hidden"><div class="slx-richtext">${html || '&nbsp;'}</div></td>`);
+      tds.push(`<td${rs > 1 ? ` rowspan="${rs}"` : ''}${cs > 1 ? ` colspan="${cs}"` : ''} style="${[attrs, bcss].filter(Boolean).join(';')};padding:6px 9px;overflow:hidden" data-cell-row="${gr}" data-cell-col="${gc}"><div class="slx-richtext">${html || '&nbsp;'}</div></td>`);
     });
     const hAttr = rowH ? ` style="height:${f(rowH[r] * (el.h || 0))}px"` : '';
     rowsHtml.push(`<tr${hAttr}>${tds.join('')}</tr>`);

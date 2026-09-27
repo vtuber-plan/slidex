@@ -69,11 +69,11 @@ try {
   const browserServer=await startServer(first,{port:0});
   try {
     await page.goto(`http://127.0.0.1:${browserServer.port}`);await page.waitForSelector('#canvasHost .slx-slide');
-    await openMenu();await page.waitForSelector('[role="dialog"]');
-    await page.type('[aria-label="文件路径"]',second);
+    await openMenu();await page.waitForSelector('[role="dialog"]');await page.waitForSelector('[role="dialog"] [aria-label="文件路径"]');
+    await page.$eval('[aria-label="文件路径"]',(el,v)=>{const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));},second);
     await page.locator('[role="dialog"] button::-p-text(打开)').click();
     await page.waitForFunction(()=>window.__slxGetXml().includes('title="Second"'));
-    assert.equal(await page.$('[role="dialog"]'),null);
+    await page.waitForFunction(()=>!document.querySelector('[role="dialog"]'));
     await page.screenshot({path:path.join(dir,'workspace.png')});
   } finally {browserServer.close();}
   console.log('PASS workspace: inline text, three resize handles, persistence, native picker cancellation/open/error, browser path dialog and save preservation. Artifacts:',dir);

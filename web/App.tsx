@@ -1,5 +1,5 @@
 import { t, useLocale, setLocale,LOCALES,type Locale } from "./i18n";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Dialog,
@@ -15,7 +15,6 @@ import {
   ChevronDown,
   Copy,
   FilePlus,
-  FolderOpen,
   Grid2X2,
   Group,
   Image,
@@ -31,12 +30,12 @@ import {
   Undo2,
   Ungroup,
   ChartColumn,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
   AlignStartVertical,
   AlignCenterVertical,
   AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
   Minus,
   PanelLeft,
   PanelRight,
@@ -49,7 +48,7 @@ import { Player, PreviewGrid, Presenter } from "./Player";
 import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
 import { EditingTools } from "./EditingTools";
-import { Diagnostic, ErrorMessage } from "./Diagnostics";
+import { ErrorMessage } from "./Diagnostics";
 import {PageList} from './PageList';
 import {LayoutMenu} from './LayoutMenu';
 import {useLayoutPreferences} from './layoutPreferences';
@@ -60,8 +59,9 @@ import { formatSlideX } from "../src/format";
 import { parsePages } from "../src/export/pages";
 import { shapeSvg as shapePath } from "../src/render/shapes";
 import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
-import {SourceEditor} from './SourceEditor';
 import type { ElementType } from "../src/types";
+
+const SourceWorkspace = lazy(() => import("./SourceWorkspace").then(module => ({ default: module.SourceWorkspace })));
 
 declare global {
   interface Window {
@@ -70,6 +70,7 @@ declare global {
     __slxCommand?: (command: string) => boolean;
     __slxTextCommand?: (command: string) => boolean;
     __slxOpenDocument?: (path: string) => Promise<boolean>;
+    __slxHasUnsavedChanges?: () => boolean;
   }
 }
 function shapeSvg(name: string, w: number, h: number) {
@@ -84,6 +85,50 @@ export default function App() {
   const {settings:layoutSettings}=useLayoutPreferences();
   const [rightWidth, setRightWidth] = usePanelSize("right", 300);
   const [openFile, setOpenFile] = useState(false), [filePath, setFilePath] = useState("");
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [replacingFile, setReplacingFile] = useState(false);
+  const replaceInProgress = useRef(false);
+  const replaceDecision = useRef<((proceed: boolean) => void) | null>(null);
+  function finishReplaceDecision(proceed: boolean) {
+    replaceDecision.current?.(proceed);
+    replaceDecision.current = null;
+    setConfirmReplace(false);
+  }
+  async function confirmBeforeReplace(): Promise<boolean> {
+    window.__slxCommitText?.();
+    const state = useEditor.getState();
+    if (serializeDeck(state.deck) === state.saved && (!source || xml === serializeDeck(state.deck))) return true;
+    return new Promise<boolean>((resolve) => {
+      replaceDecision.current = resolve;
+      setConfirmReplace(true);
+    });
+  }
+  async function saveBeforeReplace() {
+    setConfirmBusy(true);
+    try {
+      if (await window.__slxSave?.()) finishReplaceDecision(true);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+  async function discardBeforeReplace() {
+    setConfirmBusy(true);
+    try {
+      const state = useEditor.getState();
+      const response = await fetch('/api/draft', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: state.file }),
+      });
+      if (!response.ok) throw Error(t('无法丢弃恢复草稿'));
+      finishReplaceDecision(true);
+    } catch (error) {
+      useEditor.setState({ error: String(error) });
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
   const [viewport, setViewport] = useState(window.innerWidth);
   useEffect(() => {
     const resize = () => setViewport(window.innerWidth);
@@ -97,17 +142,21 @@ export default function App() {
   const rightSize = Math.min(rightWidth, Math.max(240, viewport - (leftCollapsed?340:480)));
   const leftSize = Math.min(leftWidth, Math.max(120, viewport - (rightCollapsed?0:rightSize) - 340));
   async function openDocument(path: string) {
+    if (replaceInProgress.current) return false;
+    replaceInProgress.current = true;
+    setReplacingFile(true);
     try {
-      window.__slxCommitText?.();
-      const state = useEditor.getState();
-      if (serializeDeck(state.deck) !== state.saved && !(await state.save())) return false;
+      setOpenFile(false);
+      if (!(await confirmBeforeReplace())) return false;
       const response = await fetch("/api/open", {method:"POST", headers:{"Content-Type":"application/json"},body:JSON.stringify({path:path.trim()})});
       const data = await response.json();
       if (!data.ok) throw Error(data.error);
       await useEditor.getState().load();
+      if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
       setOpenFile(false);
       return true;
     } catch (error) { useEditor.setState({error:String(error)}); return false; }
+    finally { replaceInProgress.current = false; setReplacingFile(false); }
   }
   async function pickOpenDocument(){
     try{const data=await(await fetch('/api/pick-file',{method:'POST'})).json();if(!data.native)setOpenFile(true);else if(data.path)await openDocument(data.path);}catch(error){useEditor.setState({error:String(error)});}
@@ -116,14 +165,19 @@ export default function App() {
   const language = useLocale();
   const [fileCommand,setFileCommand]=useState<'new'|'saveAs'|null>(null),[destination,setDestination]=useState(''),[fileBusy,setFileBusy]=useState(false);
   async function createFile(mode:'new'|'saveAs',path:string){
+    if(replaceInProgress.current)return;
+    if(mode==='new')replaceInProgress.current=true;
     setFileBusy(true);
+    if(mode==='new')setReplacingFile(true);
     try{
       window.__slxCommitText?.();const state=useEditor.getState();
-      if(mode==='new'&&serializeDeck(state.deck)!==state.saved&&!(await state.save()))return;
+      if(mode==='new')setFileCommand(null);
+      if(mode==='new'&&!(await confirmBeforeReplace()))return;
       const response=await fetch('/api/create-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,path,expectedPath:state.file,xml:mode==='saveAs'?serializeDeck(useEditor.getState().deck):undefined})});
       const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'保存失败');
       await useEditor.getState().load();setFileCommand(null);
-    }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);}
+      if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
+    }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);replaceInProgress.current=false;setReplacingFile(false);}
   }
   async function chooseFileCommand(mode:'new'|'saveAs'){
     window.__slxCommitText?.();
@@ -142,13 +196,16 @@ export default function App() {
   const [exportScale,setExportScale]=useState(2);
   const [imageManifest,setImageManifest]=useState(true);
   const [sourceMessage,setSourceMessage]=useState('');
+  const [sourceExit,setSourceExit]=useState(false);
+  const sourceRef=useRef(false);
+  const xmlRef=useRef('');
   const s = useEditor(),
     [dark, setDark] = useState(
       localStorage.getItem("slidex-appearance") === "dark",
     ),
     [present, setPresent] = useState(false),
     [preview, setPreview] = useState(false),
-    [source, setSource] = useState(false),
+    [source, setSource] = useState(location.pathname === '/source'),
     [xml, setXml] = useState(""),
     [exports, setExports] = useState<string[]>([]),
     [exporting, setExporting] = useState(false),
@@ -171,13 +228,39 @@ export default function App() {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
   }, [serialized]);
-  const sourceDiagnostics=useMemo(()=>{const r=parseSlideX(xml);return [...r.errors,...r.warnings];},[xml]);
   useEffect(()=>{
     if(!s.ready||serialized===s.saved||s.gesture)return;
     const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized})}).catch(()=>{});},800);
     return()=>clearTimeout(timer);
   },[serialized,s.saved,s.file,s.ready,!!s.gesture]);
-  const openSource=()=>{window.__slxCommitText?.();setXml(serializeDeck(useEditor.getState().deck));setSourceMessage('');setSource(true);};
+  const openSource=(formatted=false)=>{
+    window.__slxCommitText?.();
+    const current=serializeDeck(useEditor.getState().deck);
+    const next=formatted?formatSlideX(current):current;
+    xmlRef.current=next;setXml(next);
+    setSourceMessage('');
+    if(!sourceRef.current){history.pushState({},'', '/source');sourceRef.current=true;setSource(true);}
+  };
+  const leaveSource=()=>{history.replaceState({},'', '/');sourceRef.current=false;setSource(false);setSourceExit(false);};
+  const requestSourceExit=()=>{
+    if(xmlRef.current!==serializeDeck(useEditor.getState().deck)){setSourceExit(true);return;}
+    leaveSource();
+  };
+  const applySource=()=>{if(useEditor.getState().applySource(xml))leaveSource();};
+  const saveSource=async()=>{
+    if(!useEditor.getState().applySource(xml))return;
+    if(await useEditor.getState().save())setSourceMessage(t('所有更改已保存'));
+  };
+  useEffect(()=>{xmlRef.current=xml;sourceRef.current=source;},[xml,source]);
+  useEffect(()=>{if(s.ready&&source&&!xml){const next=serializeDeck(useEditor.getState().deck);xmlRef.current=next;setXml(next);}},[s.ready,source]);
+  useEffect(()=>{
+    const back=()=>{
+      if(sourceRef.current&&xmlRef.current!==serializeDeck(useEditor.getState().deck)){
+        history.pushState({},'', '/source');setSourceExit(true);
+      }else{sourceRef.current=location.pathname==='/source';setSource(sourceRef.current);}
+    };
+    window.addEventListener('popstate',back);return()=>window.removeEventListener('popstate',back);
+  },[]);
   useEffect(()=>{
     const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='new'||action==='saveAs')void chooseFileCommand(action);if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
     window.addEventListener('slidex-menu',handler);return()=>window.removeEventListener('slidex-menu',handler);
@@ -228,6 +311,7 @@ export default function App() {
       !autosave ||
       !s.ready ||
       !dirty ||
+      replacingFile ||
       s.editing ||
       s.gesture ||
       s.error ||
@@ -238,20 +322,28 @@ export default function App() {
       void useEditor.getState().save();
     }, 1800);
     return () => clearTimeout(timer);
-  }, [autosave, serialized, dirty, s.ready, s.editing, s.gesture, s.error]);
+  }, [autosave, serialized, dirty, replacingFile, s.ready, s.editing, s.gesture, s.error]);
   useEffect(() => {
     window.__slxGetXml = () => {
       window.__slxCommitText?.();
       return serializeDeck(useEditor.getState().deck);
     };
-    window.__slxSave = () => useEditor.getState().save();
-    window.__slxDirty = dirty;
+    window.__slxSave = async () => {
+      if (sourceRef.current && xmlRef.current !== serializeDeck(useEditor.getState().deck) && !useEditor.getState().applySource(xmlRef.current)) return false;
+      return useEditor.getState().save();
+    };
+    window.__slxHasUnsavedChanges = () => {
+      window.__slxCommitText?.();
+      const state = useEditor.getState();
+      return serializeDeck(state.deck) !== state.saved || (sourceRef.current && xmlRef.current !== serializeDeck(state.deck));
+    };
+    window.__slxDirty = dirty || (sourceRef.current && xmlRef.current !== serialized);
     const before = (e: BeforeUnloadEvent) => {
-      if (window.__slxDirty) e.preventDefault();
+      if (window.__slxHasUnsavedChanges?.()) e.preventDefault();
     };
     window.addEventListener("beforeunload", before);
-    return () => window.removeEventListener("beforeunload", before);
-  }, [dirty]);
+    return () => { window.removeEventListener("beforeunload", before); delete window.__slxHasUnsavedChanges; };
+  }, [dirty, source, xml, serialized]);
   useEffect(() => {
     localStorage.setItem("slidex-appearance", dark ? "dark" : "light");
   }, [dark]);
@@ -442,6 +534,11 @@ export default function App() {
               onClose={() => location.assign("/")}
             />
           )
+        ) : source ? (
+          <Suspense fallback={<main className="loading"><p>{t("正在载入源码编辑器…")}</p></main>}>
+            <SourceWorkspace value={xml} onChange={setXml} onApply={applySource} onSave={()=>void saveSource()} onClose={requestSourceExit}
+              message={sourceMessage} setMessage={setSourceMessage} error={s.error} file={s.file} multiFile={s.multiFile} dark={dark}/>
+          </Suspense>
         ) : (
           <>
             <RenderResources deck={s.deck} />
@@ -497,7 +594,6 @@ export default function App() {
                   <DropdownMenu.Item
                     shortcut="Ctrl+O" onSelect={()=>void pickOpenDocument()}
                   >
-                    <FolderOpen size={14} />
                     {t("打开本地文件")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
@@ -526,9 +622,9 @@ export default function App() {
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger><Button variant="ghost">{t("工具")}<ChevronDown size={13}/></Button></DropdownMenu.Trigger>
                 <DropdownMenu.Content>
-                  <DropdownMenu.Item onSelect={openSource}>{t("DSL 源码与检查…")}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>openSource()}>{t("DSL 源码与检查…")}</DropdownMenu.Item>
                   <DropdownMenu.Item onSelect={()=>{openSource();setSourceMessage(t("诊断已更新"));}}>{t("语法检查")}</DropdownMenu.Item>
-                  <DropdownMenu.Item onSelect={()=>{openSource();setXml(formatSlideX(serializeDeck(useEditor.getState().deck)));}}>{t("格式化 DSL…")}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={()=>openSource(true)}>{t("格式化 DSL…")}</DropdownMenu.Item>
                   <DropdownMenu.Separator/>
                   <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setExportFormat('png');setPageMode('current');setImageManifest(true);setExportOptions(true);}}>{t("导出图片给 LLM…")}</DropdownMenu.Item>
                 </DropdownMenu.Content>
@@ -570,12 +666,12 @@ export default function App() {
               <span className="separator" />
               {(
                 [
-                  [t("左对齐"), AlignLeft, "x", 0],
-                  [t("水平居中"), AlignCenter, "x", 0.5],
-                  [t("右对齐"), AlignRight, "x", 1],
-                  [t("顶部对齐"), AlignStartVertical, "y", 0],
-                  [t("垂直居中"), AlignCenterVertical, "y", 0.5],
-                  [t("底部对齐"), AlignEndVertical, "y", 1],
+                  [t("左对齐"), AlignStartVertical, "x", 0],
+                  [t("水平居中"), AlignCenterVertical, "x", 0.5],
+                  [t("右对齐"), AlignEndVertical, "x", 1],
+                  [t("顶部对齐"), AlignStartHorizontal, "y", 0],
+                  [t("垂直居中"), AlignCenterHorizontal, "y", 0.5],
+                  [t("底部对齐"), AlignEndHorizontal, "y", 1],
                 ] as const
               ).map(([label, Icon, axis, pos]) => (
                 <Tool
@@ -767,27 +863,6 @@ export default function App() {
                 </Button>
               </div>
             )}
-            <Dialog.Root open={fileCommand!==null} onOpenChange={open=>{if(!open&&!fileBusy)setFileCommand(null);}}>
-              <Dialog.Content maxWidth="540px">
-                <Dialog.Title>{t(fileCommand==='new'?'新建…':'另存为…')}</Dialog.Title>
-                <Dialog.Description>{t('请选择新的 .slx 文件路径；已有文件不会被覆盖。')}</Dialog.Description>
-                <form onSubmit={e=>{e.preventDefault();if(fileCommand)void createFile(fileCommand,destination);}}>
-                  <TextField.Root aria-label={t('文件路径')} value={destination} onChange={e=>setDestination(e.target.value)} disabled={fileBusy}/>
-                  {s.error&&<p role="alert">{s.error}</p>}
-                  <div className="dialog-actions"><Button type="button" variant="soft" disabled={fileBusy} onClick={()=>setFileCommand(null)}>{t('取消')}</Button><Button type="submit" disabled={fileBusy||!destination.trim()}>{t(fileCommand==='new'?'新建':'保存')}</Button></div>
-                </form>
-              </Dialog.Content>
-            </Dialog.Root>
-            <Dialog.Root open={openFile} onOpenChange={setOpenFile}>
-              <Dialog.Content maxWidth="540px">
-                <Dialog.Title>{t("打开本地文件")}</Dialog.Title>
-                <Dialog.Description>{t("输入 .slx 文件的完整路径")}</Dialog.Description>
-                <form onSubmit={e => { e.preventDefault(); void openDocument(filePath); }}>
-                  <TextField.Root aria-label={t("文件路径")} value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="G:\\slides\\deck.slx" />
-                  <div className="dialog-actions"><Dialog.Close><Button type="button" variant="soft">{t("取消")}</Button></Dialog.Close><Button type="submit" disabled={!filePath.trim()}>{t("打开")}</Button></div>
-                </form>
-              </Dialog.Content>
-            </Dialog.Root>
             <Dialog.Root open={preferences} onOpenChange={setPreferences}>
               <Dialog.Content maxWidth="460px">
                 <Dialog.Title>{t("偏好设置")}</Dialog.Title>
@@ -821,44 +896,6 @@ export default function App() {
                 </div>
                 {s.error&&<div role="alert"><ErrorMessage message={s.error}/></div>}
                 <div className="dialog-actions"><Dialog.Close><Button variant="soft" disabled={exporting}>{t("取消")}</Button></Dialog.Close><Button disabled={exporting} onClick={()=>void exportDeck(exportFormat,exportFormat==='pptx'&&pptxEditable)}>{t(exporting?'导出中…':'开始导出')}</Button></div>
-              </Dialog.Content>
-            </Dialog.Root>
-            <Dialog.Root open={source} onOpenChange={setSource}>
-              <Dialog.Content maxWidth="1000px" onEscapeKeyDown={e=>{if(document.querySelector('.source-completions'))e.preventDefault();}}>
-                <Dialog.Title>{t("文档源码")}</Dialog.Title>
-                <Dialog.Description size="2" mb="3">
-                  {t("编辑 XML 后验证并应用。保存和撤销与画布共享。")}
-                </Dialog.Description>
-                <SourceEditor value={xml} onChange={value=>{setXml(value);setSourceMessage('');}}/>
-                {s.multiFile&&<p>{t('多文件项目：此处编辑合并视图；保存会原子更新页面引用。')}</p>}
-                {s.error && (
-                  <div role="alert">
-                    <ErrorMessage message={s.error} />
-                  </div>
-                )}
-                <p role="status">{sourceMessage || (sourceDiagnostics.length ? t("文档诊断") : t("无错误无警告"))}</p>
-                {sourceDiagnostics.length > 0 && (
-                  <details open>
-                    <summary>{t("文档诊断")}</summary>
-                    {sourceDiagnostics.map((d, i) => (
-                      <div key={i}><button className="diagnostic-location" onClick={()=>{const area=document.querySelector<HTMLTextAreaElement>('[aria-label="'+t('XML 源码')+'"]');const pos=xml.split('\n').slice(0,Math.max(0,(d.line||1)-1)).reduce((n,line)=>n+line.length+1,0)+Math.max(0,(d.col||1)-1);area?.focus();area?.setSelectionRange(pos,pos+1);}}>{t('定位')} {d.line||1}:{d.col||1}</button><Diagnostic value={d}/></div>
-                    ))}
-                  </details>
-                )}
-                <div className="dialog-actions">
-                  <Button variant="soft" onClick={()=>{try{setXml(formatSlideX(xml));setSourceMessage(t('格式化完成'));}catch(e){setSourceMessage(String(e));}}}>{t("格式化")}</Button>
-                  <Button variant="soft" onClick={()=>setSourceMessage(t('诊断已更新'))}>{t("语法检查")}</Button>
-                  <Dialog.Close>
-                    <Button variant="soft">{t("取消")}</Button>
-                  </Dialog.Close>
-                  <Button
-                    onClick={() => {
-                      if (s.applySource(xml)) setSource(false);
-                    }}
-                  >
-                    {t("验证并应用")}
-                  </Button>
-                </div>
               </Dialog.Content>
             </Dialog.Root>
             <Dialog.Root
@@ -1007,6 +1044,50 @@ export default function App() {
             )}
           </>
         )}
+        <Dialog.Root open={fileCommand!==null} onOpenChange={open=>{if(!open&&!fileBusy)setFileCommand(null);}}>
+          <Dialog.Content maxWidth="540px">
+            <Dialog.Title>{t(fileCommand==='new'?'新建…':'另存为…')}</Dialog.Title>
+            <Dialog.Description>{t('请选择新的 .slx 文件路径；已有文件不会被覆盖。')}</Dialog.Description>
+            <form onSubmit={e=>{e.preventDefault();if(fileCommand)void createFile(fileCommand,destination);}}>
+              <TextField.Root aria-label={t('文件路径')} value={destination} onChange={e=>setDestination(e.target.value)} disabled={fileBusy}/>
+              {s.error&&<p role="alert">{s.error}</p>}
+              <div className="dialog-actions"><Button type="button" variant="soft" disabled={fileBusy} onClick={()=>setFileCommand(null)}>{t('取消')}</Button><Button type="submit" disabled={fileBusy||!destination.trim()}>{t(fileCommand==='new'?'新建':'保存')}</Button></div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={openFile} onOpenChange={setOpenFile}>
+          <Dialog.Content maxWidth="540px">
+            <Dialog.Title>{t("打开本地文件")}</Dialog.Title>
+            <Dialog.Description>{t("输入 .slx 文件的完整路径")}</Dialog.Description>
+            <form onSubmit={e => { e.preventDefault(); void openDocument(filePath); }}>
+              <TextField.Root aria-label={t("文件路径")} value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="G:\\slides\\deck.slx" />
+              <div className="dialog-actions"><Dialog.Close><Button type="button" variant="soft">{t("取消")}</Button></Dialog.Close><Button type="submit" disabled={!filePath.trim()}>{t("打开")}</Button></div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={confirmReplace} onOpenChange={open=>{if(!open&&!confirmBusy)finishReplaceDecision(false);}}>
+          <Dialog.Content maxWidth="440px">
+            <Dialog.Title>{t('保存当前文稿的更改？')}</Dialog.Title>
+            <Dialog.Description>{t('继续操作前，请选择保存、丢弃更改或取消。')}</Dialog.Description>
+            {s.error&&<p role="alert"><ErrorMessage message={s.error}/></p>}
+            <div className="dialog-actions">
+              <Button type="button" variant="soft" disabled={confirmBusy} onClick={()=>finishReplaceDecision(false)}>{t('取消')}</Button>
+              <Button type="button" variant="soft" color="red" disabled={confirmBusy} onClick={()=>void discardBeforeReplace()}>{t('丢弃')}</Button>
+              <Button type="button" disabled={confirmBusy} onClick={()=>void saveBeforeReplace()}>{t('保存')}</Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={sourceExit} onOpenChange={setSourceExit}>
+          <Dialog.Content maxWidth="440px">
+            <Dialog.Title>{t('离开源码编辑？')}</Dialog.Title>
+            <Dialog.Description>{t('源码中尚有未应用的修改。')}</Dialog.Description>
+            <div className="dialog-actions">
+              <Button variant="soft" onClick={()=>setSourceExit(false)}>{t('继续编辑')}</Button>
+              <Button variant="soft" color="red" onClick={leaveSource}>{t('丢弃')}</Button>
+              <Button onClick={applySource}>{t('验证并应用')}</Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Root>
       </div>
     </Theme>
   );

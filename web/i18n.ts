@@ -219,6 +219,7 @@ DSL 源码与检查…|DSL source and diagnostics…
 公式语法无效|Invalid formula syntax
 文字超出文本框，部分内容将被裁切；请增大文本框或调整排版。|Text exceeds its box and will be clipped. Enlarge the box or adjust its layout.
 纯色|Solid color
+无填充|No fill
 编辑范围|Editing scope
 页面|Page
 进入组合|Enter group
@@ -248,6 +249,20 @@ DSL 源码与检查…|DSL source and diagnostics…
 返回编辑器|Back to editor
 演示文稿标题|Presentation title
 有未保存的更改|Unsaved changes
+保存当前文稿的更改？|Save changes to the current deck?
+离开源码编辑？|Leave source editor?
+源码中尚有未应用的修改。|Source changes have not been applied.
+继续编辑|Keep editing
+返回画布|Back to canvas
+文档结构|Document outline
+正在载入源码编辑器…|Loading source editor…
+暂无页面或母版|No slides or masters
+错误|errors
+警告|warnings
+行|lines
+继续操作前，请选择保存、丢弃更改或取消。|Before continuing, save your changes, discard them, or cancel.
+丢弃|Discard
+无法丢弃恢复草稿|Could not discard the recovery draft
 所有更改已保存|All changes saved
 浅色界面|Light mode
 深色界面|Dark mode
@@ -334,6 +349,22 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 分布与尺寸|Distribute and size
 水平等距分布|Distribute horizontally
 垂直等距分布|Distribute vertically
+相对于|Relative to
+选中对象|Selected objects
+页面或组合|Page or group
+对齐对象|Align objects
+分布对象|Distribute objects
+等距分布左边缘|Distribute left edges
+等距分布水平中心|Distribute horizontal centers
+等距分布右边缘|Distribute right edges
+等距分布上边缘|Distribute top edges
+等距分布垂直中心|Distribute vertical centers
+等距分布下边缘|Distribute bottom edges
+调整图层顺序|Change layer order
+移到最前|Bring to front
+上移一层|Bring forward one layer
+下移一层|Send backward one layer
+移到最后|Send to back
 统一宽度|Match widths
 统一高度|Match heights
 格式刷|Format painter
@@ -393,6 +424,7 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 锁定|Lock
 锁定比例|Lock aspect ratio
 图片地址|Image URL
+选择图片文件|Choose image file
 裁剪比例|Crop margins
 圆角|Corner radius
 阴影|Shadow
@@ -478,7 +510,27 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 无效文档|Invalid document
 应用|Apply
 单元格|Cell
+基本信息|Basic information
+圆角半径|Corner radius
+路径数据（高级）|Path data (advanced)
+组合结构（高级）|Group structure (advanced)
+填充数据（高级）|Fill data (advanced)
 Shift 扩选|Shift to extend selection
+点击选择单元格，按 Shift 扩展选区|Click a cell; hold Shift to extend the selection
+表格结构|Table structure
+行|Rows
+列|Columns
+上方插入|Insert above
+下方插入|Insert below
+左侧插入|Insert left
+右侧插入|Insert right
+单元格外观|Cell appearance
+边框设置|Borders
+上边框|Top border
+右边框|Right border
+下边框|Bottom border
+左边框|Left border
+边框格式示例：1 solid #E2E8F0|Example: 1 solid #E2E8F0
 合并单元格|Merge cells
 拆分单元格|Split cell
 下方插入行|Insert row below
@@ -492,6 +544,15 @@ Shift 扩选|Shift to extend selection
 单元格文字颜色|Cell text color
 列宽比例|Column proportions
 图表数据|Chart data
+系列名称|Series name
+系列样式与高级选项|Series style and advanced options
+系列填充|Series fill
+系列描边|Series stroke
+堆叠方式|Stacking
+标记形状|Marker
+数据标签|Data labels
+内径比例|Inner radius
+坐标轴设置（高级）|Axis settings (advanced)
 添加数据行|Add data row
 添加数据列|Add data column
 删除末行|Delete last row

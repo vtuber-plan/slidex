@@ -81,6 +81,7 @@ const changeLanguage = async (locale) => {
   await page.locator(`[role="menuitem"]::-p-text(${english?'Preferences':'偏好设置'})`).click();
   await page.select('[aria-label="Language / 语言"]',locale);
   await page.locator(`button::-p-text(${locale==='en'?'Done':'完成'})`).click();
+  await page.waitForSelector('[role="dialog"]',{hidden:true});
 };
 try {
   await page.goto(base, { waitUntil: "networkidle0" });
@@ -334,7 +335,7 @@ try {
     parseSlideX(await xml()).deck.slides[0].elements.find(
       (el) => el.id === "table",
     );
-  await clickText("右侧插入列");
+  await page.click('[aria-label="右侧插入列"]');
   check(
     "inserting within merged columns extends span",
     Number((await tableState()).rowsData[0][0]["col-span"]) === 3 &&
@@ -371,7 +372,7 @@ try {
   await page.click('[aria-label="单元格 2,1"]');
   await page.keyboard.up("Shift");
   await clickText("合并单元格");
-  await clickText("下方插入行");
+  await page.click('[aria-label="下方插入行"]');
   check(
     "inserting within merged rows extends span",
     Number((await tableState()).rowsData[0][0]["row-span"]) === 3 &&
@@ -626,21 +627,18 @@ try {
   await page.click('[aria-label="撤销"]');
   await page.locator('.command-bar button::-p-text(工具)').click();
   await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
-  await page.waitForSelector('[aria-label="XML 源码"]');
-  await page.$eval('[aria-label="XML 源码"]', (el) => {
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    ).set;
-    setter.call(el, "<deck><broken>");
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await page.waitForSelector('.source-monaco textarea.inputarea');
+  await page.click('.source-monaco .view-lines');
+  await page.keyboard.down('Control');await page.keyboard.press('a');await page.keyboard.up('Control');
+  await page.keyboard.type('<deck><broken>');
   await clickText("验证并应用");
   check(
     "invalid source rejected without replacing document",
     parseSlideX(await xml()).deck.slides.length === 2,
   );
-  await clickText("取消");
+  await page.click('button[aria-label="返回画布"]');
+  await page.locator('[role="dialog"][data-state="open"] button::-p-text(丢弃)').click();
+  await page.waitForSelector('#canvasHost [data-id="shape"]');
   await page.waitForSelector('[role="dialog"]', { hidden: true });
   await page.click(".error-toast button").catch(() => {});
   await page.click('#canvasHost .slx-el[data-id="shape"]');

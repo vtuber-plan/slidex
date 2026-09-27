@@ -79,6 +79,12 @@ export function historyStore(directory: string) {
       h.draft = { time: Date.now(), xml, draft: true };
       write(file, h);
     },
+    discardDraft: (file: string) => {
+      const h = read(file);
+      if (!h.draft) return;
+      delete h.draft;
+      write(file, h);
+    },
     saved: (file: string, xml: string) => {
       record(file, xml);
       const h = read(file);

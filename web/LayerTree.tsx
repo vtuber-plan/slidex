@@ -7,9 +7,16 @@ import {
   Lock,
   Unlock,
   Pencil,
+  MoreHorizontal,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUp,
+  ChevronsDown,
 } from "lucide-react";
+import { DropdownMenu } from "@radix-ui/themes";
 import { useEditor, rootContainer } from "./store";
 import { ELEMENT_SCHEMA } from "../src/ir";
+import { findLayer } from "../src/page-operations";
 import type { SlideElement } from "../src/types";
 import { t, useLocale } from "./i18n";
 
@@ -56,9 +63,18 @@ export function LayerTree() {
   };
   walk(rootContainer(s).elements);
   const focus = (id: string) => document.getElementById(`layer-${id}`)?.focus();
+  const root = rootContainer(s).elements;
   return (
     <div role="tree" aria-label={t("对象图层")} className="layer-tree">
-      {rows.map(({ el, depth, blocked, hiddenParent, parent }, index) => (
+      {rows.map(({ el, depth, blocked, hiddenParent, parent }, index) => {
+        const siblings = findLayer(root, el.id)?.parents.at(-1)?.elements || root;
+        const layerIndex = siblings.findIndex((sibling) => sibling.id === el.id);
+        const canMove = !blocked && !el.locked;
+        const canForward = canMove && layerIndex < siblings.length - 1 && !siblings[layerIndex + 1]?.locked;
+        const canBackward = canMove && layerIndex > 0 && !siblings[layerIndex - 1]?.locked;
+        const canFront = canMove && layerIndex < siblings.length - 1 && siblings.slice(layerIndex + 1).every((sibling) => !sibling.locked);
+        const canBack = canMove && layerIndex > 0 && siblings.slice(0, layerIndex).every((sibling) => !sibling.locked);
+        return (
         <div
           key={el.id}
           id={`layer-${el.id}`}
@@ -167,6 +183,17 @@ export function LayerTree() {
               <small>{el.id}</small>
             </button>
           )}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <button aria-label={`${t("调整图层顺序")} ${el.label || el.id}`} title={t("调整图层顺序")} disabled={!canMove}><MoreHorizontal size={14}/></button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content>
+              <DropdownMenu.Item disabled={!canFront} onSelect={() => s.moveLayer(el.id,"front")}><ChevronsUp size={14}/>{t("移到最前")}</DropdownMenu.Item>
+              <DropdownMenu.Item disabled={!canForward} onSelect={() => s.moveLayer(el.id,"forward")}><ArrowUp size={14}/>{t("上移一层")}</DropdownMenu.Item>
+              <DropdownMenu.Item disabled={!canBackward} onSelect={() => s.moveLayer(el.id,"backward")}><ArrowDown size={14}/>{t("下移一层")}</DropdownMenu.Item>
+              <DropdownMenu.Item disabled={!canBack} onSelect={() => s.moveLayer(el.id,"back")}><ChevronsDown size={14}/>{t("移到最后")}</DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
           <button
             aria-label={t("重命名图层")}
             title={t("重命名图层")}
@@ -191,7 +218,7 @@ export function LayerTree() {
             {el.locked || blocked ? <Lock size={14} /> : <Unlock size={14} />}
           </button>
         </div>
-      ))}
+      );})}
     </div>
   );
 }

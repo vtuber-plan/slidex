@@ -1,0 +1,8 @@
+<deck version="1" width="960" height="540" title="Chart export visual QA">
+  <slide id="positive"><chart id="bars" x="120" y="55" w="700" h="420"><data cols="name,value"><row>A,10</row><row>B,20</row><row>C,15</row></data><series type="bar" x="name" y="value"/></chart></slide>
+  <slide id="negative"><chart id="negative-bars" x="120" y="55" w="700" h="420"><data cols="name,value"><row>A,-8</row><row>B,12</row><row>C,4</row></data><series type="bar" x="name" y="value"/></chart></slide>
+  <slide id="horizontal"><chart id="horizontal-bars" x="120" y="55" w="700" h="420"><data cols="name,value"><row>A,10</row><row>B,20</row><row>C,15</row></data><x-axis type="value"/><y-axis type="category"/><series type="bar" x="value" y="name"/></chart></slide>
+  <slide id="line"><chart id="trend" x="120" y="55" w="700" h="420"><data cols="name,value"><row>A,-8</row><row>B,12</row><row>C,4</row></data><series type="line" x="name" y="value"/></chart></slide>
+  <slide id="scatter"><chart id="points" x="120" y="55" w="700" h="420"><data cols="x,y"><row>2,10</row><row>8,20</row><row>5,15</row></data><series type="scatter" x="x" y="y"/></chart></slide>
+  <slide id="pie"><chart id="slices" x="120" y="55" w="700" h="420"><data cols="name,value"><row>A,10</row><row>B,20</row><row>C,15</row></data><series type="pie" x="name" y="value"/></chart></slide>
+</deck>

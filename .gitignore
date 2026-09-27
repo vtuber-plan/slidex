@@ -11,3 +11,4 @@ dist-electron/
 dist-pkg/
 handle64.exe
 app/web/
+__pycache__/

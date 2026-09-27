@@ -26,12 +26,9 @@ try{await withBrowser(async browser=>{
   await page.goto(base+'/preview');await page.waitForSelector('.preview-grid .slx-slide');assert.equal(await page.$$eval('.preview-grid>button',n=>n.length),100);assert.ok(await page.$$eval('.preview-grid .slx-slide',n=>n.length)<40);
   await page.evaluate(()=>localStorage.setItem('slidex-autosave','false'));
   await page.goto(base);await page.waitForSelector('#canvasHost [data-id="label"]');
-  await page.locator('button::-p-text(工具)').click();await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();await page.waitForSelector('[aria-label="XML 源码"]');
-  await page.$eval('[aria-label="XML 源码"]',el=>{el.focus();const at=el.value.indexOf('<shape')+4;el.setSelectionRange(at,at);});
-  await page.keyboard.down('Control');await page.keyboard.press('Space');await page.keyboard.up('Control');await page.waitForSelector('.source-completions');assert.match(await page.$eval('.source-completions',el=>el.textContent),/shape/);await page.keyboard.press('Escape');
-  await page.$eval('[aria-label="XML 源码"]',el=>{el.focus();const at=el.value.indexOf('target="box"')+10;el.setSelectionRange(at,at);});await page.keyboard.press('F12');
-  assert.equal(await page.$eval('[aria-label="XML 源码"]',el=>el.value.slice(el.selectionStart,el.selectionStart+6)),'<shape');
-  await page.keyboard.press('Escape');
+  await page.locator('button::-p-text(工具)').click();await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();await page.waitForSelector('.source-monaco textarea.inputarea');
+  const outlineButtons=await page.$$('.source-outline button');assert.equal(outlineButtons.length,100);await outlineButtons.at(-1).click();
+  await page.click('button[aria-label="返回画布"]');await page.waitForSelector('#canvasHost [data-id="label"]');
   await page.click('#canvasHost [data-id="label"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' recovered');await page.click('.canvas-caption');
   assert.ok(await page.evaluate(()=>window.__slxGetXml().includes('recovered')),'text commit before draft');
   await page.waitForFunction(async()=>{const r=await fetch('/api/revisions');return (await r.json()).revisions.some(v=>v.draft&&v.xml.includes('recovered'));});

@@ -1,0 +1,13 @@
+<deck version="1" width="960" height="540" title="Inspector gallery">
+  <slide id="gallery" background="#F8FAFC">
+    <text id="sample-text" x="38" y="34" w="275" h="75" font-size="26" color="#223047"><p>标题与 <strong>富文本</strong></p></text>
+    <shape id="sample-shape" name="roundRect" x="350" y="35" w="190" h="110" adj="18" fill="#5375CB" stroke="#293D70" stroke-width="2"/>
+    <image id="sample-image" x="590" y="35" w="240" h="135" src="export-image.svg" fit="contain" alt="Sample image"/>
+    <line id="sample-line" x="50" y="175" w="255" h="72" points="0,55 255,10" stroke="#CB604C" stroke-width="4" arrow-end="stealth"/>
+    <formula id="sample-formula" x="350" y="185" w="210" h="72" tex="x^2+y^2=r^2" font-size="26"/>
+    <code id="sample-code" x="590" y="185" w="275" h="115" lang="js" font-size="15">const answer = 42;</code>
+    <icon id="sample-icon" x="85" y="325" w="95" h="95" name="fas:rocket" fill="#376A9C" alt="Rocket"/>
+    <group id="sample-group" x="240" y="315" w="180" h="130"><shape id="group-box" name="rect" x="0" y="0" w="180" h="130" fill="#E3EEF8"/><text id="group-label" x="24" y="45" w="130" h="45" font-size="20"><p>组合</p></text></group>
+    <chart id="sample-chart" x="500" y="325" w="390" h="170"><data cols="name,value"><row>A,10</row><row>B,20</row><row>C,15</row></data><series type="bar" x="name" y="value"/></chart>
+  </slide>
+</deck>

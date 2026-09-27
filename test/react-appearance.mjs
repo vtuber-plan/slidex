@@ -9,9 +9,11 @@ import { renderSlide } from "../dist/render/render.js";
 import { serializeDeck } from "../dist/serializer.js";
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "slidex-appearance-")),
   file = path.join(temp, "deck.slx");
+const fillImage = path.join(temp, "fill.svg");
+fs.writeFileSync(fillImage, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>');
 fs.writeFileSync(
   file,
-  '<deck version="1" width="960" height="540"><theme><palette><color name="accent" value="#6366f1"/></palette></theme><slide id="one"><shape id="shape" x="100" y="100" w="350" h="220" fill="#ff0000"/><text id="text" x="520" y="100" w="280" h="120">Appearance</text></slide></deck>',
+  '<deck version="1" width="960" height="540"><theme><palette><color name="accent" value="#6366f1"/></palette></theme><slide id="one"><shape id="shape" x="100" y="100" w="350" h="220" fill="#ff0000"/><text id="text" x="520" y="100" w="280" h="120" align="center middle">Appearance</text></slide></deck>',
 );
 const chrome =
   process.env.CHROME_PATH ||
@@ -154,6 +156,32 @@ try {
   await button("解锁对象");
   await page.click('#canvasHost [data-id="text"]');
   await summary("填充设置");
+  await page.select('[aria-label="填充类型"]', "image");
+  const fileChooser = page.waitForFileChooser();
+  await page.click('button[aria-label="选择图片文件"]');
+  await (await fileChooser).accept([fillImage]);
+  await page.waitForFunction(() => window.__slxGetXml().includes('src="media/'));
+  check(
+    "file button uploads text fill into deck media",
+    (await deck()).slides[0].elements[1].fillObj?.src.startsWith("media/") &&
+      fs.existsSync(path.join(temp, (await deck()).slides[0].elements[1].fillObj.src)),
+  );
+  await field("图片地址", "data:image/svg+xml,%3Csvg/%3E");
+  check(
+    "image fill preserves centered text alignment",
+    (await deck()).slides[0].elements[1].align === "center middle" &&
+      (await page.$eval('#canvasHost [data-id="text"] .slx-text', (el) => {
+        const style = getComputedStyle(el);
+        return style.textAlign === "center" &&
+          style.justifyContent === "center" &&
+          style.backgroundImage.includes("data:image/svg+xml");
+      })),
+  );
+  await page.select('[aria-label="填充类型"]', "none");
+  check(
+    "unfilled text starts with no fill selected",
+    (await page.$eval('[aria-label="填充类型"]', (el) => el.value)) === "none",
+  );
   await page.select('[aria-label="填充类型"]', "gradient");
   await field("渐变角度", "37");
   check(
@@ -162,6 +190,20 @@ try {
       el.style.backgroundImage.includes("127deg"),
     ),
   );
+  await page.select('[aria-label="填充类型"]', "none");
+  check(
+    "no fill clears text fill in DSL and preview",
+    !(await deck()).slides[0].elements[1].fillObj &&
+      !(await deck()).slides[0].elements[1].fill &&
+      (await page.$eval('#canvasHost [data-id="text"] .slx-text', (el) =>
+        getComputedStyle(el).backgroundColor)) === "rgba(0, 0, 0, 0)",
+  );
+  await page.select('[aria-label="填充类型"]', "solid");
+  check(
+    "solid fill can be restored after no fill",
+    (await deck()).slides[0].elements[1].fillObj?.color === "#ffffff",
+  );
+  await page.select('[aria-label="填充类型"]', "none");
   await page.click(".canvas-caption");
   await page.keyboard.press("Escape");
   await page.waitForSelector('[aria-label="背景类型"]');
@@ -177,6 +219,14 @@ try {
     (await page.$eval('#canvasHost [data-id="shape"] stop', (el) =>
       el.getAttribute("stop-color"),
     )) === "#22c55e",
+  );
+  await page.click('#canvasHost [data-id="shape"]');
+  await page.select('[aria-label="填充类型"]', "none");
+  check(
+    "no fill clears shape fill and gradient",
+    !(await shape()).fill && !(await shape()).fillObj &&
+      (await page.$eval('#canvasHost [data-id="shape"] path', (el) =>
+        el.getAttribute("fill"))) === "none",
   );
   check(
     "appearance document validates",

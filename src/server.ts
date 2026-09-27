@@ -120,6 +120,13 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       if(u.searchParams.get('path')&&path.resolve(u.searchParams.get('path')!)!==deckFile){send(res,409,{error:'文档已切换'});return;}
       const h=history.read(deckFile);send(res,200,{version:1,revisions:[...(h.draft?[h.draft]:[]),...h.revisions]});return;
     }
+    if(p==='/api/draft'&&req.method==='DELETE'){
+      const body=await readBody(req);
+      if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}
+      if(body.path!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      history.discardDraft(deckFile);
+      send(res,200,{ok:true});return;
+    }
     if(['/api/revisions','/api/draft'].includes(p)&&req.method==='POST'){
       const body=await readBody(req);if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}
       if(body.path!==deckFile){send(res,409,{error:'文档已切换'});return;}
@@ -138,7 +145,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       serveFile(res,file,true);return;
     }
 
-    if (req.method === 'GET' && ['/', '/index.html', '/present', '/present-speaker', '/player', '/preview'].includes(p)) { serveFile(res, path.join(APP, 'web', 'index.html')); return; }
+    if (req.method === 'GET' && ['/', '/index.html', '/source', '/present', '/present-speaker', '/player', '/preview'].includes(p)) { serveFile(res, path.join(APP, 'web', 'index.html')); return; }
     if (req.method === 'GET' && p === '/legacy') { serveFile(res, path.join(APP, 'index.html')); return; }
     if (req.method === 'GET' && p === '/favicon.ico') { send(res, 204, ''); return; }
     if (req.method === 'GET' && p === '/legacy-present') { serveFile(res, path.join(APP, 'present.html')); return; }

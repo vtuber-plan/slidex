@@ -129,7 +129,7 @@ export const richSchema = new Schema({
     textStyle: styleMark,
   }),
 });
-export function serializeRich(view: EditorView, doc = view.state.doc) {
+export function serializeRichDoc(doc: import("prosemirror-model").Node) {
   const div = document.createElement("div");
   div.append(
     DOMSerializer.fromSchema(richSchema).serializeFragment(doc.content),
@@ -140,6 +140,9 @@ export function serializeRich(view: EditorView, doc = view.state.doc) {
       n.replaceWith(document.createTextNode(`\\(${n.dataset.tex || ""}\\)`)),
     );
   return div.innerHTML.replace(/<br>/g, "<br/>").replace(/&nbsp;/g, "&#160;");
+}
+export function serializeRich(view: EditorView, doc = view.state.doc) {
+  return serializeRichDoc(doc);
 }
 export function RichText({
   element,

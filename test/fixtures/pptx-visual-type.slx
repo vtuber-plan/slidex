@@ -1,0 +1,14 @@
+<deck version="1" width="960" height="540" title="PPTX visual QA - text">
+  <slide id="latin-and-cjk" background="#F6F8FC">
+    <text id="headline" x="56" y="38" w="848" h="70" font-family="Arial" font-size="38" color="#172033"><p>SlideX visual baseline</p></text>
+    <text id="cjk" x="56" y="128" w="398" h="174" font-family="Microsoft YaHei" font-size="27" color="#24344D" line-height="1.25"><p>中文排版与 English mixed text</p><p>第二行含 <strong>加粗</strong> 和 <em>斜体</em>。</p></text>
+    <text id="latin" x="506" y="128" w="398" h="174" font-family="Arial" font-size="25" color="#24344D" line-height="1.3"><p>Line one with <strong>bold</strong> and <em>italic</em>.</p><p>Line two: 0123456789.</p></text>
+    <text id="small" x="56" y="338" w="848" h="84" font-family="Arial" font-size="16" color="#53647A"><p>Small text: align the baseline, line spacing, and paragraph spacing.</p><p>Second paragraph with enough width to avoid wrapping.</p></text>
+  </slide>
+  <slide id="tight-wrap" background="#FFFFFF">
+    <shape id="left-frame" name="rect" x="55" y="80" w="395" h="300" fill="#F2F7FF" stroke="#577CC1" stroke-width="2"/>
+    <shape id="right-frame" name="rect" x="510" y="80" w="395" h="300" fill="#FFF7EA" stroke="#C18A42" stroke-width="2"/>
+    <text id="wrapped-cjk" x="70" y="96" w="365" h="260" font-family="Microsoft YaHei" font-size="28" line-height="1.25" color="#24344D"><p>这段中文用于检查较窄文本框中的自动换行、行高与上下边距是否一致。</p></text>
+    <text id="wrapped-latin" x="525" y="96" w="365" h="260" font-family="Arial" font-size="27" line-height="1.25" color="#24344D"><p>This narrow text box checks wrapping, line height, and the vertical position of each line.</p></text>
+  </slide>
+</deck>

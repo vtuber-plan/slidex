@@ -1,0 +1,22 @@
+<deck version="1" width="960" height="540" title="PPTX visual QA - geometry">
+  <slide id="primitives" background="#F7F9FC">
+    <shape id="rect" name="rect" x="65" y="65" w="170" h="115" fill="#2366B1"/>
+    <shape id="rounded" name="roundRect" x="280" y="65" w="170" h="115" adj="18" fill="#E59B32" stroke="#594424" stroke-width="3"/>
+    <shape id="ellipse" name="ellipse" x="495" y="65" w="170" h="115" fill="#50A891"/>
+    <shape id="triangle" name="triangle" x="710" y="65" w="170" h="115" fill="#C66A84"/>
+    <shape id="diamond" name="diamond" x="65" y="235" w="170" h="115" fill="#8D72C2"/>
+    <shape id="arrow" name="rightArrow" x="280" y="235" w="170" h="115" fill="#459BB4"/>
+    <shape id="rotated" name="rect" x="510" y="245" w="145" h="100" rotation="22" fill="#D85550"/>
+    <line id="diagonal" x="710" y="245" w="170" h="100" points="0,0 170,100" stroke="#354A66" stroke-width="4" arrow-end="stealth"/>
+  </slide>
+  <slide id="groups-and-fallbacks" background="#FFFFFF">
+    <group id="group" x="80" y="80" w="360" h="250" rotation="17">
+      <shape id="group-bg" name="rect" x="0" y="0" w="340" h="210" fill="#DCEAFF"/>
+      <shape id="group-shape" name="ellipse" x="35" y="40" w="140" h="105" fill="#3B82F6"/>
+      <text id="group-text" x="185" y="55" w="150" h="75" font-size="25" color="#21324F"><p>Group</p></text>
+    </group>
+    <shape id="star-fallback" name="star5" x="570" y="100" w="150" h="150" fill="#F1B846"/>
+    <shape id="donut-fallback" name="donut" x="760" y="100" w="130" h="130" fill="#48B6A0"/>
+    <formula id="formula-fallback" x="570" y="315" w="300" h="75" tex="x^2 + y^2 = r^2" font-size="32"/>
+  </slide>
+</deck>

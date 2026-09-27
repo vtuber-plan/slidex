@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
+import { FolderOpen } from "lucide-react";
 import type { Fill, SlideElement } from "../src/types";
 import { parseShadow, resolveColor } from "../src/ir";
-import { useEditor } from "./store";
+import { uploadMedia, useEditor } from "./store";
 import { Field } from "./ui";
 import { t, useLocale } from "./i18n";
 
@@ -24,11 +25,15 @@ export function ColorControl({
   value,
   onChange,
   theme = true,
+  swatches = true,
+  allowEmpty = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   theme?: boolean;
+  swatches?: boolean;
+  allowEmpty?: boolean;
 }) {
   const deck = useEditor((s) => s.deck),
     [error, setError] = useState(false);
@@ -36,6 +41,7 @@ export function ColorControl({
     hex = /^#[\da-f]{6}([\da-f]{2})?$/i.test(resolved) ? resolved : "#000000";
   const commit = (v: string) => {
     const valid =
+      (allowEmpty && v === "") ||
       /^#([\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(v) ||
       ["none", "transparent"].includes(v) ||
       (theme && v.startsWith("$") && v.slice(1) in deck.theme.colors);
@@ -60,7 +66,7 @@ export function ColorControl({
         />
         <Field label={t(label)} value={value} onChange={commit} />
       </div>
-      {theme && (
+      {theme && swatches && (
         <div
           className="theme-swatches"
           aria-label={t(label) + " " + t("主题颜色")}
@@ -90,12 +96,15 @@ export function FillPanel({
   label = "填充",
 }: {
   value: Fill | null | undefined;
-  onChange: (fill: Fill) => void;
+  onChange: (fill: Fill | null) => void;
   label?: string;
 }) {
   useLocale();
   const deck = useEditor((s) => s.deck);
-  const mode = value?.type || "solid";
+  const imageInput = useRef<HTMLInputElement>(null);
+  const mode = value?.type === "solid" && ["none", "transparent"].includes(value.color)
+    ? "none"
+    : value?.type || "none";
   const updateStop = (
     i: number,
     patch: Partial<{ pos: number; color: string }>,
@@ -115,7 +124,9 @@ export function FillPanel({
           value={mode}
           onChange={(e) =>
             onChange(
-              e.target.value === "gradient"
+              e.target.value === "none"
+                ? null
+                : e.target.value === "gradient"
                 ? {
                     type: "gradient",
                     angle: 0,
@@ -134,6 +145,7 @@ export function FillPanel({
             )
           }
         >
+          <option value="none">{t("无填充")}</option>
           <option value="solid">{t("纯色")}</option>
           <option value="gradient">{t("渐变")}</option>
           <option value="radial-gradient">{t("径向渐变")}</option>
@@ -266,11 +278,36 @@ export function FillPanel({
         </>
       ) : value?.type === "image" ? (
         <>
-          <Field
-            label={t("图片地址")}
-            value={value.src}
-            onChange={(src) => onChange({ ...value, src })}
-          />
+          <div className="fill-image-field">
+            <Field
+              label={t("图片地址")}
+              value={value.src}
+              onChange={(src) => onChange({ ...value, src })}
+            />
+            <Button
+              type="button"
+              variant="soft"
+              aria-label={t("选择图片文件")}
+              title={t("选择图片文件")}
+              onClick={() => imageInput.current?.click()}
+            >
+              <FolderOpen size={16} />
+            </Button>
+            <input
+              ref={imageInput}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              aria-label={t("选择图片文件")}
+              hidden
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                const src = await uploadMedia(file);
+                if (src) onChange({ ...value, src });
+              }}
+            />
+          </div>
           <label className="field">
             <span>{t("图片适配")}</span>
             <select
@@ -284,13 +321,13 @@ export function FillPanel({
             </select>
           </label>
         </>
-      ) : (
+      ) : mode === "solid" ? (
         <ColorControl
           label={label === "背景" ? "背景颜色" : "填充"}
           value={value?.color || "#ffffff"}
           onChange={(color) => onChange({ type: "solid", color })}
         />
-      )}
+      ) : null}
     </section>
   );
 }
@@ -314,10 +351,14 @@ export function Appearance({ element: el }: { element: SlideElement }) {
         <details className="advanced-fields" open={el.type === "shape"}>
           <summary>{t("填充设置")}</summary>
           <FillPanel
-            value={el.fillObj || { type: "solid", color: el.fill || "none" }}
+            value={el.fillObj || (el.fill && el.fill !== "none"
+              ? { type: "solid", color: el.fill }
+              : null)}
             onChange={(value) =>
               patch(
-                value.type === "solid"
+                !value
+                  ? { fill: undefined, fillObj: undefined }
+                  : value.type === "solid"
                   ? {
                       fill: value.color,
                       fillObj: el.type === "text" ? value : undefined,
