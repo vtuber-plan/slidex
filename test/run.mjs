@@ -211,7 +211,8 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     if (!can) { t(`${file}（跳过：本机无 Chrome）`, true); continue; }
     const r = spawnSync(process.execPath, [path.join(ROOT, file)], { encoding: 'utf8', timeout: 240000 });
     const fails = (r.stdout || '').split('\n').filter(l => /FAIL|✗/.test(l)).join(' | ');
-    t(file, r.status === 0, fails || String(r.stderr).slice(0, 300) || `exit=${r.status}`);
+    const errLines = String(r.stderr || '').split('\n').filter(l => /Error:|错误|未就绪|超时|失败/.test(l)).slice(-8).join(' | ').slice(0, 2000);
+    t(file, r.status === 0, fails || errLines || String(r.stderr).slice(0, 2000) || `exit=${r.status} signal=${r.signal}`);
   }
 }
 
