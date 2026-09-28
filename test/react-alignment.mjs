@@ -22,6 +22,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewport({ width: 1440, height: 950 });
     await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: "networkidle0" });
+    await page.locator('.ribbon-tab::-p-text(排列)').click();
     const deck = async () => parseSlideX(await page.evaluate(() => window.__slxGetXml())).deck;
     const elements = async () => (await deck()).slides[0].elements;
     const clickMenuItem = async (label) => {

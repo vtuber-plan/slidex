@@ -41,19 +41,11 @@ try {
       ),
       2,
     );
-    assert.equal(
-      await page.$eval('[aria-label="复制页面"]', (el) => {
-        const r = el.getBoundingClientRect();
-        return document
-          .elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
-          ?.closest("button")
-          ?.getAttribute("aria-label");
-      }),
-      "复制页面",
-      "copy and delete hit targets must not overlap",
-    );
+    assert.equal(await page.$('.filmstrip-actions'), null);
+    await page.click('[data-page-index="2"] button', {button:'right'});
+    assert.match(await page.$eval('[role="menu"]', el => el.textContent), /已选页面：2/);
     await page.screenshot({ path: path.join(dir, "before-copy.png") });
-    await button("复制页面");
+    await page.locator('[role="menuitem"]::-p-text(复制页面)').click();
     let data = await deck();
     assert.equal(data.slides.length, 5, await xml());
     const firstCopy = data.slides[3],
@@ -69,11 +61,18 @@ try {
     assert.deepEqual(parseSlideX(await xml()).errors, []);
     await undo();
     assert.equal((await deck()).slides.length, 3);
+    await page.click('[data-page-index="1"] button', {button:'right'});
+    assert.match(await page.$eval('[role="menu"]', el => el.textContent), /已选页面：1/);
+    assert.deepEqual(await page.$$eval('[role="option"][aria-selected="true"]', els => els.map(el => el.getAttribute('data-page-index'))), ['1']);
+    await page.locator('[role="menuitem"]::-p-text(新建页面)').click();
+    assert.equal((await deck()).slides.length, 4);
+    await undo();
     await page.click('[data-page-index="1"] button');
     await page.keyboard.down("Shift");
     await page.click('[data-page-index="2"] button');
     await page.keyboard.up("Shift");
-    await page.locator("button::-p-text(页面上移)").click();
+    await page.click('[data-page-index="2"] button', {button:'right'});
+    await page.locator('[role="menuitem"]::-p-text(页面上移)').click();
     assert.deepEqual(
       (await deck()).slides.map((p) => p.id),
       ["two", "three", "one"],
@@ -125,9 +124,9 @@ try {
       h: el.getBoundingClientRect().height,
     }));
     const view = () =>
-      page.locator(".command-bar button::-p-text(视图)").click();
+      page.locator(".ribbon-tab::-p-text(视图)").click();
     await view();
-    await page.locator('[role="menuitemcheckbox"]::-p-text(显示标尺)').click();
+    await page.click('.ribbon-panel [aria-label="显示标尺"]');
     assert.ok(await page.$('[aria-label="水平标尺"]'));
     assert.deepEqual(
       await page.$eval("#canvasHost", (el) => ({
@@ -202,7 +201,7 @@ try {
     await page.click('[data-layer-id="outer"] .layer-expand');
     await page.click('[data-layer-id="inner"] .layer-expand');
     await view();
-    await page.locator('[role="menuitemcheckbox"]::-p-text(显示网格)').click();
+    await page.click('.ribbon-panel [aria-label="显示网格"]');
     await page.screenshot({ path: path.join(dir, "layout.png") });
     await page.goto(`http://127.0.0.1:${server.port}/player`, {
       waitUntil: "networkidle0",

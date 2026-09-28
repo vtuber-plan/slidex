@@ -140,6 +140,17 @@ function buildDeck(root: XMLNode, errors: Diag[], warnings: Diag[]): Deck {
 
   for (const c of root.children) {
     switch (c.name) {
+      case 'metadata':
+        if (deck.metadata) { warn(warnings, c, 'W_METADATA_DUPLICATE', '重复的 <metadata> 已忽略'); break; }
+        deck.metadata = {
+          author: c.attrs.author,
+          createdAt: c.attrs['created-at'],
+          modifiedBy: c.attrs['modified-by'],
+          modifiedAt: c.attrs['modified-at'],
+          lastMachine: c.attrs['last-machine'],
+        };
+        for (const child of c.children) warn(warnings, child, 'W_UNKNOWN_TAG', `<metadata> 内未知标签 <${child.name}>（已忽略）`);
+        break;
       case 'fonts':
         for (const f of c.children) {
           if (f.name !== 'font') { warn(warnings, f, 'W_UNKNOWN_TAG', `<fonts> 内未知标签 <${f.name}>`); continue; }

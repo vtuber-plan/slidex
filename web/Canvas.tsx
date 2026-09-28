@@ -273,17 +273,7 @@ export function Canvas() {
     <ContextMenu.Root>
       <ContextMenu.Trigger>
         <section className="canvas-column">
-          <div className="canvas-caption">
-            <span>
-              {s.master
-                ? t(`母版 / ${s.master}`)
-                : t(`画布 / ${String(s.page + 1).padStart(2, "0")}`)}
-            </span>
-            <span>
-              {s.deck.width} × {s.deck.height}
-            </span>
-          </div>
-          <nav className="group-navigation" aria-label={t("编辑范围")}>
+          {!!currentScope.groups.length && <nav className="group-navigation" aria-label={t("编辑范围")}>
             <button onClick={() => s.leaveGroup(0)}>{t("页面")}</button>
             {currentScope.groups.map((group, i) => (
               <span key={group.id}>
@@ -306,7 +296,7 @@ export function Canvas() {
                 {t("退出组合")} · Esc
               </Button>
             )}
-          </nav>
+          </nav>}
           {edited?.type === "text" && !edited.locked && (
             <RichText
               key={edited.id}
@@ -364,6 +354,9 @@ export function Canvas() {
             className={`canvas-workspace ${navigation.className}`}
             {...navigation.handlers}
             onDragOver={(e) => e.preventDefault()}
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget && e.button === 0 && !e.shiftKey && !s.editing) s.select([]);
+            }}
           >
             <div
               className="canvas-size"

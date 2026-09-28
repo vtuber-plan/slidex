@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Button, DropdownMenu, Dialog } from "@radix-ui/themes";
+import { Button, Dialog } from "@radix-ui/themes";
+import { Grid3X3, Magnet, Move, Ruler, SlidersHorizontal } from "lucide-react";
 import { useLayoutPreferences } from "./layoutPreferences";
 import { useEditor, rootContainer } from "./store";
 import { t, useLocale } from "./i18n";
+import { RibbonButton, RibbonGroup } from "./Ribbon";
 
 export function LayoutMenu() {
   useLocale();
@@ -25,31 +27,23 @@ export function LayoutMenu() {
   };
   return (
     <>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          <Button variant="ghost">{t("视图")}</Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content>
-          {(["rulers", "guides", "grid", "snap"] as const).map((key, i) => (
-            <DropdownMenu.CheckboxItem
-              key={key}
-              checked={settings[key]}
-              onCheckedChange={(value) => patch({ [key]: !!value })}
-            >
-              {t(["显示标尺", "显示参考线", "显示网格", "启用吸附"][i])}
-            </DropdownMenu.CheckboxItem>
-          ))}
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            onSelect={() => {
-              window.__slxCommitText?.();
-              setOpen(true);
-            }}
-          >
-            {t("参考线与网格…")}
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <RibbonGroup label="显示">
+        {([
+          ["rulers", "显示标尺", Ruler],
+          ["guides", "显示参考线", Move],
+          ["grid", "显示网格", Grid3X3],
+          ["snap", "启用吸附", Magnet],
+        ] as const).map(([key, label, Icon]) => (
+          <RibbonButton key={key} label={label} pressed={settings[key]} onClick={() => patch({ [key]: !settings[key] })}>
+            <Icon size={20} />
+          </RibbonButton>
+        ))}
+      </RibbonGroup>
+      <RibbonGroup label="参考线">
+        <RibbonButton label="参考线与网格…" onClick={() => { window.__slxCommitText?.(); setOpen(true); }}>
+          <SlidersHorizontal size={20} />
+        </RibbonButton>
+      </RibbonGroup>
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Content maxWidth="480px">
           <Dialog.Title>{t("参考线与网格")}</Dialog.Title>

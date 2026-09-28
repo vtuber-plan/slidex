@@ -21,7 +21,6 @@ import {
   Play,
   Plus,
   Redo2,
-  Save,
   Shapes,
   Sparkles,
   Table2,
@@ -39,24 +38,33 @@ import {
   Minus,
   PanelLeft,
   PanelRight,
+  LayoutTemplate,
+  Palette,
+  Code2,
+  ScanSearch,
+  Braces,
+  ImageDown,
 } from "lucide-react";
 import { useEditor, container, scope, uid, uploadImage } from "./store";
 import { Thumbnail, RenderResources } from "./SlideSurface";
 import { Canvas } from "./Canvas";
-import { Inspector } from "./Inspector";
+import { Inspector, type InspectorTab } from "./Inspector";
 import { Player, PreviewGrid, Presenter } from "./Player";
 import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
+import { DesktopWindowControls, desktopPlatform } from "./DesktopWindowControls";
 import { EditingTools } from "./EditingTools";
 import { ErrorMessage } from "./Diagnostics";
 import {PageList} from './PageList';
 import {LayoutMenu} from './LayoutMenu';
+import { RibbonButton, RibbonGroup } from "./Ribbon";
 import {useLayoutPreferences} from './layoutPreferences';
 import { PanelResize, usePanelSize } from "./PanelResize";
 import { serializeDeck } from "../src/serializer";
 import { parseSlideX, SHAPE_NAMES } from "../src/ir";
 import { formatSlideX } from "../src/format";
 import { parsePages } from "../src/export/pages";
+import type { ExportProgress } from "../src/export/export";
 import { shapeSvg as shapePath } from "../src/render/shapes";
 import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
 import type { ElementType } from "../src/types";
@@ -77,7 +85,24 @@ function shapeSvg(name: string, w: number, h: number) {
   const shape = shapePath({ id: "preview", type: "shape", name, w, h });
   return `<svg viewBox="${shape.viewBox}"><path d="${shape.d}" fill-rule="${shape.fillRule}"/></svg>`;
 }
+const ribbonLabels = {
+  home: "开始",
+  insert: "插入",
+  design: "设计",
+  animations: "动画",
+  present: "放映",
+  arrange: "排列",
+  view: "视图",
+  tools: "工具",
+} as const;
+type RibbonTab = keyof typeof ribbonLabels;
 export default function App() {
+  const [ribbonTab, setRibbonTab] = useState<RibbonTab>("home");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("design");
+  const selectRibbonTab = (tab: RibbonTab) => {
+    setRibbonTab(tab);
+    if (tab !== "view" && inspectorTab === "masters") setInspectorTab("design");
+  };
   const [leftCollapsed,setLeftCollapsed]=useState(localStorage.getItem('slidex-left-collapsed')==='true');
   const [rightCollapsed,setRightCollapsed]=useState(localStorage.getItem('slidex-right-collapsed')==='true');
   useEffect(()=>{localStorage.setItem('slidex-left-collapsed',String(leftCollapsed));localStorage.setItem('slidex-right-collapsed',String(rightCollapsed));},[leftCollapsed,rightCollapsed]);
@@ -152,6 +177,7 @@ export default function App() {
       const data = await response.json();
       if (!data.ok) throw Error(data.error);
       await useEditor.getState().load();
+      setInspectorTab("design");
       if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
       setOpenFile(false);
       return true;
@@ -175,7 +201,7 @@ export default function App() {
       if(mode==='new'&&!(await confirmBeforeReplace()))return;
       const response=await fetch('/api/create-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,path,expectedPath:state.file,xml:mode==='saveAs'?serializeDeck(useEditor.getState().deck):undefined})});
       const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'保存失败');
-      await useEditor.getState().load();setFileCommand(null);
+      await useEditor.getState().load();setFileCommand(null);setInspectorTab("design");
       if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
     }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);replaceInProgress.current=false;setReplacingFile(false);}
   }
@@ -191,6 +217,7 @@ export default function App() {
   const [pptxEditable,setPptxEditable]=useState(true);
   const [exportDownloads,setExportDownloads]=useState<string[]>([]);
   const [exportReport,setExportReport]=useState<import('../src/export/report').ExportReport|null>(null);
+  const [exportProgress,setExportProgress]=useState<ExportProgress|null>(null);
   const [pageMode,setPageMode]=useState('all');
   const [pageRange,setPageRange]=useState('');
   const [exportScale,setExportScale]=useState(2);
@@ -249,7 +276,12 @@ export default function App() {
   const applySource=()=>{if(useEditor.getState().applySource(xml))leaveSource();};
   const saveSource=async()=>{
     if(!useEditor.getState().applySource(xml))return;
-    if(await useEditor.getState().save())setSourceMessage(t('所有更改已保存'));
+    if(await useEditor.getState().save()){
+      const savedXml=serializeDeck(useEditor.getState().deck);
+      xmlRef.current=savedXml;
+      setXml(savedXml);
+      setSourceMessage(t('所有更改已保存'));
+    }
   };
   useEffect(()=>{xmlRef.current=xml;sourceRef.current=source;},[xml,source]);
   useEffect(()=>{if(s.ready&&source&&!xml){const next=serializeDeck(useEditor.getState().deck);xmlRef.current=next;setXml(next);}},[s.ready,source]);
@@ -434,6 +466,7 @@ export default function App() {
   }, [present, preview, source, library]);
   const exportDeck = async (format: string, editable = false) => {
     setExporting(true);
+    setExportProgress(null);
     useEditor.setState({error:''});
     try {
       const pages = format==='png' ? (pageMode==='current'?String(useEditor.getState().page+1):pageMode==='range'?pageRange:undefined) : undefined;
@@ -442,9 +475,31 @@ export default function App() {
       const r = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true }),
+        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true, progress:true }),
       });
-      const data = await r.json();
+      if (!r.ok) throw Error(`${r.status} ${r.statusText}`);
+      let data: {ok?:boolean;canceled?:boolean;error?:string;downloads?:string[];report?:import('../src/export/report').ExportReport;files?:string[]} | undefined;
+      if (r.headers.get('content-type')?.includes('application/x-ndjson')) {
+        const reader = r.body?.getReader();
+        if (!reader) throw Error(t('无法读取导出进度'));
+        const decoder = new TextDecoder();
+        let pending = '';
+        const handleLine = (line:string) => {
+          if (!line.trim()) return;
+          const event = JSON.parse(line);
+          if (event.type === 'progress') setExportProgress(event as ExportProgress);
+          if (event.type === 'result') data = event;
+        };
+        for (;;) {
+          const {done,value} = await reader.read();
+          pending += decoder.decode(value, {stream:!done});
+          const lines = pending.split('\n');
+          pending = lines.pop() || '';
+          lines.forEach(handleLine);
+          if (done) { handleLine(pending); break; }
+        }
+      } else data = await r.json();
+      if (!data) throw Error(t('导出连接中断'));
       if (!data.ok) throw Error(data.error);
       if(data.canceled)return;
       setExportDownloads(data.downloads||[]);
@@ -455,6 +510,7 @@ export default function App() {
       useEditor.setState({ error: String(e) });
     } finally {
       setExporting(false);
+      setExportProgress(null);
     }
   };
   const align = (axis: "x" | "y", position: number) =>
@@ -502,14 +558,15 @@ export default function App() {
       radius="medium"
       scaling="95%"
     >
-      <div className="studio-shell">
-        {!s.ready ? (
+      <div className={`studio-shell ${desktopPlatform ? 'desktop-window' : ''} ${desktopPlatform === 'darwin' ? 'desktop-mac' : ''}`}>
+        {!s.ready ? (<>
+          <header className="app-header startup-header"><span>SlideX</span><DesktopWindowControls /></header>
           <main className="loading">
             <Sparkles size={32} />
-            <h1>SlideX Studio</h1>
+            <h1>SlideX</h1>
             <p>{s.error || t("正在载入演示文稿…")}</p>
           </main>
-        ) : route === "/present-speaker" ? (
+        </>) : route === "/present-speaker" ? (
           <Presenter initialDeck={s.deck} session={routeSession} />
         ) : ["/present", "/player", "/preview"].includes(route) ? (
           route === "/preview" && !present ? (
@@ -545,9 +602,7 @@ export default function App() {
             <header className="app-header">
               <a href="/" className="brand">
                 <img className="brand-icon" src="/app/brand.svg" alt="" />
-                <span>
-                  SlideX <small>STUDIO</small>
-                </span>
+                <span>SlideX</span>
               </a>
               <div className="document-title">
                 <TextField.Root
@@ -560,28 +615,12 @@ export default function App() {
                     })
                   }
                 />
-                <span>
-                  {dirty
-                    ? t("有未保存的更改")
-                    : t(s.status) || t("所有更改已保存")}
-                </span>
+                {dirty && <span className="document-dirty-dot" role="status" aria-label={t("有未保存的更改")} title={t("有未保存的更改")} />}
               </div>
-              <div className="header-actions">
-                <HistoryDialog />
-                <Tool label={t("预览网格")} onClick={() => setPreview(true)}>
-                  <Grid2X2 size={18} />
-                </Tool>
-                <Button variant="soft" onClick={() => void s.save()}>
-                  <Save size={15} />
-                  {t("保存")}
-                </Button>
-                <Button onClick={() => setPresent(true)}>
-                  <Play size={15} />
-                  {t("放映")}
-                </Button>
-              </div>
+              <DesktopWindowControls />
             </header>
             <div className="command-bar">
+              <div className="ribbon-tabs">
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
                   <Button variant="ghost">
@@ -619,18 +658,38 @@ export default function App() {
                   <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setPreferences(true);}}>{t("偏好设置…")}</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger><Button variant="ghost">{t("工具")}<ChevronDown size={13}/></Button></DropdownMenu.Trigger>
-                <DropdownMenu.Content>
-                  <DropdownMenu.Item onSelect={()=>openSource()}>{t("DSL 源码与检查…")}</DropdownMenu.Item>
-                  <DropdownMenu.Item onSelect={()=>{openSource();setSourceMessage(t("诊断已更新"));}}>{t("语法检查")}</DropdownMenu.Item>
-                  <DropdownMenu.Item onSelect={()=>openSource(true)}>{t("格式化 DSL…")}</DropdownMenu.Item>
-                  <DropdownMenu.Separator/>
-                  <DropdownMenu.Item onSelect={()=>{window.__slxCommitText?.();setExportFormat('png');setPageMode('current');setImageManifest(true);setExportOptions(true);}}>{t("导出图片给 LLM…")}</DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-              <LayoutMenu/>
-              <span className="separator" />
+              <div className="ribbon-tablist" role="tablist" aria-label={t("工具栏")}>
+              {(Object.entries(ribbonLabels) as [RibbonTab, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  id={`ribbon-tab-${value}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={ribbonTab === value}
+                  aria-controls="ribbon-panel"
+                  tabIndex={ribbonTab === value ? 0 : -1}
+                  className="ribbon-tab"
+                  onClick={() => selectRibbonTab(value)}
+                  onKeyDown={(event) => {
+                    const keys = Object.keys(ribbonLabels) as RibbonTab[];
+                    const index = keys.indexOf(value);
+                    const next = event.key === "ArrowRight" ? keys[(index + 1) % keys.length]
+                      : event.key === "ArrowLeft" ? keys[(index + keys.length - 1) % keys.length]
+                      : event.key === "Home" ? keys[0]
+                      : event.key === "End" ? keys.at(-1)! : null;
+                    if (next) {
+                      event.preventDefault();
+                      selectRibbonTab(next);
+                      document.getElementById(`ribbon-tab-${next}`)?.focus();
+                    }
+                  }}
+                >
+                  {t(label)}
+                </button>
+              ))}
+              </div>
+              <span className="ribbon-tabs-spacer" />
+              <HistoryDialog />
               <Tool
                 label={t("撤销")}
                 disabled={!s.past.length}
@@ -645,7 +704,12 @@ export default function App() {
               >
                 <Redo2 size={17} />
               </Tool>
-              <span className="separator" />
+              <Tool label={t(leftCollapsed?"展开幻灯片栏":"收起幻灯片栏")} onClick={()=>setLeftCollapsed(!leftCollapsed)}><PanelLeft size={16}/></Tool>
+              <Tool label={t(rightCollapsed?"展开属性栏":"收起属性栏")} onClick={()=>{if(!rightCollapsed&&inspectorTab==="masters")setInspectorTab("design");setRightCollapsed(!rightCollapsed);}}><PanelRight size={16}/></Tool>
+              </div>
+              <div className="ribbon-panel" id="ribbon-panel" role="tabpanel" aria-labelledby={`ribbon-tab-${ribbonTab}`}>
+              {ribbonTab === "home" && <>
+              <RibbonGroup label={t("剪贴板")}>
               <Tool
                 label={t("复制")}
                 disabled={!s.selection.length}
@@ -663,7 +727,79 @@ export default function App() {
               >
                 <Trash2 size={16} />
               </Tool>
-              <span className="separator" />
+              </RibbonGroup>
+              <RibbonGroup label={t("编辑")}>
+                <EditingTools />
+              </RibbonGroup>
+              <RibbonGroup label={t("幻灯片")}>
+                <Tool label={t("新增页面")} onClick={s.addPage}><Plus size={17}/></Tool>
+                <Tool label={t("复制页面")} onClick={s.duplicatePage}><Copy size={17}/></Tool>
+                <Tool label={t("删除页面")} onClick={s.deletePage}><Trash2 size={17}/></Tool>
+              </RibbonGroup>
+              </>}
+              {ribbonTab === "design" && <>
+                <RibbonGroup label={t("页面")}>
+                  <Tool label={t("页面设计")} onClick={() => {
+                    window.__slxCommitText?.();
+                    useEditor.setState({ selection: [], groupPath: [], editing: "" });
+                    setInspectorTab("design");
+                    setRightCollapsed(false);
+                  }}><Palette size={22}/></Tool>
+                </RibbonGroup>
+              </>}
+              {ribbonTab === "animations" && <>
+                <RibbonGroup label={t("动画")}>
+                  <Tool label={t("动画面板")} onClick={() => {
+                    window.__slxCommitText?.();
+                    setInspectorTab("animation");
+                    setRightCollapsed(false);
+                  }}><Sparkles size={22}/></Tool>
+                </RibbonGroup>
+              </>}
+              {ribbonTab === "present" && <>
+                <RibbonGroup label="放映">
+                  <RibbonButton label="放映" onClick={() => setPresent(true)}><Play size={20}/></RibbonButton>
+                </RibbonGroup>
+                <RibbonGroup label="预览">
+                  <RibbonButton label="预览网格" onClick={() => setPreview(true)}><Grid2X2 size={20}/></RibbonButton>
+                </RibbonGroup>
+              </>}
+              {ribbonTab === "view" && <>
+                <RibbonGroup label="演示文稿视图">
+                  <RibbonButton label="普通视图" pressed={inspectorTab !== "masters" && !s.master} onClick={() => {
+                    window.__slxCommitText?.();
+                    useEditor.setState({ master: "", selection: [], groupPath: [], editing: "" });
+                    setInspectorTab("design");
+                  }}><LayoutTemplate size={20}/></RibbonButton>
+                  <RibbonButton label="幻灯片浏览" onClick={() => setPreview(true)}><Grid2X2 size={20}/></RibbonButton>
+                </RibbonGroup>
+                <RibbonGroup label="母版视图">
+                  <RibbonButton label="母版" pressed={inspectorTab === "masters"} onClick={() => {
+                    window.__slxCommitText?.();
+                    setInspectorTab("masters");
+                    setRightCollapsed(false);
+                  }}><LayoutTemplate size={20}/></RibbonButton>
+                </RibbonGroup>
+                <LayoutMenu />
+              </>}
+              {ribbonTab === "tools" && <>
+                <RibbonGroup label="源码">
+                  <RibbonButton label="DSL 源码与检查…" shortLabel="源码编辑" onClick={() => openSource()}><Code2 size={20}/></RibbonButton>
+                  <RibbonButton label="语法检查" onClick={() => { openSource(); setSourceMessage(t("诊断已更新")); }}><ScanSearch size={20}/></RibbonButton>
+                  <RibbonButton label="格式化 DSL…" shortLabel="格式化 DSL" onClick={() => openSource(true)}><Braces size={20}/></RibbonButton>
+                </RibbonGroup>
+                <RibbonGroup label="导出">
+                  <RibbonButton label="导出图片给 LLM…" shortLabel="导出给 LLM" onClick={() => {
+                    window.__slxCommitText?.();
+                    setExportFormat("png");
+                    setPageMode("current");
+                    setImageManifest(true);
+                    setExportOptions(true);
+                  }}><ImageDown size={20}/></RibbonButton>
+                </RibbonGroup>
+              </>}
+              {ribbonTab === "arrange" && <>
+              <RibbonGroup label={t("对齐")}>
               {(
                 [
                   [t("左对齐"), AlignStartVertical, "x", 0],
@@ -683,7 +819,8 @@ export default function App() {
                   <Icon size={16} />
                 </Tool>
               ))}
-              <span className="separator" />
+              </RibbonGroup>
+              <RibbonGroup label={t("组合")}>
               <Tool
                 id="btnGroup"
                 label={t("组合")}
@@ -700,6 +837,8 @@ export default function App() {
               >
                 <Ungroup size={17} />
               </Tool>
+              </RibbonGroup>
+              <RibbonGroup label={t("图层")}>
               <Tool
                 label={t("上移图层")}
                 disabled={!s.selection.length}
@@ -714,58 +853,18 @@ export default function App() {
               >
                 <ArrowDown size={16} />
               </Tool>
-              <div className="ml-auto">
-                <EditingTools />
-                <Tool label={t(leftCollapsed?"展开幻灯片栏":"收起幻灯片栏")} onClick={()=>setLeftCollapsed(!leftCollapsed)}><PanelLeft size={16}/></Tool>
-                <Tool label={t(rightCollapsed?"展开属性栏":"收起属性栏")} onClick={()=>setRightCollapsed(!rightCollapsed)}><PanelRight size={16}/></Tool>
-                <Badge variant="soft">
-                  {s.selection.length
-                    ? t(`${s.selection.length} 个对象`)
-                    : t("页面设计")}
-                </Badge>
-              </div>
-            </div>
-            <div className={`editor-layout ${leftCollapsed?'left-collapsed':''} ${rightCollapsed?'right-collapsed':''}`} style={{gridTemplateColumns: `${leftCollapsed?0:leftSize}px ${leftCollapsed?0:6}px minmax(230px, 1fr) ${rightCollapsed?0:6}px ${rightCollapsed?0:rightSize}px`}}>
-              <aside className="filmstrip">
-                <div className="filmstrip-title">
-                  <strong>{t("幻灯片")}</strong>
-                  <Badge color="gray">{s.deck.slides.length}</Badge>
-                  <Tool label={t("新增页面")} onClick={s.addPage}>
-                    <Plus size={16} />
-                  </Tool>
-                </div>
-                <PageList deck={committedDeck}/>
-                <div className="filmstrip-actions">
-                  <Button variant="soft" onClick={s.addPage}>
-                    <Plus size={14} />
-                    {t("新建页面")}
-                  </Button>
-                  <div className="flex justify-center">
-                    <Tool label={t("复制页面")} onClick={s.duplicatePage}>
-                      <Copy size={15} />
-                    </Tool>
-                    <Tool
-                      label={t("删除页面")}
-                      onClick={s.deletePage}
-                    >
-                      <Trash2 size={15} />
-                    </Tool>
-                  </div>
-                  <small className="page-selection-count">{t('已选页面')}：{s.pageSelection.length}</small>
-                  <div className="page-move-actions">
-                    <button disabled={s.pageSelection.includes(s.deck.slides[0].id)} onClick={()=>s.moveSelectedPages(Math.min(...s.pageSelection.map(id=>s.deck.slides.findIndex(p=>p.id===id)))-1)}>{t('页面上移')}</button>
-                    <button disabled={s.pageSelection.includes(s.deck.slides.at(-1)!.id)} onClick={()=>s.moveSelectedPages(Math.max(...s.pageSelection.map(id=>s.deck.slides.findIndex(p=>p.id===id)))+2)}>{t('页面下移')}</button>
-                  </div>
-                </div>
-              </aside>
-              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-(rightCollapsed?0:rightSize)-340)} />
-              <div className="canvas-and-tools">
-                <Canvas />
-                <div
-                  className="insert-toolbar"
-                  role="toolbar"
-                  aria-label={t("插入对象")}
-                >
+              </RibbonGroup>
+              <RibbonGroup label={t("分布与尺寸")}>
+                <EditingTools mode="arrange" />
+              </RibbonGroup>
+              </>}
+              {ribbonTab === "insert" && <>
+              <RibbonGroup label={t("幻灯片")}>
+                <Button variant="ghost" onClick={s.addPage}><Plus size={22}/><span>{t("新建页面")}</span></Button>
+                <Button variant="ghost" onClick={s.duplicatePage}><Copy size={22}/><span>{t("复制页面")}</span></Button>
+              </RibbonGroup>
+              <RibbonGroup label={t("对象")}>
+                <div className="insert-toolbar" role="toolbar" aria-label={t("插入对象")}>
                   {(
                     [
                       ["text", t("文本"), Type],
@@ -779,15 +878,14 @@ export default function App() {
                   ).map(([type, label, Icon]) =>
                     type === "image" ? (
                       <label key={type} className="insert-upload">
-                        <Image size={18} />
+                        <Image size={22} />
                         <span>{t("图片")}</span>
                         <input
                           type="file"
                           accept="image/*"
                           aria-label={t("上传图片")}
                           onChange={(e) => {
-                            if (e.target.files?.[0])
-                              void uploadImage(e.target.files[0]);
+                            if (e.target.files?.[0]) void uploadImage(e.target.files[0]);
                             e.target.value = "";
                           }}
                         />
@@ -803,37 +901,47 @@ export default function App() {
                           } else s.insert(type);
                         }}
                       >
-                        <Icon size={18} />
+                        <Icon size={22} />
                         <span>{label}</span>
                       </Button>
                     ),
                   )}
                   <DropdownMenu.Root>
                     <DropdownMenu.Trigger>
-                      <Button variant="ghost">
-                        <Plus size={18} />
-                        <span>{t("更多")}</span>
-                      </Button>
+                      <Button variant="ghost"><Plus size={22}/><span>{t("更多")}</span></Button>
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content>
                       {[
                         ["code", t("代码")],
                         ["formula", t("公式")],
                       ].map(([type, label]) => (
-                        <DropdownMenu.Item
-                          key={type}
-                          onSelect={() => s.insert(type as ElementType)}
-                        >
-                          {label}
-                        </DropdownMenu.Item>
+                        <DropdownMenu.Item key={type} onSelect={() => s.insert(type as ElementType)}>{label}</DropdownMenu.Item>
                       ))}
                     </DropdownMenu.Content>
                   </DropdownMenu.Root>
                 </div>
+              </RibbonGroup>
+              </>}
+              </div>
+            </div>
+            <div className={`editor-layout ${leftCollapsed?'left-collapsed':''} ${rightCollapsed?'right-collapsed':''}`} style={{gridTemplateColumns: `${leftCollapsed?0:leftSize}px ${leftCollapsed?0:6}px minmax(230px, 1fr) ${rightCollapsed?0:6}px ${rightCollapsed?0:rightSize}px`}}>
+              <aside className="filmstrip">
+                <div className="filmstrip-title">
+                  <strong>{t("幻灯片")}</strong>
+                  <Badge color="gray">{s.deck.slides.length}</Badge>
+                  <Tool label={t("新增页面")} onClick={s.addPage}>
+                    <Plus size={16} />
+                  </Tool>
+                </div>
+                <PageList deck={committedDeck}/>
+              </aside>
+              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-(rightCollapsed?0:rightSize)-340)} />
+              <div className="canvas-and-tools">
+                <Canvas />
               </div>
               <PanelResize name="调整属性面板宽度" value={rightSize} onChange={setRightWidth} min={240} max={Math.min(560, viewport-(leftCollapsed?0:leftSize)-340)} reverse />
               <div className={`properties-dock ${s.editing ? "is-text-editing" : ""}`}>
-                <div className="object-inspector"><Inspector preview={() => setPresent(true)} /></div>
+                <div className="object-inspector"><Inspector preview={() => setPresent(true)} tab={inspectorTab} setTab={setInspectorTab} /></div>
               </div>
             </div>
             <footer className="statusbar">
@@ -894,6 +1002,13 @@ export default function App() {
                   {['png','pptx'].includes(exportFormat)&&<label>{t("图片倍率")}<select aria-label={t("图片倍率")} disabled={exporting} value={exportScale} onChange={e=>setExportScale(+e.target.value)}>{[1,2,3,4].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>}
                   {exportFormat!=='png'&&<p>{t("此格式导出全部页面。")}</p>}
                 </div>
+                {exporting&&<div className="export-progress" role="status" aria-live="polite">
+                  <span>{exportProgress?.phase==='rendering'&&exportProgress.total
+                    ? `${t('正在处理页面')} ${exportProgress.completed ?? 0}/${exportProgress.total}`
+                    : t(exportProgress?.phase==='packaging'?'正在生成文件…':exportProgress?.phase==='publishing'?'正在保存导出文件…':exportProgress?.phase==='preparing'?'正在准备导出…':'正在保存…')}</span>
+                  <progress aria-label={t('导出进度')} max={exportProgress?.phase==='rendering'&&exportProgress.total?exportProgress.total:100}
+                    value={exportProgress?.phase==='rendering'&&exportProgress.total?exportProgress.completed:undefined}/>
+                </div>}
                 {s.error&&<div role="alert"><ErrorMessage message={s.error}/></div>}
                 <div className="dialog-actions"><Dialog.Close><Button variant="soft" disabled={exporting}>{t("取消")}</Button></Dialog.Close><Button disabled={exporting} onClick={()=>void exportDeck(exportFormat,exportFormat==='pptx'&&pptxEditable)}>{t(exporting?'导出中…':'开始导出')}</Button></div>
               </Dialog.Content>

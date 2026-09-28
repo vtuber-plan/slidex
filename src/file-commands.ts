@@ -5,6 +5,7 @@ import {parseSlideX} from './ir.js';
 import {serializeDeck} from './serializer.js';
 import {templateDeck} from './template.js';
 import {escapeHtml} from './parser.js';
+import {stampEditorMetadata} from './editor-metadata.js';
 
 /** Create a new standalone document without replacing an existing user file. */
 export function createDocument(destination:string,source:string,xml?:string){
@@ -12,6 +13,8 @@ export function createDocument(destination:string,source:string,xml?:string){
   if(fs.existsSync(target))throw Error('目标文件已存在，请选择新的文件名。');
   let output=xml??templateDeck(escapeHtml(path.basename(target,'.slx')));
   const parsed=parseSlideX(output);if(parsed.errors.length)throw Error(parsed.errors.map(e=>e.message).join('\n'));
+  stampEditorMetadata(parsed.deck);
+  output=serializeDeck(parsed.deck);
   if(xml&&path.dirname(target)!==path.dirname(source)){
     const base=fs.realpathSync(path.dirname(source));
     const mime:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.css':'text/css'};

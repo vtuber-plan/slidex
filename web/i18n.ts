@@ -156,6 +156,13 @@ DSL 源码与检查…|DSL source and diagnostics…
 图片倍率|Image scale
 此格式导出全部页面。|This format exports all pages.
 开始导出|Start export
+导出进度|Export progress
+正在处理页面|Processing page
+正在准备导出…|Preparing export…
+正在生成文件…|Generating file…
+正在保存导出文件…|Saving exported file…
+无法读取导出进度|Could not read export progress
+导出连接中断|Export connection interrupted
 原始诊断详情|Original diagnostic details
 操作未完成，请查看详细信息。|The operation could not be completed. See the details below.
 无法读取文档|Unable to read the document
@@ -267,6 +274,9 @@ DSL 源码与检查…|DSL source and diagnostics…
 浅色界面|Light mode
 深色界面|Dark mode
 源码|Source
+源码编辑|Source editor
+格式化 DSL|Format DSL
+导出给 LLM|Export for LLM
 预览网格|Slide overview
 保存|Save
 导出中…|Exporting…
@@ -279,6 +289,17 @@ DSL 源码与检查…|DSL source and diagnostics…
 打开本地文件|Open local file
 下载 XML 文档|Download XML
 撤销|Undo
+工具栏|Ribbon
+显示|Show
+参考线|Guides
+源码|Source
+导出|Export
+开始|Home
+插入|Insert
+排列|Arrange
+剪贴板|Clipboard
+预览|Preview
+动画面板|Animation panel
 重做|Redo
 复制|Copy
 粘贴|Paste
@@ -395,6 +416,10 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 打开|Open
 替换全部|Replace all
 本地版本历史|Local history
+最小化窗口|Minimize window
+最大化窗口|Maximize window
+还原窗口|Restore window
+关闭窗口|Close window
 保存时记录最近 20 个版本，仅保存在当前浏览器。恢复会产生一条可撤销的编辑记录。|Keeps the last 20 saved versions in this browser. Restoring a version can be undone.
 恢复此版本|Restore this version
 保存文档后会出现版本记录。|Save the document to create a version.
@@ -500,6 +525,28 @@ Shift 多选 · Alt 暂停吸附 · 双击编辑文本|Shift: multi-select · Al
 应用母版|Apply master
 无母版|No master
 母版|Master
+母版编辑|Master editing
+当前母版|Current master
+管理母版|Manage masters
+演示文稿视图|Presentation views
+普通视图|Normal
+幻灯片浏览|Slide sorter
+母版视图|Master views
+母版管理|Masters
+管理母版与主题|Manage masters and theme
+新增母版|New master
+尚无母版。新建后可在画布中编辑，并应用到页面。|No masters yet. Create one to edit it on the canvas and apply it to slides.
+应用于|Used by
+个页面|slides
+编辑|Edit
+重命名|Rename
+重命名母版|Rename master
+母版名称|Master name
+母版名称不能为空|Master name cannot be empty
+名称已被页面或母版使用|This name is already used by a slide or master
+删除母版|Delete master
+删除母版后，引用它的页面将不再使用母版。|Slides using this master will no longer have a master.
+受影响页面数：|Affected slides:
 新增|Add
 返回幻灯片|Back to slides
 主题颜色|Theme colors

@@ -20,8 +20,8 @@ const base=`http://127.0.0.1:${server.port}`;
 try{
   console.log('source test: load canvas');
   await page.goto(base);await page.waitForSelector('#canvasHost [data-id="label"]');
-  await page.locator('.command-bar button::-p-text(工具)').click();
-  await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
+  await page.locator('.ribbon-tab::-p-text(工具)').click();
+  await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');
   console.log('source test: open Monaco');
   await page.waitForSelector('.source-workspace .monaco-editor',{timeout:20000});
   assert.equal(new URL(page.url()).pathname,'/source');
@@ -53,8 +53,8 @@ try{
   await page.locator('button[aria-label="返回画布"]').click();
   await page.waitForSelector('#canvasHost [data-id="label"]');
   await page.waitForSelector('[role="dialog"]',{hidden:true});
-  await page.locator('.command-bar button::-p-text(工具)').click();
-  await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
+  await page.locator('.ribbon-tab::-p-text(工具)').click();
+  await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');
   await page.waitForSelector('.source-workspace .monaco-editor');
   await page.waitForSelector('.source-monaco textarea.inputarea');
   await page.waitForFunction(()=>document.activeElement?.classList.contains('inputarea'));
@@ -65,8 +65,8 @@ try{
   await page.waitForSelector('#canvasHost [data-id="label"]');
   assert.equal(new URL(page.url()).pathname,'/');
   assert.match(await page.evaluate(()=>window.__slxGetXml()),/After/);
-  await page.locator('.command-bar button::-p-text(工具)').click();
-  await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
+  await page.locator('.ribbon-tab::-p-text(工具)').click();
+  await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');
   await page.waitForFunction(()=>document.activeElement?.classList.contains('inputarea'));
   await page.locator('.source-header-actions button::-p-text(格式化)').click();
   await page.locator('.source-header-actions button::-p-text(保存)').click();

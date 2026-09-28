@@ -7,6 +7,7 @@ import { formatSlideX } from "../src/format";
 import { Diagnostic, ErrorMessage } from "./Diagnostics";
 import { SourceEditor, type SourceEditorHandle } from "./SourceEditor";
 import { t, useLocale } from "./i18n";
+import { DesktopWindowControls } from './DesktopWindowControls';
 
 export function SourceWorkspace({ value, onChange, onApply, onSave, onClose, message, setMessage, error, file, multiFile, dark }: {
   value: string;
@@ -54,6 +55,7 @@ export function SourceWorkspace({ value, onChange, onApply, onSave, onClose, mes
         <Button variant="soft" onClick={onSave}><Save size={15}/>{t("保存")}</Button>
         <Button onClick={onApply}><Check size={15}/>{t("验证并应用")}</Button>
       </div>
+      <DesktopWindowControls />
     </header>
     <div className="source-subheader">
       <span>{t("编辑 XML 后验证并应用。保存和撤销与画布共享。")}</span>

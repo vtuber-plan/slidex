@@ -9,6 +9,7 @@ import type {
   SlideContainer,
   SlideElement,
   ElementType,
+  DeckMetadata,
 } from "../src/types";
 
 export const clone = <T>(value: T): T => structuredClone(value);
@@ -258,9 +259,13 @@ export const useEditor = create<EditorState>((set, get) => ({
                 .join("\n") ||
               "保存失败",
           );
+        const metadata = data.metadata as DeckMetadata;
+        const savedDeck = parseSlideX(xml).deck;
+        savedDeck.metadata = metadata;
+        const savedXml = serializeDeck(savedDeck);
         if (get().file === file)
-          set({ saved: xml, status: "已保存", error: data.historyWarning||"", mtime: data.mtimeMs,version:data.version||get().version });
-        recordRevision(file, xml);
+          set({ deck: { ...get().deck, metadata }, saved: savedXml, status: "已保存", error: data.historyWarning||"", mtime: data.mtimeMs,version:data.version||get().version });
+        recordRevision(file, savedXml);
         return true;
       } catch (e) {
         set({ error: String(e), status: "保存失败" });

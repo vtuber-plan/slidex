@@ -10,6 +10,9 @@ import {exportDeck} from '../dist/export/export.js';
 if (process.platform !== 'win32') throw Error('PowerPoint visual QA requires Windows');
 const sizesArg = process.argv.slice(2).find(arg => arg.startsWith('--sizes='));
 const modesArg = process.argv.slice(2).find(arg => arg.startsWith('--modes='));
+const pagesArg = process.argv.slice(2).find(arg => arg.startsWith('--pages='));
+const selectedPages = pagesArg ? new Set(pagesArg.slice('--pages='.length).split(',').map(Number)) : null;
+if(selectedPages && ([...selectedPages].some(page => !Number.isInteger(page) || page < 1)))throw Error('Expected positive page numbers in --pages=12,13');
 const outputWidths = sizesArg ? sizesArg.slice('--sizes='.length).split(',').map(Number) : null;
 if (outputWidths && (outputWidths.length === 0 || outputWidths.some(n => !Number.isInteger(n) || n <= 0))) {
   throw Error('Expected positive integer widths in --sizes=480,960,1280,1920');
@@ -18,7 +21,7 @@ const modes = modesArg ? modesArg.slice('--modes='.length).split(',') : ['image'
 if (!modes.length || modes.some(mode => !['image', 'image-1x', 'image-matched', 'editable'].includes(mode))) {
   throw Error('Unknown mode in --modes');
 }
-const fixtureArgs = process.argv.slice(2).filter(arg => arg !== sizesArg && arg !== modesArg);
+const fixtureArgs = process.argv.slice(2).filter(arg => arg !== sizesArg && arg !== modesArg && arg !== pagesArg);
 const fixtures = fixtureArgs.length ? fixtureArgs : [
   'test/fixtures/export-reliability.slx', 'test/fixtures/table-deck.slx',
   'test/fixtures/pptx-visual-charts.slx', 'test/fixtures/pptx-visual-type.slx',
@@ -43,7 +46,7 @@ try {
     }));
     const references = new Map();
     for (const size of sizes) {
-      const png = await exportDeck(source, {format: 'png', scale: size.scale, directory: path.join(dir, `reference-${size.width}`)});
+      const png = await exportDeck(source, {format: 'png', scale: size.scale, pages:pagesArg?.slice('--pages='.length), directory: path.join(dir, `reference-${size.width}`)});
       references.set(size.width, png.files);
     }
     const samples = [];
@@ -62,11 +65,12 @@ try {
       const images = fs.readdirSync(rendered).filter(f => /\d+\.png$/i.test(f)).sort((a,b) => Number(a.match(/\d+(?=\.png$)/i)[0]) - Number(b.match(/\d+(?=\.png$)/i)[0]));
       if (images.length !== deck.slides.length) throw Error(`PowerPoint rendered ${images.length} of ${deck.slides.length} pages`);
       for (let i = 0; i < images.length; i++) {
+        if(selectedPages && !selectedPages.has(i+1))continue;
         const reference = references.get(width).find(f => f.endsWith(`-${String(i + 1).padStart(2, '0')}.png`));
         if (!reference) throw Error(`Missing PNG reference for page ${i + 1}`);
         const actual = path.join(rendered, images[i]);
         const regions = [{name: 'page', x: 0, y: 0, w: width, h: height}];
-        for (const el of deck.slides[i].elements) if (['chart', 'table', 'text', 'image'].includes(el.type)) {
+        for (const el of deck.slides[i].elements) if (['chart', 'table', 'text', 'image', 'line'].includes(el.type)) {
           const x = Math.max(0, Math.floor(el.x * scale)), y = Math.max(0, Math.floor(el.y * scale));
           regions.push({name: `${el.type}:${el.id}`, x, y,
             w: Math.min(width - x, Math.ceil(el.w * scale)),

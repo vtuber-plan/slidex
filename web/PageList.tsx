@@ -3,6 +3,7 @@ import { Thumbnail } from "./SlideSurface";
 import { t, useLocale } from "./i18n";
 import type { Deck } from "../src/types";
 import { Sparkles } from "lucide-react";
+import { ContextMenu } from "@radix-ui/themes";
 
 export function PageList({ deck }: { deck: Deck }) {
   useLocale();
@@ -69,12 +70,16 @@ export function PageList({ deck }: { deck: Deck }) {
       }}
     >
       {s.deck.slides.map((slide, i) => (
+        <ContextMenu.Root key={slide.id}>
+        <ContextMenu.Trigger>
         <div
-          key={slide.id}
           data-page-index={i}
           role="option"
           aria-selected={!s.master && s.pageSelection.includes(slide.id)}
           className={`filmstrip-item ${s.page === i && !s.master ? "active" : ""} ${s.pageSelection.includes(slide.id) && !s.master ? "page-selected" : ""}`}
+          onContextMenu={() => {
+            if (!s.pageSelection.includes(slide.id)) s.selectPage(i);
+          }}
           draggable
           onDragStart={(e) => {
             if (!s.pageSelection.includes(slide.id)) s.selectPage(i);
@@ -99,6 +104,17 @@ export function PageList({ deck }: { deck: Deck }) {
             </span>
           </button>
         </div>
+        </ContextMenu.Trigger>
+        <ContextMenu.Content>
+          <ContextMenu.Label>{t('已选页面')}：{s.pageSelection.length}</ContextMenu.Label>
+          <ContextMenu.Item onSelect={s.addPage}>{t('新建页面')}</ContextMenu.Item>
+          <ContextMenu.Item onSelect={s.duplicatePage}>{t('复制页面')}</ContextMenu.Item>
+          <ContextMenu.Item onSelect={s.deletePage}>{t('删除页面')}</ContextMenu.Item>
+          <ContextMenu.Separator />
+          <ContextMenu.Item disabled={s.pageSelection.includes(s.deck.slides[0].id)} onSelect={() => s.moveSelectedPages(Math.min(...s.pageSelection.map(id => s.deck.slides.findIndex(page => page.id === id))) - 1)}>{t('页面上移')}</ContextMenu.Item>
+          <ContextMenu.Item disabled={s.pageSelection.includes(s.deck.slides.at(-1)!.id)} onSelect={() => s.moveSelectedPages(Math.max(...s.pageSelection.map(id => s.deck.slides.findIndex(page => page.id === id))) + 2)}>{t('页面下移')}</ContextMenu.Item>
+        </ContextMenu.Content>
+        </ContextMenu.Root>
       ))}
     </div>
   );

@@ -220,17 +220,13 @@ try {
   await page.keyboard.press("Escape");
   check(
     "second Escape returns to page",
-    !(await page.$eval(".group-navigation", (el) => el.textContent)).includes(
-      "outer",
-    ),
+    (await page.$(".group-navigation")) === null,
   );
   await click("锁定对象");
   await double("shape");
   check(
     "locked parent blocks descendant entry",
-    !(await page.$eval(".group-navigation", (el) => el.textContent)).includes(
-      "outer",
-    ),
+    (await page.$(".group-navigation")) === null,
   );
   await click("解锁对象");
   await enter();
@@ -252,7 +248,8 @@ try {
   );
   await page.evaluate(() => window.__slxSave());
   await page.reload({ waitUntil: "networkidle0" });
-  check("group edits persist after reload", (await xml()) === saved);
+  const content = (xml) => JSON.stringify(parseSlideX(xml).deck.slides, (key, value) => key === 'line' ? undefined : value);
+  check("group edits persist after reload", content(await xml()) === content(saved));
   const styles = await page.$$eval("#canvasHost .slx-el", (els) =>
     els.map((el) => [el.dataset.id, el.getAttribute("style")]),
   );

@@ -11,7 +11,7 @@ const file = path.resolve("test/fixtures/export-reliability.slx");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slidex-export-browser-"));
 const server = await startServer(file, {
   port: 0,
-  pickExport: async () => undefined,
+  pickExport: async (format) => format === "pdf" ? undefined : { directory: dir },
 });
 const base = `http://127.0.0.1:${server.port}`;
 try {
@@ -42,6 +42,19 @@ try {
       ).json(),
     );
     assert.equal(canceled.status, "canceled");
+    const streamed = await fetch(base + "/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format: "pptx", editable: false, scale: 1, chooseDestination: true, progress: true }),
+    });
+    assert.match(streamed.headers.get("content-type"), /application\/x-ndjson/);
+    const events = (await streamed.text()).trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(events.filter(event => event.type === "progress" && event.phase === "rendering").map(event => event.completed), [0, 1, 2]);
+    assert.ok(events.some(event => event.phase === "packaging"));
+    assert.ok(events.some(event => event.phase === "publishing"));
+    assert.equal(events.at(-1).type, "result");
+    assert.equal(events.at(-1).ok, true);
+    assert.ok(fs.existsSync(events.at(-1).files[0]));
     await page.goto(base + "/render/0", { waitUntil: "networkidle0" });
     const table = await page.$eval("table", (el) => ({
       height: el.getBoundingClientRect().height,
@@ -58,11 +71,15 @@ try {
     );
   });
   const before = fs.readFileSync(file, "utf8");
+  const editableProgress = [];
   const pptx = await exportDeck(file, {
     format: "pptx",
     editable: true,
     directory: dir,
+    onProgress: state => editableProgress.push(state),
   });
+  assert.deepEqual(editableProgress.filter(state => state.phase === "rendering").map(state => state.completed), [0, 1, 2]);
+  assert.deepEqual(editableProgress.map(state => state.phase).filter((phase, index, phases) => phase !== phases[index - 1]), ["preparing", "rendering", "packaging", "publishing"]);
   assert.equal(pptx.status, "degraded");
   assert.equal(
     pptx.report.fonts.find((f) => f.family === "SlideX Missing Font QA")

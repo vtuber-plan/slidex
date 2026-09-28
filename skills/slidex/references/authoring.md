@@ -24,6 +24,8 @@ A project is one `.slx` file plus an optional `media/` directory, or an entry fi
 
 Syntax rules: unique `<deck>` root; tags lowercase and closed; attributes quoted; escape `& < > " '` (or use `&#...;` numeric references); `<![CDATA[ ... ]]>` preserves text verbatim — required for `<code>` content and recommended for rich text with special characters; comments are dropped on save; namespaced tags do not exist. An image uses `<image id="photo" src="media/photo.png" x="60" y="150" w="400" h="260"/>`; keep width/height positive; text uses tag content, never a `text=` attribute.
 
+Optional deck metadata uses `<metadata author="..." created-at="2026-09-28T08:30:00.000Z" modified-by="..." modified-at="..." last-machine="..."/>`. The editor fills it on new/save-as and updates the modification fields on save. Manual XML edits do not update it automatically.
+
 Common element attributes: `id` (unique per page; auto-generated `e1, e2, …` when omitted), `x y w h` (required, except `line`), `rotation` (degrees), `opacity` [0,1], `flip-h`/`flip-v`, `href` (external `https://` / `mailto:`, or internal `slide:<slide-id>`), `alt` (accessibility), `locked`, `label`, `hidden`, `lock-aspect`.
 
 `<slide>` attributes: `type` (`cover | toc | section | content | final | custom string`), `background` (solid color, or a `<fill>` child for gradients/images), `notes` (plain-text speaker notes; newline as `&#10;`), `master`, `transition` (`none | fade | slide-left | slide-up | zoom`, default `none`), `guides-x`/`guides-y` (editor guides only).

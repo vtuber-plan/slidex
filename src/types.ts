@@ -194,9 +194,18 @@ export interface DeckTheme {
   tableStyles: Record<string, TableStyle>;
 }
 
+export interface DeckMetadata {
+  author?: string;
+  createdAt?: string;
+  modifiedBy?: string;
+  modifiedAt?: string;
+  lastMachine?: string;
+}
+
 export interface Deck {
   version: string;
   title: string;
+  metadata?: DeckMetadata;
   width: number;
   height: number;
   fonts: Array<{ family: string; src: string }>;

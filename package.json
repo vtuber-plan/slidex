@@ -1,6 +1,6 @@
 {
   "name": "slidex",
-  "version": "1.7.0-rc.10",
+  "version": "1.7.0-rc.11",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "repository": {
     "type": "git",
@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p app/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "dev:web": "vite --host 127.0.0.1",
-    "test:react": "node test/react-editor.mjs",
+    "test:react": "node test/react-editor.mjs && node test/react-masters.mjs && node test/react-ribbon.mjs",
     "test:electron": "electron test/react-electron.cjs",
     "dist:tools": "node scripts/package-tools.mjs",
     "test:tools": "node test/tools-package.mjs",

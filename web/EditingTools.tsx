@@ -28,7 +28,7 @@ const styleKeys = [
   "backgroundColor",
   "radius",
 ] as const;
-export function EditingTools() {
+export function EditingTools({ mode = "edit" }: { mode?: "edit" | "arrange" }) {
   useLocale();
   const s = useEditor(),
     [format, setFormat] = useState<Partial<SlideElement> | null>(null),
@@ -91,7 +91,7 @@ export function EditingTools() {
     });
   return (
     <>
-      <DropdownMenu.Root>
+      {mode === "arrange" && <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           <Button aria-label={t("分布与尺寸")} variant="ghost">
             <AlignHorizontalSpaceAround size={17} />
@@ -153,8 +153,8 @@ export function EditingTools() {
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
-      </DropdownMenu.Root>
-      <DropdownMenu.Root>
+      </DropdownMenu.Root>}
+      {mode === "edit" && <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           <Button aria-label={t("格式刷")} variant="ghost">
             <Paintbrush size={17} />
@@ -187,8 +187,8 @@ export function EditingTools() {
             {t("应用格式")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
-      </DropdownMenu.Root>
-      <Dialog.Root open={open} onOpenChange={setOpen}>
+      </DropdownMenu.Root>}
+      {mode === "edit" && <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Trigger>
           <Button aria-label={t("查找替换")} variant="ghost">
             <Search size={17} />
@@ -282,7 +282,7 @@ export function EditingTools() {
             </Button>
           </div>
         </Dialog.Content>
-      </Dialog.Root>
+      </Dialog.Root>}
     </>
   );
 }

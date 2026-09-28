@@ -100,8 +100,8 @@ try {
   await page.goto(base, { waitUntil: "networkidle0" });
   await page.evaluate(()=>{localStorage.setItem('slidex-language','en');});
   await page.reload({waitUntil:'networkidle0'});
-  await page.locator('.command-bar button::-p-text(Tools)').click();
-  await page.locator('[role="menuitem"]::-p-text(DSL source and diagnostics)').click();
+  await page.locator('.ribbon-tab::-p-text(Tools)').click();
+  await page.click('.ribbon-panel [aria-label="DSL source and diagnostics…"]');
   await page.waitForSelector('.diagnostic-item');
   check(
     "English diagnostic includes actionable summary",

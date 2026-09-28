@@ -48,7 +48,7 @@ try{
   const good=await (await post('/api/save',{xml:doc.xml,expectedVersion:doc.version,expectedPath:file})).json();assert.equal(good.ok,true,JSON.stringify(good));
   await withBrowser(async browser=>{
     const page=await browser.newPage();await page.setViewport({width:1440,height:1000});await page.goto(base);await page.waitForSelector('#canvasHost [data-id="text"]');
-    await page.click('#canvasHost [data-id="text"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' browser');await page.click('.canvas-caption');assert.equal(await page.evaluate(()=>window.__slxSave()),true);
+    await page.click('#canvasHost [data-id="text"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' browser');await page.click('.canvas-bottom > span');assert.equal(await page.evaluate(()=>window.__slxSave()),true);
     await page.reload();await page.waitForSelector('#canvasHost [data-id="text"]');assert.match(await page.evaluate(()=>window.__slxGetXml()),/browser/);
   });
   const reloaded=loadProject(file);assert.equal(reloaded.deck.slides[0].animations[0].target,'text');assert.match(fs.readFileSync(file,'utf8'),/<include/);assert.equal(fs.readFileSync(path.join(dir,'pages/one.slx'),'utf8'),fragment);

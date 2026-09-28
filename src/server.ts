@@ -17,6 +17,7 @@ import {languageInfo} from './language.js';
 import {serializeDeck} from './serializer.js';
 import {isLocale} from './locales.js';
 import {createDocument} from './file-commands.js';
+import {stampEditorMetadata} from './editor-metadata.js';
 import {applyProjectPatch,PatchError} from './patch.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -244,9 +245,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         send(res, 200, { ok: false, errors: r.errors });
         return;
       }
-      const saved=saveProject(project,xml);cached=saved;
-      let historyWarning='';try{history.saved(deckFile,xml);}catch(error){historyWarning='文档已保存，但历史记录写入失败：'+String((error as Error).message);}
-      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, mtimeMs: fs.statSync(deckFile).mtimeMs,version:saved.version,historyWarning });
+      const metadata=stampEditorMetadata(r.deck,project.deck.metadata);
+      const savedXml=serializeDeck(r.deck);
+      const saved=saveProject(project,savedXml);cached=saved;
+      let historyWarning='';try{history.saved(deckFile,savedXml);}catch(error){historyWarning='文档已保存，但历史记录写入失败：'+String((error as Error).message);}
+      send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, metadata, mtimeMs: fs.statSync(deckFile).mtimeMs,version:saved.version,historyWarning });
       return;
     }
     if (req.method === 'POST' && p === '/api/patch') {
@@ -290,10 +293,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false } = await readBody(req);
+      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false, progress = false } = await readBody(req);
       try {
         if (pages !== undefined && typeof pages !== 'string') throw Error('pages 必须是页码范围字符串');
         if (typeof manifest !== 'boolean') throw Error('manifest 必须是布尔值');
+        if (typeof progress !== 'boolean') throw Error('progress 必须是布尔值');
         if(!['png','pdf','pptx','html'].includes(format))throw Error('不支持的导出格式');
         let destination:{directory?:string;outputFile?:string}={};
         if(chooseDestination && opts.pickExport){
@@ -301,11 +305,20 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
           if(!picked){send(res,200,{ok:true,canceled:true,status:'canceled'});return;}
           destination=picked;
         }
-        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest, ...destination });
+        if(progress){
+          res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Accel-Buffering':'no'});
+          res.flushHeaders();
+        }
+        const emit=(data:object)=>res.write(JSON.stringify(data)+'\n');
+        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest, ...destination,
+          onProgress:progress ? state=>emit({type:'progress',...state}) : undefined });
         const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
-        send(res, 200, { ok: true, ...result, downloads });
+        if(progress){emit({type:'result',ok:true,...result,downloads});res.end();}
+        else send(res, 200, { ok: true, ...result, downloads });
       } catch (e) {
-        send(res, 200, { ok: false, status:'failed',...(e as {details?:object}).details, error: String(e && (e as Error).message || e) });
+        const failure={ok:false,status:'failed',...(e as {details?:object}).details,error:String(e && (e as Error).message || e)};
+        if(res.headersSent){res.write(JSON.stringify({type:'result',...failure})+'\n');res.end();}
+        else send(res, 200, failure);
       }
       return;
     }

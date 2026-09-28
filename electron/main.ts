@@ -1,8 +1,8 @@
 // electron/main.ts — SlideX 桌面应用主进程
 // 职责：启动本地编辑服务器 → 创建窗口 → 原生菜单（打开/新建/保存/导出/放映）
 // 编译到 dist-electron/main.js（electron/tsconfig.json），运行时加载 dist/ 下的核心
-// 菜单/对话框文案跟随编辑器语言（渲染进程 sandbox 无 IPC，用轻量轮询 localStorage 同步）
-import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
+// 菜单/对话框文案跟随编辑器语言；窗口按钮通过受限 preload IPC 控制主窗口。
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -161,11 +161,16 @@ function createWindow(): void {
     minWidth: 980, minHeight: 600,
     backgroundColor: '#1B2027',
     title: 'SlideX',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : { frame: false }),
     autoHideMenuBar: true,
     icon: path.join(ROOT, 'app', 'icon.png'),
     show: false,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs') },
   });
+  const mainWindow = win;
+  const sendWindowState = () => mainWindow.webContents.send('slidex-window:state-changed', { maximized: mainWindow.isMaximized() });
+  mainWindow.on('maximize', sendWindowState);
+  mainWindow.on('unmaximize', sendWindowState);
   win.setMenuBarVisibility(false);
   if (!app.commandLine.hasSwitch('slidex-smoke-test')) win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -219,6 +224,14 @@ async function handleClose(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  const editorWindow = (event: Electron.IpcMainInvokeEvent) => win && !win.isDestroyed() && event.sender === win.webContents ? win : null;
+  ipcMain.handle('slidex-window:minimize', event => editorWindow(event)?.minimize());
+  ipcMain.handle('slidex-window:toggle-maximize', event => {
+    const target = editorWindow(event);
+    if (target?.isMaximized()) target.unmaximize(); else target?.maximize();
+  });
+  ipcMain.handle('slidex-window:close', event => editorWindow(event)?.close());
+  ipcMain.handle('slidex-window:state', event => ({ maximized: editorWindow(event)?.isMaximized() ?? false }));
   const argDeck = process.argv.slice(1).find(a => a.toLowerCase().endsWith('.slx') && !a.startsWith('--'));
   deckFile = await ensureDeck(argDeck);
   const { startServer } = await import('../dist/server.js');

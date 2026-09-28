@@ -25,7 +25,7 @@ try {
   assert.ok(await page.$('#text-format-dock .rich-editor'));
   await page.screenshot({path:path.join(dir,'inline-workspace.png')});
   assert.equal(await page.$('[role="dialog"]'),null,'text edits inside the canvas, without a modal');
-  await page.keyboard.type('Inline ');await page.click('.canvas-caption');console.log('  inline edit passed');
+  await page.keyboard.type('Inline ');await page.click('.canvas-bottom > span');console.log('  inline edit passed');
   for (const width of [980,1440]) {
     await page.setViewport({width,height:900});
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));

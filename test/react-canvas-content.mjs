@@ -92,7 +92,7 @@ try {
     assert.equal(nested.rowsData[0][0].text, 'Nested');
     await page.click('#canvasHost [data-id="nested"] td', { clickCount: 2 });
     await page.keyboard.type(' child');
-    await page.click('.canvas-caption');
+    await page.click('.canvas-bottom > span');
     assert.ok((await deck()).slides[0].elements.find((e) => e.id === 'group').elements[0].rowsData[0][0].text.includes('child'));
     assert.deepEqual(parseSlideX(await page.evaluate(() => window.__slxGetXml())).errors, []);
     const rendered = await browser.newPage();

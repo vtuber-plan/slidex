@@ -72,7 +72,7 @@ export async function waitReady(page: Page, timeoutMs = 10000): Promise<void> {
 export async function capturePngs(
   baseUrl: string,
   slideCount: number,
-  { scale = 2, outDir, deckW, deckH, base = 'slide', pages }: { scale?: number; outDir: string; deckW: number; deckH: number; base?: string; pages?: number[] },
+  { scale = 2, outDir, deckW, deckH, base = 'slide', pages, onPage }: { scale?: number; outDir: string; deckW: number; deckH: number; base?: string; pages?: number[]; onPage?: (completed: number) => void },
 ): Promise<string[]> {
   fs.mkdirSync(outDir, { recursive: true });
   const files: string[] = [];
@@ -86,6 +86,7 @@ export async function capturePngs(
       const file = path.join(outDir, `${base}-${String(i + 1).padStart(2, '0')}.png`);
       await page.screenshot({ path: file, clip: { x: 0, y: 0, width: deckW, height: deckH } });
       files.push(file);
+      onPage?.(files.length);
     }
     await page.close();
   });

@@ -204,7 +204,7 @@ try {
     (await deck()).slides[0].elements[1].fillObj?.color === "#ffffff",
   );
   await page.select('[aria-label="填充类型"]', "none");
-  await page.click(".canvas-caption");
+  await page.click('.canvas-workspace', { offset: { x: 5, y: 5 } });
   await page.keyboard.press("Escape");
   await page.waitForSelector('[aria-label="背景类型"]');
   await page.select('[aria-label="背景类型"]', "gradient");
@@ -213,6 +213,8 @@ try {
     "background arbitrary angle reaches shared renderer",
     renderSlide(await deck(), (await deck()).slides[0]).includes("211deg"),
   );
+  await page.locator('.ribbon-tab::-p-text(视图)').click();
+  await page.click('.ribbon-panel [aria-label="母版"]');
   await field("accent", "#22c55e");
   check(
     "theme changes update referenced gradient",
@@ -220,6 +222,7 @@ try {
       el.getAttribute("stop-color"),
     )) === "#22c55e",
   );
+  await page.click('.ribbon-panel [aria-label="普通视图"]');
   await page.click('#canvasHost [data-id="shape"]');
   await page.select('[aria-label="填充类型"]', "none");
   check(
@@ -235,7 +238,8 @@ try {
   await page.evaluate(() => window.__slxSave());
   const saved = await xml();
   await page.reload({ waitUntil: "networkidle0" });
-  check("appearance survives save reload", (await xml()) === saved);
+  const visualContent = (xml) => JSON.stringify(parseSlideX(xml).deck.slides, (key, value) => key === 'line' ? undefined : value);
+  check("appearance survives save reload", visualContent(await xml()) === visualContent(saved));
   const snapshot = (root) =>
     page.$eval(`${root} [data-id="shape"]`, (el) => ({
       stops: [...el.querySelectorAll("stop")].map((n) => [

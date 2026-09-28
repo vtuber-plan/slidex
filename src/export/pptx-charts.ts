@@ -32,7 +32,7 @@ export function nativeChartSupported(el: SlideElement): boolean {
         !s.stack &&
         !Number(s["inner-radius"]) &&
         (!s.dash || s.dash === "solid") &&
-        (!s["data-labels"] || s["data-labels"] === "none") &&
+        (!s["data-labels"] || s["data-labels"] === "none" || s.type === "bar" && s["data-labels"] === "value") &&
         (!s.smooth || s.smooth==='false') &&
         !s["stroke-width"] &&
         (!s.stroke || s.type==='line') &&
@@ -41,7 +41,7 @@ export function nativeChartSupported(el: SlideElement): boolean {
     ) &&
     [el.xAxis, el.yAxis].every(
       (axis) =>
-        !axis || Object.keys(axis).every((k) => k === "line" || k === "type"),
+        !axis || Object.keys(axis).every((k) => ["line", "type", "format", "min", "max"].includes(k)),
     )
   );
 }
@@ -116,7 +116,9 @@ export function chartPart(el: SlideElement, deck: Deck): string {
               )
               .join("")
           : "";
-      return `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name || s.y)}</c:v></c:tx><c:spPr>${style}</c:spPr>${type === "bar" ? '<c:invertIfNegative val="0"/>' : ""}${marker}${slices}${xy}${type === "line" || type === "scatter" ? '<c:smooth val="0"/>' : ""}</c:ser>`;
+      const labelMode = s["data-labels"];
+      const labels = labelMode && labelMode !== "none" ? `<c:dLbls><c:numFmt formatCode="${esc((horizontal ? el.xAxis : el.yAxis)?.format || 'General')}" sourceLinked="0"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="${Math.round(((el['font-size'] as number) || 12) * 0.8 * 100)}"/></a:pPr><a:endParaRPr lang="zh-CN"/></a:p></c:txPr><c:dLblPos val="${type === 'bar' ? 'outEnd' : type === 'pie' ? 'bestFit' : 't'}"/><c:showLegendKey val="0"/><c:showVal val="${labelMode === 'value' ? 1 : 0}"/><c:showCatName val="${labelMode === 'category' ? 1 : 0}"/><c:showSerName val="0"/><c:showPercent val="${labelMode === 'percent' ? 1 : 0}"/></c:dLbls>` : "";
+      return `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name || s.y)}</c:v></c:tx><c:spPr>${style}</c:spPr>${type === "bar" ? '<c:invertIfNegative val="0"/>' : ""}${marker}${slices}${labels}${xy}${type === "line" || type === "scatter" ? '<c:smooth val="0"/>' : ""}</c:ser>`;
     })
     .join("");
   const tag = type + "Chart",
@@ -133,9 +135,9 @@ export function chartPart(el: SlideElement, deck: Deck): string {
   const axes =
     type === "pie"
       ? ""
-      : `${axis(type === "scatter" ? "val" : "cat", 100, 200, horizontal ? "l" : "b", type === "scatter" ? chartTicks(el, true) : undefined)}${axis("val", 200, 100, horizontal ? "b" : "l", chartTicks(el, false))}`;
+      : `${axis(type === "scatter" ? "val" : "cat", 100, 200, horizontal ? "l" : "b", type === "scatter" ? chartTicks(el, true) : undefined, el.xAxis)}${axis("val", 200, 100, horizontal ? "b" : "l", chartTicks(el, false), horizontal ? el.xAxis : el.yAxis)}`;
   const title = el.title
-    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="zh-CN"/><a:t>${esc(el.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
+    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="zh-CN" sz="${Math.round(((el['font-size'] as number) || 12) * 1.25 * 75)}" b="1"/><a:t>${esc(el.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
     : "";
   const legend =
     el.legend && el.legend !== "none"
@@ -147,18 +149,21 @@ export function chartPart(el: SlideElement, deck: Deck): string {
 }
 function chartTicks(el: SlideElement, xValues: boolean) {
   const data = el.chartData!, series = el.seriesList!, horizontal = el.yAxis?.type === "category";
+  const config = xValues ? el.xAxis : horizontal ? el.xAxis : el.yAxis;
   const values = series.flatMap(s => {
     const index = data.cols.indexOf((xValues ? s.x : horizontal ? s.x : s.y) || "");
     return index < 0 ? [] : data.rows.map(row => row[index] == null ? NaN : Number(row[index])).filter(Number.isFinite);
   });
   if (series[0].type === "bar" && !xValues) values.push(0);
   const low = Math.min(...values), high = Math.max(...values);
-  return niceTicks(Number.isFinite(low) ? low : 0, Number.isFinite(high) ? high === low ? low + 1 : high : 1);
+  const min = config?.min !== undefined ? Number(config.min) : low;
+  const max = config?.max !== undefined ? Number(config.max) : high;
+  return niceTicks(Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max === min ? min + 1 : max : 1);
 }
-function axis(type: string, id: number, cross: number, position: string, ticks?: ReturnType<typeof niceTicks>) {
-  const scaling = ticks ? `<c:max val="${ticks.hi}"/><c:min val="${ticks.lo}"/>` : "";
+function axis(type: string, id: number, cross: number, position: string, ticks?: ReturnType<typeof niceTicks>, config?: Record<string, unknown>) {
+  const scaling = ticks ? `<c:max val="${config?.max ?? ticks.hi}"/><c:min val="${config?.min ?? ticks.lo}"/>` : "";
   const grid = type === "val" && id === 200 ? '<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="E4E8EE"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>' : "";
   const line = '<c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="C9D0DA"/></a:solidFill></a:ln></c:spPr>';
   const label = '<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1080"><a:solidFill><a:srgbClr val="3A4453"/></a:solidFill></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>';
-  return `<c:${type}Ax><c:axId val="${id}"/><c:scaling><c:orientation val="minMax"/>${scaling}</c:scaling><c:delete val="0"/><c:axPos val="${position}"/>${grid}<c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>${line}${label}<c:crossAx val="${cross}"/><c:crosses val="autoZero"/>${type === "cat" ? '<c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/>' : `<c:crossBetween val="between"/>${ticks ? `<c:majorUnit val="${ticks.ticks[1] - ticks.ticks[0]}"/>` : ""}`}</c:${type}Ax>`;
+  return `<c:${type}Ax><c:axId val="${id}"/><c:scaling><c:orientation val="minMax"/>${scaling}</c:scaling><c:delete val="0"/><c:axPos val="${position}"/>${grid}<c:numFmt formatCode="${esc(config?.format || 'General')}" sourceLinked="${config?.format ? 0 : 1}"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>${line}${label}<c:crossAx val="${cross}"/><c:crosses val="autoZero"/>${type === "cat" ? '<c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/>' : `<c:crossBetween val="between"/>${ticks ? `<c:majorUnit val="${ticks.ticks[1] - ticks.ticks[0]}"/>` : ""}`}</c:${type}Ax>`;
 }

@@ -1,5 +1,32 @@
 # PPTX visual QA
 
+## Targeted 22-page editable-deck comparison (2026-09-28)
+
+The `genai-cognitive-risk-deck/deck.slx` comparison at 960×540 identified
+three distinct sources of error. Page 1's `cv-t1` headline had a 38.304%
+changed-pixel region despite remaining editable: PowerPoint placed its first
+glyph row lower than Chromium even with a zero top inset. A font-size-relative
+negative text top inset reduced that region to 20.687%. Page 8's native `do-tbl`
+used five equal 42px rows while Chromium laid them out at approximately
+38/58/38/38/38px, because its second row wraps. Measuring each rendered table
+row before writing the native PPTX changed that table region from 16.126% to
+11.454%. The same adjustment reduced page 12's `rl-tbl` from 25.144% to
+20.677%. The editable bar chart `rl-chart` on page 12 remains a conspicuous
+16.798% region mismatch: PowerPoint's own chart title and plot layout differ
+from the SVG renderer, even though the labels, axes, and workbook remain editable.
+
+All 22 whole-page scores improved against the previous editable export; their
+mean changed-pixel percentage went from **7.895% to 6.710%**. The worst page is
+still page 12 at **10.113%**, down from 13.248%. This is an empirical result on
+PowerPoint 2024 for Windows, not a general 1:1 guarantee. The inset compensation
+is renderer-specific; verify other PowerPoint versions and fonts before extending
+its scope. Full reference PNGs, PowerPoint PNGs, diff images, two PPTX files and
+machine-readable metrics are retained under
+`.qa-images/pptx-targeted-2026-09-28/`.
+
+Reproduce with `node test/pptx-visual.mjs --modes=editable --pages=1,8,12,17,18 <deck.slx>`.
+The automatic-row and inset assertions are in `test/pptx-native-recovery.mjs`.
+
 The PNG export is the SlideX reference image. On Windows with PowerPoint installed,
 run `npm run build` and then `node test/pptx-visual.mjs` to export fixtures to
 PNG, default 2x image PPTX, 1x image PPTX, and editable PPTX. The script opens the PPTX files in

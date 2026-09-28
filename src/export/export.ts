@@ -16,7 +16,8 @@ import { createExportReport, type ExportReport } from './report.js';
 import { publishExport, ExportRecoveryError } from './publish.js';
 import {loadProject} from '../project.js';
 
-interface ExportOptions { format?:string;scale?:number;editable?:boolean;pages?:string;manifest?:boolean;directory?:string;outputFile?:string }
+export interface ExportProgress { phase:'preparing'|'rendering'|'packaging'|'publishing'; completed?:number; total?:number }
+interface ExportOptions { format?:string;scale?:number;editable?:boolean;pages?:string;manifest?:boolean;directory?:string;outputFile?:string;onProgress?:(progress:ExportProgress)=>void }
 export class ExportFailure extends Error {
   constructor(message:string,public details:{version:1;status:'failed';source:string;diagnostics:unknown[];failure:{code:string;message:string}}){super(message);}
 }
@@ -30,6 +31,7 @@ export async function exportDeck(deckFile:string, options:ExportOptions={}):Prom
 }
 async function executeExport(deckFile:string, options:ExportOptions={}):Promise<{files:string[];outDir:string;status:'success'|'degraded';report:ExportReport}> {
   const abs=path.resolve(deckFile), format=options.format||'png';
+  options.onProgress?.({phase:'preparing'});
   if(!['png','pdf','pptx','html'].includes(format))throw Error(`不支持的导出格式：${format}`);
   const parsed=loadProject(abs);
   if(parsed.errors.some(e=>!e.code.startsWith('W_')))throw new ExportFailure('文档存在错误，请先运行 slidex validate',{version:1,status:'failed',source:abs,diagnostics:parsed.errors,failure:{code:'DOCUMENT_INVALID',message:'文档校验失败'}});
@@ -41,6 +43,7 @@ async function executeExport(deckFile:string, options:ExportOptions={}):Promise<
   try {
     const report=createExportReport(parsed.deck,format,!!options.editable,pages);
     const result=await renderDeck(abs,{...options,directory:scratch,outputFile:options.outputFile?path.join(scratch,path.basename(options.outputFile)):undefined},report);
+    options.onProgress?.({phase:'publishing'});
     if(format==='png'&&options.manifest){
       const file=result.files.find(f=>f.endsWith('-images.json'))!;
       const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
@@ -63,7 +66,7 @@ async function executeExport(deckFile:string, options:ExportOptions={}):Promise<
 
 async function renderDeck(
   deckFile: string,
-  { format = 'png', scale = 2, editable = false, pages, manifest = false, directory, outputFile }: { format?: string; scale?: number; editable?: boolean; pages?: string; manifest?: boolean; directory?: string; outputFile?: string } = {},
+  { format = 'png', scale = 2, editable = false, pages, manifest = false, directory, outputFile, onProgress }: ExportOptions = {},
   report?: ExportReport,
 ): Promise<{ files: string[]; outDir: string }> {
   const abs = path.resolve(deckFile);
@@ -76,6 +79,7 @@ async function renderDeck(
   if (!Number.isFinite(scale) || scale < 0.25 || scale > 4) throw Error('导出倍率必须在 0.25–4 之间');
   if ((pages !== undefined || manifest) && format !== 'png') throw Error('页码选择和图片清单仅用于 PNG 导出');
   const selected = parsePages(pages, deck.slides.length);
+  const total = format === 'png' ? selected.length : deck.slides.length;
   const deckDir = path.dirname(abs);
   const outDir = outputFile ? path.dirname(path.resolve(outputFile)) : directory ? path.resolve(directory) : path.join(deckDir, 'out');
   const base = path.basename(abs, path.extname(abs));
@@ -110,7 +114,9 @@ async function renderDeck(
     }
     switch (format) {
       case 'png': {
-        const files = await capturePngs(baseUrl, deck.slides.length, { scale, outDir, deckW: deck.width, deckH: deck.height, base, pages: selected });
+        onProgress?.({phase:'rendering',completed:0,total});
+        const files = await capturePngs(baseUrl, deck.slides.length, { scale, outDir, deckW: deck.width, deckH: deck.height, base, pages: selected, onPage:completed=>onProgress?.({phase:'rendering',completed,total}) });
+        onProgress?.({phase:'packaging'});
         if (manifest) {
           const file = path.join(outDir, `${base}-images.json`);
           fs.writeFileSync(file, JSON.stringify({version: 1, source: abs, width: deck.width, height: deck.height, scale,
@@ -120,18 +126,23 @@ async function renderDeck(
         return { files, outDir };
       }
       case 'pdf': {
+        onProgress?.({phase:'rendering',completed:0,total});
         const file = outputFile || path.join(outDir, `${base}.pdf`);
         await capturePdf(`${baseUrl}/api/print`, file);
+        onProgress?.({phase:'packaging'});
         return { files: [file], outDir };
       }
       case 'pptx': {
         if (editable) {
-          const file = await exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile });
+          onProgress?.({phase:'rendering',completed:0,total});
+          const file = await exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile, onProgress });
           return { files: [file], outDir };
         }
         const scratch = fs.mkdtempSync(path.join(os.tmpdir(),'slidex-pptx-'));
         try {
-        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale, outDir: scratch, deckW: deck.width, deckH: deck.height, base });
+        onProgress?.({phase:'rendering',completed:0,total});
+        const pngs = await capturePngs(baseUrl, deck.slides.length, { scale, outDir: scratch, deckW: deck.width, deckH: deck.height, base, onPage:completed=>onProgress?.({phase:'rendering',completed,total}) });
+        onProgress?.({phase:'packaging'});
         const buf = buildPptx({
           pngFiles: pngs, width: deck.width, height: deck.height,
           title: deck.title || base, notes: deck.slides.map(s => s.notes || ''),
@@ -142,6 +153,7 @@ async function renderDeck(
         } finally { fs.rmSync(scratch,{recursive:true,force:true}); }
       }
       case 'html': {
+        onProgress?.({phase:'packaging'});
         const file = outputFile || path.join(outDir, `${base}.html`);
         fs.writeFileSync(file, buildStandaloneHtml(deck, deckDir), 'utf8');
         return { files: [file], outDir };
@@ -155,7 +167,7 @@ async function renderDeck(
 }
 
 // 可编辑混合导出：原生元素映射 + 复杂元素裁图
-async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile }: {
+async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale, outputFile, onProgress }: {
   deck: Deck;
   deckDir: string;
   baseUrl: string;
@@ -163,6 +175,7 @@ async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale,
   base: string;
   scale: number;
   outputFile?: string;
+  onProgress?: (progress: ExportProgress) => void;
 }): Promise<string> {
   const plans = deck.slides.map(s => planSlide(deck, s));
   const cropBuffers = new Map<string, Buffer>(); // "slideIdx:key" -> PNG Buffer
@@ -172,10 +185,23 @@ async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale,
     for (let i = 0; i < deck.slides.length; i++) {
       const plan = plans[i];
       const crops = flattenPlan(plan.items).filter((it): it is Extract<PlanItem, { kind: 'crop' }> => it.kind === 'crop');
-      if (!crops.length) continue;
+      const tables = flattenPlan(plan.items).filter((it): it is Extract<PlanItem, { kind: 'table' }> => it.kind === 'table');
+      if (!crops.length && !tables.length) { onProgress?.({phase:'rendering',completed:i+1,total:deck.slides.length}); continue; }
       const response=await page.goto(`${baseUrl}/render/${i}`, { waitUntil: 'networkidle2', timeout: 30000 });
       if(!response?.ok())throw Error(`无法渲染第 ${i+1} 页`);
       await waitReady(page);
+      if (tables.length) {
+        const heights=await page.evaluate(ids=>ids.map(id=>{
+          const element=Array.from(document.querySelectorAll<HTMLElement>('.slx-el')).find(node=>node.dataset.id===id);
+          const table=element?.querySelector('table');
+          return table ? Array.from(table.rows,row=>row.getBoundingClientRect().height) : null;
+        }),tables.map(item=>item.el.id));
+        tables.forEach((item,index)=>{
+          if(heights[index]?.length!==item.el.rowsData?.length)throw Error(`无法测量第 ${i+1} 页表格 ${item.el.id} 的行高`);
+          item.el.rowsRatio=heights[index]!;
+        });
+      }
+      if (!crops.length) { onProgress?.({phase:'rendering',completed:i+1,total:deck.slides.length}); continue; }
       // Keep a pristine rendered page. Each crop is isolated, transparent and in local
       // coordinates; OOXML applies the object's and parent groups' transforms once.
       const original=await page.$eval('.slx-slide',el=>el.innerHTML);
@@ -221,9 +247,11 @@ async function exportEditablePptx({ deck, deckDir, baseUrl, outDir, base, scale,
         const buf = await page.screenshot({ omitBackground:true, captureBeyondViewport:true, clip: { x: 0, y: 0, width: Math.max(1, crop.w), height: Math.max(1, crop.h) } });
         cropBuffers.set(`${i}:${crop.key}`, Buffer.from(buf));
       }
+      onProgress?.({phase:'rendering',completed:i+1,total:deck.slides.length});
     }
     await page.close();
   });
+  onProgress?.({phase:'packaging'});
   const buf = await buildPptxEditable({
     deck, deckDir, plans, cropBuffers,
     width: deck.width, height: deck.height, title: deck.title || base,

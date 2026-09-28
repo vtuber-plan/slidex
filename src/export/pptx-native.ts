@@ -89,16 +89,21 @@ export function planSlide(deck: Deck, slide: SlideContainer): SlidePlan {
   if (bg && bg.type !== 'solid') items.push({ kind: 'crop', el: null, key: 'bg', x: 0, y: 0, w: deck.width, h: deck.height, reason: 'background' });
   if (hasMaster) {
     const master = (deck.masters || []).find(m => m.id === slide.master);
-    for (const el of master!.elements) planElement(el, items, 'm');
+    for (const el of master!.elements) planElement(el, items, deck, 'm');
   }
-  for (const el of slide.elements) planElement(el, items);
+  for (const el of slide.elements) planElement(el, items, deck);
   return { bg: bg && bg.type === 'solid' ? { color: resolveColor(bg.color, deck) } : null, items };
 }
-function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored = false): void {
+function planElement(el: SlideElement, items: PlanItem[], deck: Deck, prefix = '', mirrored = false): void {
   if(el.hidden)return;
   const crop = (reason: string) => items.push({kind:'crop',el,key:prefix+el.id,x:el.x!,y:el.y!,w:el.w!,h:el.h!,reason});
   // Unsupported visual properties must not silently disappear from native objects.
-  if (el.opacity !== undefined && el.opacity !== 1 && el.type !== 'image') { crop('opacity'); return; }
+  if (el.opacity !== undefined && el.opacity !== 1 && !(
+    el.type === 'image' ||
+    el.type === 'text' && !el.shadow && !el.fillObj && !resolveTextStyle(el,deck).backgroundColor && !/background(?:-color)?\s*:/i.test(el.content || '') ||
+    el.type === 'shape' && !el.shadow && !el.stroke && (!el.fillObj || el.fillObj.type === 'solid') ||
+    el.type === 'line' && !el.shadow
+  )) { crop('opacity'); return; }
   if (el.type === 'shape' && el.fillObj?.type === 'image') { crop('image-fill'); return; }
   if ((el.type === 'shape' || el.type === 'text') && el.fillObj?.type === 'radial-gradient') { crop('radial-gradient'); return; }
   if ((mirrored||el.flipH||el.flipV) && (el.type==='text'||el.type==='table')) {crop('mirrored-text');return;}
@@ -107,7 +112,7 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored 
       if(!mirrored&&nativeChartSupported(el))items.push({kind:'chart',el});else crop('chart-features');return;
     case 'group': {
       const children: PlanItem[] = [];
-      for (const child of el.elements || []) planElement(child, children, prefix,mirrored||!!el.flipH||!!el.flipV);
+      for (const child of el.elements || []) planElement(child, children, deck, prefix,mirrored||!!el.flipH||!!el.flipV);
       items.push({kind:'group', el, items:children}); return;
     }
     case 'table':
@@ -127,7 +132,7 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored 
       return;
     case 'line': {
       const pts = parsePoints(el.points || '');
-      if (pts.length === 2 && !el.rotation && !el.flipH && !el.flipV && (!el.curve || el.curve === 'straight')) items.push({ kind: 'line', el });
+      if (pts.length >= 2 && !el.rotation && !el.flipH && !el.flipV && el.curve !== 'smooth' && !el.shadow) items.push({ kind: 'line', el });
       else crop('complex-line');
       return;
     }
@@ -144,10 +149,10 @@ function planElement(el: SlideElement, items: PlanItem[], prefix = '', mirrored 
 
 // ─────────── XML 片段构造 ───────────
 
-function fillXml(color: string | undefined, deck: Deck): string {
+function fillXml(color: string | undefined, deck: Deck, opacity = 1): string {
   const c = resolveColor(color, deck);
   const a = alphaOf(c);
-  const alpha = a !== null ? `<a:alpha val="${a}"/>` : '';
+  const alpha = a !== null || opacity !== 1 ? `<a:alpha val="${Math.round((a ?? 100000) * opacity)}"/>` : '';
   return `<a:solidFill><a:srgbClr val="${hex6(c)}">${alpha}</a:srgbClr></a:solidFill>`;
 }
 function gradFillXml(fill: { angle?: number; stops?: Array<{ pos?: number; color?: string }> }, deck: Deck): string {
@@ -161,7 +166,7 @@ function linePropsXml(el: SlideElement, deck: Deck): string {
   if (!color) return '';
   const strokeDash=el['stroke-dash']??el.strokeDash;
   const dash = strokeDash === 'dash' ? '<a:prstDash val="dash"/>' : strokeDash === 'dot' ? '<a:prstDash val="sysDot"/>' : '';
-  return `<a:ln w="${w}">${fillXml(color, deck)}${dash}</a:ln>`;
+  return `<a:ln w="${w}">${fillXml(color, deck, el.opacity)}${dash}</a:ln>`;
 }
 function effectXml(el: SlideElement, deck: Deck): string {
   const sh = el.shadow;
@@ -243,12 +248,12 @@ function textBodyXml(el: SlideElement, deck: Deck, linkIds?: Map<string, string>
       const hlXml = r.bgColor ? `<a:highlight><a:srgbClr val="${hex6(resolveColor(r.bgColor, deck))}"/></a:highlight>` : '';
       const linkRelId = r.href && linkIds ? linkIds.get(r.href) : null;
       const linkXml = linkRelId ? `<a:hlinkClick r:id="${linkRelId}"/>` : '';
-      const rPr = `<a:rPr lang="zh-CN" ${props.join(' ')} dirty="0"><a:solidFill><a:srgbClr val="${hex6(resolveColor(color, deck))}"/></a:solidFill>${shadowXml}${hlXml}${faceXml}${linkXml}</a:rPr>`;
+      const rPr = `<a:rPr lang="zh-CN" ${props.join(' ')} dirty="0">${fillXml(color, deck, el.opacity)}${shadowXml}${hlXml}${faceXml}${linkXml}</a:rPr>`;
       return `<a:r>${rPr}<a:t>${esc(r.text)}</a:t></a:r>`;
     }).join('');
     return `<a:p>${pPr}${runsXml}</a:p>`;
   }).join('');
-  return `<p:txBody><a:bodyPr${wrap} anchor="${anchor}" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/>${parasXml || '<a:p><a:endParaRPr lang="zh-CN"/></a:p>'}</p:txBody>`;
+  return `<p:txBody><a:bodyPr${wrap} anchor="${anchor}" lIns="0" tIns="${anchor === 't' ? emu(-st.fontSize * 0.15) : 0}" rIns="0" bIns="0"/><a:lstStyle/>${parasXml || '<a:p><a:endParaRPr lang="zh-CN"/></a:p>'}</p:txBody>`;
 }
 
 // ─────────── 元素级 XML ───────────
@@ -258,8 +263,8 @@ function shapeSpXml(el: SlideElement, deck: Deck, idNum: number): string {
   const polygon=shapePolygon(el);
   const geometry=polygon?`<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${emu(el.w)}" h="${emu(el.h)}">${polygon.map(([x,y],i)=>`<a:${i?'lnTo':'moveTo'}><a:pt x="${emu(x)}" y="${emu(y)}"/></a:${i?'lnTo':'moveTo'}>`).join('')}<a:close/></a:path></a:pathLst></a:custGeom>`:`<a:prstGeom prst="${prst}">${adjXml(el)}</a:prstGeom>`;
   const fill = el.fillObj
-    ? (el.fillObj.type === 'gradient' ? gradFillXml(el.fillObj, deck) : el.fillObj.type === 'solid' ? fillXml(el.fillObj.color, deck) : '')
-    : el.fill ? fillXml(el.fill, deck) : '<a:noFill/>';
+    ? (el.fillObj.type === 'gradient' ? gradFillXml(el.fillObj, deck) : el.fillObj.type === 'solid' ? fillXml(el.fillObj.color, deck, el.opacity) : '')
+    : el.fill ? fillXml(el.fill, deck, el.opacity) : '<a:noFill/>';
   const ln = el.stroke ? linePropsXml(el, deck) : '<a:ln><a:noFill/></a:ln>';
   return `<p:sp>
 <p:nvSpPr><p:cNvPr id="${idNum}" name="${esc(el.name || 'shape')} ${esc(el.id || '')}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
@@ -270,7 +275,7 @@ function shapeSpXml(el: SlideElement, deck: Deck, idNum: number): string {
 
 function textSpXml(el: SlideElement, deck: Deck, idNum: number, linkIds?: Map<string, string> | null): string {
   const st = resolveTextStyle(el, deck);
-  const color = st.backgroundColor ? fillXml(st.backgroundColor, deck) : '<a:noFill/>';
+  const color = st.backgroundColor ? fillXml(st.backgroundColor, deck, el.opacity) : '<a:noFill/>';
   return `<p:sp>
 <p:nvSpPr><p:cNvPr id="${idNum}" name="text ${esc(el.id || '')}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
 <p:spPr>${xfrmXml(el)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${color}<a:ln><a:noFill/></a:ln></p:spPr>
@@ -327,6 +332,21 @@ function groupXml(el:SlideElement,idNum:number,children:string):string {
 
 function lineSpXml(el: SlideElement, deck: Deck, idNum: number): string {
   const pts = parsePoints(el.points || '');
+  if (pts.length > 2) {
+    const color = resolveColor(el.stroke || '#4A5560', deck);
+    const sw = emu((el['stroke-width'] ?? el.strokeWidth ?? 2) as number);
+    const strokeDash = el['stroke-dash'] ?? el.strokeDash;
+    const dash = strokeDash === 'dash' ? '<a:custDash><a:ds d="300000" sp="200000"/></a:custDash>' : strokeDash === 'dot' ? '<a:custDash><a:ds d="100000" sp="160000"/></a:custDash>' : '';
+    const arrows = (el.arrowStart && el.arrowStart !== 'none' ? `<a:headEnd type="${arrowOoxml(el.arrowStart)}" len="med" w="med"/>` : '')
+      + (el.arrowEnd && el.arrowEnd !== 'none' ? `<a:tailEnd type="${arrowOoxml(el.arrowEnd)}" len="med" w="med"/>` : '');
+    const path = pts.map(([x,y],index) => `<a:${index ? 'lnTo' : 'moveTo'}><a:pt x="${emu(x)}" y="${emu(y)}"/></a:${index ? 'lnTo' : 'moveTo'}>`).join('');
+    const join = el.curve === 'sharp' ? '<a:miter lim="800000"/>' : '<a:round/>';
+    return `<p:sp>
+<p:nvSpPr><p:cNvPr id="${idNum}" name="line ${esc(el.id || '')}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+<p:spPr>${xfrmXml(el)}<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="${emu(el.w)}" h="${emu(el.h)}" fill="none">${path}</a:path></a:pathLst></a:custGeom><a:noFill/><a:ln w="${sw}" cap="${el.curve === 'sharp' ? 'flat' : 'rnd'}">${fillXml(color, deck, el.opacity)}${dash}${join}${arrows}</a:ln></p:spPr>
+<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="zh-CN"/></a:p></p:txBody>
+</p:sp>`;
+  }
   const [p0, p1] = pts;
   let flip = '';
   if (p1[0] < p0[0]) flip += ' flipH="1"';
@@ -342,7 +362,7 @@ function lineSpXml(el: SlideElement, deck: Deck, idNum: number): string {
     + (el.arrowEnd && el.arrowEnd !== 'none' ? `<a:tailEnd type="${arrowOoxml(el.arrowEnd)}" len="med" w="med"/>` : '');
   return `<p:sp>
 <p:nvSpPr><p:cNvPr id="${idNum}" name="line ${esc(el.id || '')}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
-<p:spPr>${xfrm}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:ln w="${sw}" cap="rnd">${fillXml(color, deck)}${dash}${arrows}</a:ln></p:spPr>
+<p:spPr>${xfrm}<a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:ln w="${sw}" cap="rnd">${fillXml(color, deck, el.opacity)}${dash}${arrows}</a:ln></p:spPr>
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="zh-CN"/></a:p></p:txBody>
 </p:sp>`;
 }

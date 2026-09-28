@@ -13,6 +13,17 @@ export function serializeDeck(deck: Deck): string {
   if (deck.title) attrs.push(`title="${esc(deck.title)}"`);
   attrs.push(`width="${fmt(deck.width)}"`, `height="${fmt(deck.height)}"`);
   out.push(`<deck ${attrs.join(' ')}>`);
+  if (deck.metadata) {
+    const metaAttrs: string[] = [];
+    for (const [name, value] of [
+      ['author', deck.metadata.author],
+      ['created-at', deck.metadata.createdAt],
+      ['modified-by', deck.metadata.modifiedBy],
+      ['modified-at', deck.metadata.modifiedAt],
+      ['last-machine', deck.metadata.lastMachine],
+    ]) if (value) metaAttrs.push(`${name}="${esc(value)}"`);
+    out.push(`${IND}<metadata${metaAttrs.length ? ' ' + metaAttrs.join(' ') : ''}/>`);
+  }
   if (deck.fonts?.length) {
     out.push(`${IND}<fonts>`);
     for (const f of deck.fonts) out.push(`${IND}${IND}<font family="${esc(f.family)}" src="${esc(f.src)}"/>`);

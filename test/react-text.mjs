@@ -196,7 +196,7 @@ try {
     selectionStart: 4,
     selectionEnd: 4,
   });
-  await page.click(".canvas-caption");
+  await page.click(".canvas-bottom > span");
   check(
     "outside click commits active composition",
     (await content()).includes("外部提交"),

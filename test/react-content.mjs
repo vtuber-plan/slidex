@@ -62,7 +62,7 @@ try {
       ),
       3,
     );
-    await page.locator('[role="tab"]::-p-text(动画)').click();
+    await page.locator('.inspector [role="tab"]::-p-text(动画)').click();
     await choice("效果", "路径动画");
     await page.click('[aria-label="路径坐标"]', { clickCount: 3 });
     await page.keyboard.type("0,0 100,30 160,0");
@@ -78,9 +78,10 @@ try {
       (await deck()).slides[0].animations[0].path,
       "0,0 100,30 160,0",
     );
-    await page.locator('[role="tab"]::-p-text(动画)').click();
+    await page.locator('.inspector [role="tab"]::-p-text(动画)').click();
     await page.screenshot({ path: path.join(dir, "editor.png") });
     // Shape library search uses names in both languages and insertion clears unrelated adjustments.
+    await page.locator('.ribbon-tab::-p-text(插入)').click();
     await page.locator(".insert-toolbar button::-p-text(形状)").click();
     await page.select('[aria-label="形状分类"]', "星形");
     await page.type('[aria-label="搜索资源"]', "8");

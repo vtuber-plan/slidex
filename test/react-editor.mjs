@@ -90,7 +90,7 @@ try {
   await changeLanguage('en');
   check(
     "language switch translates editor controls",
-    !!(await page.$('[aria-label="Insert object"]')) &&
+    !!(await page.$('.ribbon-tab::-p-text(Insert)')) &&
       (await page.$eval(".notes-panel summary", (el) => el.textContent)) ===
         "Speaker notes",
   );
@@ -98,7 +98,7 @@ try {
   await page.reload({ waitUntil: "networkidle0" });
   check(
     "language preference survives reload",
-    !!(await page.$('[aria-label="Insert object"]')),
+    !!(await page.$('.ribbon-tab::-p-text(Insert)')),
   );
   await page.screenshot({ path: path.join(temp, "editor-en.png") });
   await changeLanguage('zh');
@@ -106,8 +106,9 @@ try {
     "speaker notes are collapsed by default",
     await page.$eval(".notes-panel", (el) => !el.open),
   );
+  await page.locator('.ribbon-tab::-p-text(插入)').click();
   check(
-    "insert tools are above the canvas",
+    "insert tools are in the ribbon above the canvas",
     await page.$eval(
       ".insert-toolbar",
       (el) =>
@@ -115,6 +116,7 @@ try {
         document.querySelector("#canvasHost").getBoundingClientRect().top,
     ),
   );
+  await page.locator('.ribbon-tab::-p-text(开始)').click();
   check(
     "paste button allows system clipboard on fresh load",
     !(await page.$eval('[aria-label="粘贴"]', (el) => el.disabled)),
@@ -301,6 +303,7 @@ try {
   await page.reload({ waitUntil: "networkidle0" });
   check("crop persists after save and reload", (await getCrop()) === cropped);
   await page.click('[aria-label="第 1 页"]');
+  await page.locator('.ribbon-tab::-p-text(插入)').click();
   await page.click('[aria-label="插入对象"] button');
   await page.waitForFunction(
     () => document.querySelectorAll("#canvasHost .slx-el").length === 5,
@@ -309,6 +312,7 @@ try {
     "insert text",
     parseSlideX(await xml()).deck.slides[0].elements.length === 5,
   );
+  await page.locator('.ribbon-tab::-p-text(开始)').click();
   await page.click('[aria-label="撤销"]');
   check(
     "undo transaction",
@@ -441,7 +445,9 @@ try {
   const lockedShape = parseSlideX(await xml()).deck.slides[0].elements.find(
     (el) => el.id === "shape",
   );
+  await page.locator('.ribbon-tab::-p-text(排列)').click();
   await page.click('[aria-label="左对齐"]');
+  await page.locator('.ribbon-tab::-p-text(开始)').click();
   await page.keyboard.press("Delete");
   check(
     "locked object survives alignment and deletion commands",
@@ -483,7 +489,9 @@ try {
   );
   const beforeLockedPage = await xml();
   await page.click('[aria-label="新增页面"]');
+  await page.locator('.ribbon-tab::-p-text(插入)').click();
   await page.click('[aria-label="插入对象"] button');
+  await page.locator('.ribbon-tab::-p-text(开始)').click();
   await clickText("锁定对象");
   await page.click('[aria-label="删除页面"]');
   check(
@@ -551,12 +559,12 @@ try {
     (await xml()) === beforeBatch,
   );
   await page.click('[aria-label="重做"]');
-  const batchSaved = await xml();
+  const batchSaved = parseSlideX(await xml()).deck.slides;
   await page.evaluate(() => window.__slxSave());
   await page.reload({ waitUntil: "networkidle0" });
   check(
     "batch geometry persists after save and reload",
-    (await xml()) === batchSaved,
+    JSON.stringify(parseSlideX(await xml()).deck.slides) === JSON.stringify(batchSaved),
   );
   await page.evaluate(() => {
     document.activeElement?.blur();
@@ -625,8 +633,8 @@ try {
     fs.readFileSync(file, "utf8").includes("<strong> bold</strong>"),
   );
   await page.click('[aria-label="撤销"]');
-  await page.locator('.command-bar button::-p-text(工具)').click();
-  await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();
+  await page.locator('.ribbon-tab::-p-text(工具)').click();
+  await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');
   await page.waitForSelector('.source-monaco textarea.inputarea');
   await page.click('.source-monaco .view-lines');
   await page.keyboard.down('Control');await page.keyboard.press('a');await page.keyboard.up('Control');
@@ -645,6 +653,7 @@ try {
   await page.keyboard.down("Shift");
   await page.click('#canvasHost .slx-el[data-id="text"]');
   await page.keyboard.up("Shift");
+  await page.locator('.ribbon-tab::-p-text(排列)').click();
   await page.click('[aria-label="组合"]');
   check(
     "group selected objects",
@@ -653,6 +662,7 @@ try {
     ),
   );
   await page.click('[aria-label="取消组合"]');
+  await page.locator('.ribbon-tab::-p-text(开始)').click();
   check(
     "ungroup retains nested animation targets",
     (await xml()).includes('target="text"') &&
@@ -686,7 +696,8 @@ try {
     path: path.join(temp, "editor.png"),
     fullPage: true,
   });
-  await clickText("放映");
+  await page.locator('.ribbon-tab::-p-text(放映)').click();
+  await page.click('.ribbon-panel [aria-label="放映"]');
   await page.waitForSelector(".player");
   check(
     "player default table text retains dark color",

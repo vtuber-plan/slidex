@@ -26,10 +26,10 @@ try{await withBrowser(async browser=>{
   await page.goto(base+'/preview');await page.waitForSelector('.preview-grid .slx-slide');assert.equal(await page.$$eval('.preview-grid>button',n=>n.length),100);assert.ok(await page.$$eval('.preview-grid .slx-slide',n=>n.length)<40);
   await page.evaluate(()=>localStorage.setItem('slidex-autosave','false'));
   await page.goto(base);await page.waitForSelector('#canvasHost [data-id="label"]');
-  await page.locator('button::-p-text(工具)').click();await page.locator('[role="menuitem"]::-p-text(DSL 源码与检查)').click();await page.waitForSelector('.source-monaco textarea.inputarea');
+  await page.locator('.ribbon-tab::-p-text(工具)').click();await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');await page.waitForSelector('.source-monaco textarea.inputarea');
   const outlineButtons=await page.$$('.source-outline button');assert.equal(outlineButtons.length,100);await outlineButtons.at(-1).click();
   await page.click('button[aria-label="返回画布"]');await page.waitForSelector('#canvasHost [data-id="label"]');
-  await page.click('#canvasHost [data-id="label"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' recovered');await page.click('.canvas-caption');
+  await page.click('#canvasHost [data-id="label"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' recovered');await page.click('.canvas-bottom > span');
   assert.ok(await page.evaluate(()=>window.__slxGetXml().includes('recovered')),'text commit before draft');
   await page.waitForFunction(async()=>{const r=await fetch('/api/revisions');return (await r.json()).revisions.some(v=>v.draft&&v.xml.includes('recovered'));});
   await page.reload();await page.waitForSelector('#canvasHost [data-id="label"]');await page.click('[aria-label="本地版本历史"]');await page.waitForSelector('.history-row');

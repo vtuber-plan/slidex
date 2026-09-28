@@ -114,7 +114,7 @@ try{
     await page.click('#canvasHost [data-id="halo"]');
     assert.equal(await page.$eval('[aria-label="填充类型"]',e=>e.value),'radial-gradient');
     assert.equal(await page.$eval('[aria-label="中心 X (%)"]',e=>Number(e.value)),25);
-    await page.locator('[role="tab"]::-p-text(动画)').click();
+    await page.locator('.inspector [role="tab"]::-p-text(动画)').click();
     assert.equal(await page.$eval('[aria-label="重复次数"]',e=>Number(e.value)),2);
     const present=await browser.newPage();
     await present.goto(base+'/present',{waitUntil:'domcontentloaded'});

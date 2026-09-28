@@ -1,6 +1,6 @@
 import { t, useLocale, optionLabel } from "./i18n";
 import { useEffect, useState } from "react";
-import { Button, Checkbox, Tabs, TextArea, Dialog } from "@radix-ui/themes";
+import { Button, Checkbox, Tabs, TextArea, TextField, Dialog } from "@radix-ui/themes";
 import {
   ArrowUp,
   ArrowDown,
@@ -85,23 +85,24 @@ const labels: Record<string, string> = {
 };
 const camel = (s: string) =>
   s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-export function Inspector({ preview }: { preview: () => void }) {
+export type InspectorTab = "design" | "masters" | "layers" | "animation";
+export function Inspector({ preview, tab, setTab }: { preview: () => void; tab: InspectorTab; setTab: (tab: InspectorTab) => void }) {
   useLocale();
   const s = useEditor(),
     slide = container(s),
     el = slide.elements.find((e) => e.id === s.selection[0]);
-  const [tab, setTab] = useState("design");
   const pathFields = el ? ["path", "viewBox", "points"].filter(k =>
     el[k] !== undefined || (el.type === "shape" && el.name === "custom")) : [];
   useEffect(()=>{if(s.editing)setTab("design");},[s.editing]);
   return (
-    <aside className="inspector">
-      <Tabs.Root value={tab} onValueChange={next=>{window.__slxCommitText?.();setTab(next);}}>
-        <Tabs.List>
-          <Tabs.Trigger value="design">{t("设计")}</Tabs.Trigger>
+    <aside className="inspector" data-master={!!s.master}>
+      {s.master && tab !== 'masters' && <MasterContext onManage={() => setTab('masters')} onExit={() => setTab('design')} />}
+      <Tabs.Root value={tab} onValueChange={next=>{window.__slxCommitText?.();setTab(next as InspectorTab);}}>
+        {tab !== 'masters' && <Tabs.List>
+          <Tabs.Trigger value="design">{t("属性")}</Tabs.Trigger>
           <Tabs.Trigger value="layers">{t("图层")}</Tabs.Trigger>
           <Tabs.Trigger value="animation">{t("动画")}</Tabs.Trigger>
-        </Tabs.List>
+        </Tabs.List>}
         <Tabs.Content value="design" forceMount className="design-tab">
           <div id="text-format-dock" data-rich-editor-ui />
           <div className="panel-body" hidden={!!s.editing && el?.type === "text"}>
@@ -216,6 +217,9 @@ export function Inspector({ preview }: { preview: () => void }) {
               <PagePanel />
             )}
           </div>
+        </Tabs.Content>
+        <Tabs.Content value="masters">
+          <MasterPanel onEdit={() => setTab('design')} onExit={() => setTab('design')} />
         </Tabs.Content>
         <Tabs.Content value="layers">
           <div className="panel-body">
@@ -661,89 +665,137 @@ function PagePanel() {
           }
         />
       )}
-      <div className="panel-heading">
-        <strong>{t("母版")}</strong>
-        <Button
-          size="1"
-          variant="soft"
-          onClick={() => {
-            const id = uid("master");
-            s.edit((d) =>
-              d.masters.push({
-                id,
-                type: "master",
-                notes: "",
-                background: null,
-                master: "",
-                transition: "none",
-                animations: [],
-                elements: [],
-                line: 0,
-              }),
-            );
-            useEditor.setState({ master: id, selection: [], groupPath: [] });
-          }}
-        >
-          {t("新增")}
-        </Button>
-      </div>
-      {s.deck.masters.map((m) => (
-        <Button
-          key={m.id}
-          variant={s.master === m.id ? "solid" : "soft"}
-          onClick={() =>
-            useEditor.setState({ master: m.id, selection: [], groupPath: [] })
-          }
-        >
-          {m.id}
-        </Button>
-      ))}
-      {s.master && (
-        <Button
-          variant="outline"
-          onClick={() =>
-            useEditor.setState({ master: "", selection: [], groupPath: [] })
-          }
-        >
-          {t("返回幻灯片")}
-        </Button>
-      )}
-      <div className="panel-heading">
-        <strong>{t("主题颜色")}</strong>
-      </div>
-      {Object.entries(s.deck.theme.colors).map(([name, color]) => (
-        <ColorControl
-          key={name}
-          label={name}
-          value={color}
-          theme={false}
-          onChange={(value) =>
-            s.edit((d) => {
-              d.theme.colors[name] = value;
-            })
-          }
-        />
-      ))}
-      <JsonField
-        label={t("主题样式")}
-        value={s.deck.theme}
-        onChange={(value) =>
-          s.edit((d) => {
-            d.theme = value as typeof d.theme;
-          })
-        }
-      />
-      <JsonField
-        label={t("字体资源")}
-        value={s.deck.fonts}
-        onChange={(value) =>
-          s.edit((d) => {
-            if (!Array.isArray(value)) throw Error(t("字体必须是数组"));
-            d.fonts = value;
-          })
-        }
-      />
     </>
+  );
+}
+
+function MasterContext({ onManage, onExit }: { onManage: () => void; onExit: () => void }) {
+  const s = useEditor();
+  return <section className="master-context" aria-label={t('母版编辑')}>
+    <div className="master-context-heading">
+      <strong>{t('母版编辑')}</strong>
+      <Button size="1" variant="ghost" onClick={() => {
+        window.__slxCommitText?.();
+        useEditor.setState({ master: '', selection: [], groupPath: [], editing: '' });
+        onExit();
+      }}>{t('返回幻灯片')}</Button>
+    </div>
+    <div className="master-context-controls">
+      <select aria-label={t('当前母版')} value={s.master} onChange={event => {
+        window.__slxCommitText?.();
+        useEditor.setState({ master: event.target.value, selection: [], groupPath: [], editing: '' });
+      }}>
+        {s.deck.masters.map(master => <option key={master.id} value={master.id}>{master.id}</option>)}
+      </select>
+      <Button size="1" variant="soft" onClick={() => { window.__slxCommitText?.(); onManage(); }}>{t('管理母版')}</Button>
+    </div>
+  </section>;
+}
+
+function MasterPanel({ onEdit, onExit }: { onEdit: () => void; onExit: () => void }) {
+  useLocale();
+  const s = useEditor();
+  const [renameId, setRenameId] = useState("");
+  const [draft, setDraft] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [deleteId, setDeleteId] = useState("");
+  const addMaster = () => {
+    const id = uid("master");
+    s.edit((d) => {
+      d.masters.push({
+        id, type: "master", notes: "", background: null, master: "",
+        transition: "none", animations: [], elements: [], line: 0,
+      });
+    });
+    useEditor.setState({ master: id, selection: [], groupPath: [], editing: "" });
+    onEdit();
+  };
+  const renameMaster = () => {
+    const id = draft.trim();
+    if (!id) {
+      setRenameError(t("母版名称不能为空"));
+      return;
+    }
+    if (id !== renameId && [...s.deck.masters, ...s.deck.slides].some((page) => page.id === id)) {
+      setRenameError(t("名称已被页面或母版使用"));
+      return;
+    }
+    if (id !== renameId) {
+      s.edit((d) => {
+        const master = d.masters.find((item) => item.id === renameId);
+        if (master) master.id = id;
+        d.slides.forEach((slide) => {
+          if (slide.master === renameId) slide.master = id;
+        });
+      });
+      if (s.master === renameId) useEditor.setState({ master: id });
+    }
+    setRenameId("");
+  };
+  const deleteMaster = () => {
+    s.edit((d) => {
+      d.masters = d.masters.filter((item) => item.id !== deleteId);
+      d.slides.forEach((slide) => {
+        if (slide.master === deleteId) slide.master = "";
+      });
+    });
+    if (s.master === deleteId) useEditor.setState({ master: "", selection: [], groupPath: [], editing: "" });
+    setDeleteId("");
+  };
+  const affected = s.deck.slides.filter((slide) => slide.master === deleteId).length;
+  return (
+    <div className="panel-body master-panel">
+      <div className="panel-heading">
+        <strong>{t("母版管理")}</strong>
+        <Button size="1" variant="soft" onClick={addMaster}><Plus size={13}/>{t("新增母版")}</Button>
+      </div>
+      {s.deck.masters.length === 0 && <p className="master-empty">{t("尚无母版。新建后可在画布中编辑，并应用到页面。")}</p>}
+      <div className="master-list">
+        {s.deck.masters.map((m) => {
+          const count = s.deck.slides.filter((slide) => slide.master === m.id).length;
+          return (
+            <div className="master-card" key={m.id} data-active={s.master === m.id}>
+              <div className="master-card-info">
+                <strong title={m.id}>{m.id}</strong>
+                <span>{t("应用于")} {count} {t("个页面")}</span>
+              </div>
+              <div className="master-card-actions">
+                <Button size="1" variant={s.master === m.id ? "solid" : "soft"} onClick={() => { useEditor.setState({ master: m.id, selection: [], groupPath: [], editing: "" }); onEdit(); }}>{t("编辑")}</Button>
+                <Button size="1" variant="ghost" onClick={() => { setRenameId(m.id); setDraft(m.id); setRenameError(""); }}>{t("重命名")}</Button>
+                <Button size="1" color="red" variant="ghost" aria-label={t("删除母版") + " " + m.id} onClick={() => setDeleteId(m.id)}><Trash2 size={14}/></Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <Button variant="outline" onClick={() => { useEditor.setState({ master: "", selection: [], groupPath: [], editing: "" }); onExit(); }}>{t("返回幻灯片")}</Button>
+      <div className="panel-heading master-theme-heading"><strong>{t("主题颜色")}</strong></div>
+      <div className="theme-color-list">
+        {Object.entries(s.deck.theme.colors).map(([name, color]) => (
+          <ColorControl key={name} label={name} value={color} theme={false} onChange={(value) => s.edit((d) => { d.theme.colors[name] = value; })}/>
+        ))}
+      </div>
+      <JsonField label={t("主题样式")} value={s.deck.theme} onChange={(value) => s.edit((d) => { d.theme = value as typeof d.theme; })}/>
+      <JsonField label={t("字体资源")} value={s.deck.fonts} onChange={(value) => s.edit((d) => {
+        if (!Array.isArray(value)) throw Error(t("字体必须是数组"));
+        d.fonts = value;
+      })}/>
+      <Dialog.Root open={!!renameId} onOpenChange={(open) => { if (!open) setRenameId(""); }}>
+        <Dialog.Content maxWidth="420px">
+          <Dialog.Title>{t("重命名母版")}</Dialog.Title>
+          <label className="field"><span>{t("母版名称")}</span><TextField.Root aria-label={t("母版名称")} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") renameMaster(); }}/></label>
+          {renameError && <p role="alert">{renameError}</p>}
+          <div className="dialog-actions"><Button variant="soft" onClick={() => setRenameId("")}>{t("取消")}</Button><Button onClick={renameMaster}>{t("保存")}</Button></div>
+        </Dialog.Content>
+      </Dialog.Root>
+      <Dialog.Root open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(""); }}>
+        <Dialog.Content maxWidth="420px">
+          <Dialog.Title>{t("删除母版")}</Dialog.Title>
+          <Dialog.Description>{t("删除母版后，引用它的页面将不再使用母版。")} {affected > 0 && t("受影响页面数：") + affected}</Dialog.Description>
+          <div className="dialog-actions"><Button variant="soft" onClick={() => setDeleteId("")}>{t("取消")}</Button><Button color="red" onClick={deleteMaster}>{t("删除")}</Button></div>
+        </Dialog.Content>
+      </Dialog.Root>
+    </div>
   );
 }
 function JsonField({

@@ -1322,8 +1322,9 @@ function renderDiag(): void {
 async function save(): Promise<boolean> {
   try {
     const xml = serializeDeck(deck);
-    const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ xml }) }).then(x => x.json()) as { ok: boolean; errors?: Diag[]; warnings?: Diag[]; mtimeMs?: number };
+    const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ xml }) }).then(x => x.json()) as { ok: boolean; errors?: Diag[]; warnings?: Diag[]; mtimeMs?: number; metadata?: Deck['metadata'] };
     if (r.ok) {
+      deck.metadata = r.metadata;
       setDirty(false);
       errors = r.errors ?? errors;
       warnings = r.warnings ?? warnings;
