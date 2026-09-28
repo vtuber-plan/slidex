@@ -26,7 +26,7 @@ try {
   const target=await browser.waitForTarget(t=>t.type()==='page'&&t.url().startsWith('http://127.0.0.1'),{timeout:60000}),page=await target.page();
   await page.waitForSelector('#canvasHost .katex',{timeout:60000});
   // A never-shown native window can defer its first ResizeObserver delivery until input.
-  await page.click('.canvas-bottom > span');
+  await page.click('[aria-label="适应画布"]');
   await page.waitForFunction(()=>{
     const board=document.querySelector('#canvasHost'),area=document.querySelector('.canvas-workspace');
     const width=area.clientWidth-48,height=area.clientHeight-48;
@@ -41,7 +41,7 @@ try {
   assert.ok(await page.$('#text-format-dock .rich-editor'));
   assert.ok(await page.$eval('.brand-icon',el=>el.complete&&el.naturalWidth>0));
   assert.equal(await page.$('[role="dialog"]'),null);
-  await page.keyboard.type('Edited ');await page.click('.canvas-bottom > span');
+  await page.keyboard.type('Edited ');await page.click('[aria-label="适应画布"]');
   await page.click('[aria-label="实际大小"]');
   await page.waitForFunction(()=>Math.abs(document.querySelector('#canvasHost').getBoundingClientRect().width-640)<1);
   await page.click('[aria-label="收起属性栏"]');
