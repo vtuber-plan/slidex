@@ -182,6 +182,8 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/editor-regressions.mjs', hasChrome],
     ['test/react-editor.mjs', hasChrome],
     ['test/react-ribbon.mjs', hasChrome],
+    ['test/text-ribbon.mjs', hasChrome],
+    ['test/player-tools.mjs', hasChrome],
     ['test/react-groups.mjs', hasChrome],
     ['test/react-text.mjs', hasChrome],
     ['test/react-workspace.mjs', hasChrome],

@@ -1,0 +1,83 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { startServer } from '../dist/server.js';
+import { withBrowser } from '../dist/export/capture.js';
+import { parseSlideX } from '../dist/ir.js';
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slidex-text-ribbon-'));
+const file = path.join(dir, 'deck.slx');
+fs.writeFileSync(file, '<deck version="1" width="960" height="540"><slide id="one"><text id="title" x="80" y="80" w="700" h="100" font-size="28"><p>Title</p></text></slide></deck>');
+const server = await startServer(file, { port: 0 });
+try {
+  await withBrowser(async (browser) => {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.setViewport({ width: 1424, height: 900 });
+    await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'networkidle0' });
+    const text = async () => parseSlideX(await page.evaluate(() => window.__slxGetXml())).deck.slides[0].elements[0];
+
+    assert.equal(await page.$eval('.ribbon-tab[aria-selected=true]', (node) => node.textContent), '编辑');
+    assert.deepEqual(await page.$$eval('.ribbon-panel > .ribbon-group, .ribbon-panel > .text-ribbon > .ribbon-group', (nodes) => nodes.map((node) => node.querySelector('.ribbon-group-label')?.textContent)), ['剪贴板', '幻灯片', '字体', '段落', '绘图', '编辑']);
+    assert.equal(await page.$eval('.text-ribbon-font', (node) => node.matches(':disabled')), true);
+    await page.click('#canvasHost [data-id="title"]');
+    await page.waitForSelector('.text-ribbon-font [aria-label="字号"]');
+    assert.equal(await page.$('.panel-body [aria-label="字号"]'), null);
+    await page.click('.text-ribbon-font [aria-label="加粗"]');
+    assert.equal((await text()).bold, true);
+    await page.click('.text-ribbon-paragraph [aria-label="居中"]');
+    assert.equal((await text()).align, 'center top');
+    await page.locator('.text-ribbon-font [aria-label="字号"]').fill('32');
+    await page.keyboard.press('Enter');
+    assert.equal((await text()).fontSize, 32);
+    await page.select('.text-ribbon-font [aria-label="选择字体"]', 'Arial');
+    assert.equal((await text()).fontFamily, 'Arial');
+    await page.select('.text-ribbon-font [aria-label="选择字号"]', '28');
+    assert.equal((await text()).fontSize, 28);
+    await page.screenshot({ path: path.join(dir, 'text-selected.png') });
+
+    await page.click('#canvasHost [data-id="title"]', { clickCount: 2 });
+    await page.waitForSelector('#text-format-dock .rich-editor');
+    assert.ok(await page.$eval('.ribbon-panel', (node) => node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight), 'rich-text toolbar fits without scrollbars');
+    assert.ok(await page.$('.text-ribbon-font [aria-label="字号"]'));
+    assert.ok(await page.$eval('#text-format-dock', (node) => node.closest('.ribbon-panel') !== null));
+    assert.equal(await page.$eval('.panel-body', (node) => node.hidden), true);
+    assert.ok(await page.$('.ribbon-panel .text-ribbon-font [aria-label="字体"]'));
+    assert.ok(await page.$('.ribbon-panel [aria-label="段落对齐"]'));
+    assert.equal(await page.$('.rich-editor [aria-label="字号"]'), null);
+    await page.focus('.ProseMirror');
+    await page.keyboard.press('Home');
+    await page.keyboard.down('Shift');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.up('Shift');
+    assert.equal(await page.$('.ProseMirror .slx-preserved-selection'), null);
+    await page.click('.text-ribbon-font [aria-label="字号"]', { clickCount: 3 });
+    await page.keyboard.type('36');
+    await page.waitForSelector('.ProseMirror .slx-preserved-selection');
+    assert.ok(await page.$('.ProseMirror .slx-preserved-selection'), 'selection remains visible while size has focus');
+    await page.screenshot({ path: path.join(dir, 'selection-in-size-field.png') });
+    assert.equal(await page.$eval('#canvasHost [data-id="title"] .slx-text', (node) => getComputedStyle(node).fontSize), '28px', 'typing does not change the entire text box');
+    await page.keyboard.press('Enter');
+    assert.match(await page.$eval('.ProseMirror', (node) => node.innerHTML), /font-size:\s*36px[^>]*>Ti<\/span>tle/);
+    await page.click('.text-ribbon-font [aria-label="字体"]', { clickCount: 3 });
+    await page.keyboard.type('Consolas');
+    await page.keyboard.press('Enter');
+    assert.match(await page.$eval('.ProseMirror', (node) => node.innerHTML), /font-family:\s*Consolas/);
+    assert.equal(await page.$eval('#canvasHost [data-id="title"] .slx-text', (node) => getComputedStyle(node).fontSize), '28px', 'inline formatting leaves object font size unchanged');
+    await page.click('.text-ribbon-font [aria-label="下划线"]');
+    assert.ok(await page.$('.ProseMirror u'), 'underline applies to the selected text');
+    await page.click('.text-ribbon-paragraph [aria-label="项目符号"]');
+    assert.ok(await page.$('.ProseMirror ul'), 'bullet list applies to the current paragraph');
+    await page.screenshot({ path: path.join(dir, 'text-editing.png') });
+    await page.keyboard.press('Escape');
+    assert.equal((await text()).fontSize, 28);
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+  console.log('PASS text and paragraph ribbon:', dir);
+} finally {
+  server.close();
+}

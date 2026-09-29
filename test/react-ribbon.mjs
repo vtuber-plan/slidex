@@ -23,11 +23,14 @@ const selectTab = async (label) => {await page.locator(`.ribbon-tab::-p-text(${l
 const deck = () => page.evaluate(() => window.__slxGetXml()).then((xml) => parseSlideX(xml).deck);
 try {
   await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'networkidle0' });
-  assert.equal(await page.$eval('.ribbon-tab[aria-selected="true"]', (el) => el.textContent), '开始');
+  assert.equal(await page.$eval('.ribbon-tab[aria-selected="true"]', (el) => el.textContent), '编辑');
   assert.equal(await page.$('.header-actions button::-p-text(保存)'), null);
   assert.equal(await page.$('.header-actions button::-p-text(放映)'), null);
   assert.ok(await page.$('.ribbon-panel [aria-label="查找替换"]'));
   await page.screenshot({ path: path.join(dir, 'ribbon-home.png') });
+  await page.setViewport({ width: 1424, height: 700 });
+  assert.ok(await page.$eval('.ribbon-panel', (el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight), 'windowed ribbon has no scrollbars');
+  await page.setViewport({ width: 1440, height: 900 });
 
   await selectTab('插入');
   assert.equal(await page.$('.ribbon-panel [aria-label="查找替换"]'), null);
@@ -99,6 +102,7 @@ try {
   await page.screenshot({ path: path.join(dir, 'ribbon-arrange-940.png') });
   await page.setViewport({ width: 760, height: 700 });
   assert.ok(await page.$eval('.ribbon-panel', (el) => el.getBoundingClientRect().width <= innerWidth));
+  assert.ok(await page.$eval('.ribbon-panel', (el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight), 'narrow ribbon wraps without scrollbars');
   await page.screenshot({ path: path.join(dir, 'ribbon-compact.png') });
   assert.deepEqual(errors, []);
   console.log('PASS ribbon tabs, insertion, undo, responsive layout:', dir);

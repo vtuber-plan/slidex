@@ -1,7 +1,7 @@
 import { t, useLocale } from "./i18n";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { Button, Select, TextField } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import {
   Schema,
   DOMParser,
@@ -9,12 +9,11 @@ import {
   type MarkSpec,
   type NodeSpec,
 } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { EditorState, TextSelection, Plugin } from "prosemirror-state";
+import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { schema as basic } from "prosemirror-schema-basic";
 import {
   addListNodes,
-  wrapInList,
   splitListItem,
   sinkListItem,
   liftListItem,
@@ -22,10 +21,9 @@ import {
 import { baseKeymap, toggleMark } from "prosemirror-commands";
 import { history, undo, redo, closeHistory } from "prosemirror-history";
 import { TextContentTools } from "./TextContentTools";
+import { setTextEditorSession, refreshTextEditorSession } from "./textEditorSession";
 import { keymap } from "prosemirror-keymap";
-import type { Command } from "prosemirror-state";
 import { renderRichText } from "../src/render/richtext";
-import { resolveTextStyle } from "../src/render/render";
 import type { Deck, SlideElement } from "../src/types";
 import "prosemirror-view/style/prosemirror.css";
 import katex from "katex";
@@ -173,6 +171,11 @@ export function RichText({
       }),
       plugins: [
         history(),
+        new Plugin({ props: { decorations: (state) => {
+          const { from, to } = state.selection;
+          return from === to || document.activeElement?.closest(".ProseMirror")
+            ? null : DecorationSet.create(state.doc, [Decoration.inline(from, to, { class: "slx-preserved-selection" })]);
+        } } }),
         keymap({
           "Mod-z": undo,
           "Mod-y": redo,
@@ -261,6 +264,8 @@ export function RichText({
         return renderRichText(pasted.innerHTML, { deck });
       },
       handleDOMEvents: {
+        blur: () => { setTimeout(() => { if (!editor.isDestroyed) editor.dispatch(editor.state.tr); }, 0); return false; },
+        focus: () => { queueMicrotask(() => { if (!editor.isDestroyed) editor.dispatch(editor.state.tr); }); return false; },
         compositionstart: () => {
           clearTimeout(compositionBoundary);
           editor.dispatch(closeHistory(editor.state.tr));
@@ -286,6 +291,7 @@ export function RichText({
       dispatchTransaction: (tr) => {
         editor.updateState(editor.state.apply(tr));
         setRevision((x) => x + 1);
+        refreshTextEditorSession();
       },
       attributes: {
         "aria-label": t("富文本内容"),
@@ -296,6 +302,7 @@ export function RichText({
     view.current = editor;
     setRevision((x) => x + 1);
     finishRef.current = finish;
+    setTextEditorSession(editor);
     window.__slxCommitText = () => finish(true);
     const outside = (event: PointerEvent) => {
       const node = event.target as HTMLElement;
@@ -328,6 +335,7 @@ export function RichText({
       delete window.__slxCommitText;
       delete window.__slxTextCommand;
       view.current = null;
+      setTextEditorSession(null);
       clearTimeout(compositionBoundary);
       editor.destroy();
       target.innerHTML = original;
@@ -335,296 +343,13 @@ export function RichText({
       document.removeEventListener("pointerdown", outside, true);
     };
   }, [element.id]);
-  const run = (command: Command) => {
-    const v = view.current;
-    if (v) {
-      command(v.state, v.dispatch, v);
-      v.focus();
-    }
-  };
-  const format = (attrs: Record<string, string>) => {
-    const v = view.current;
-    if (!v) return;
-    const existing = v.state.storedMarks || v.state.selection.$from.marks();
-    const prev =
-      existing.find((m) => m.type === richSchema.marks.textStyle)?.attrs || {};
-    const m = richSchema.marks.textStyle.create({ ...prev, ...attrs });
-    const tr = v.state.tr;
-    if (v.state.selection.empty) tr.addStoredMark(m);
-    else
-      v.state.doc.nodesBetween(
-        v.state.selection.from,
-        v.state.selection.to,
-        (node, pos) => {
-          if (!node.isInline) return;
-          const prior =
-            node.marks.find((mark) => mark.type === richSchema.marks.textStyle)
-              ?.attrs || {};
-          tr.addMark(
-            Math.max(pos, v.state.selection.from),
-            Math.min(pos + node.nodeSize, v.state.selection.to),
-            richSchema.marks.textStyle.create({ ...prior, ...attrs }),
-          );
-        },
-      );
-    v.dispatch(tr);
-    v.focus();
-  };
-  const resolved = resolveTextStyle(element, deck);
-  const state = view.current?.state;
-  const marks: (readonly import("prosemirror-model").Mark[])[] = [];
-  if (state) {
-    if (state.selection.empty)
-      marks.push(state.storedMarks || state.selection.$from.marks());
-    else
-      state.doc.nodesBetween(
-        state.selection.from,
-        state.selection.to,
-        (node) => {
-          if (node.isText) marks.push(node.marks);
-        },
-      );
-  }
-  const active = (name: string) =>
-    marks.length > 0 &&
-    marks.every((ms) => {
-      const styles = ms.find((m) => m.type.name === "textStyle")?.attrs;
-      if (name === "strong" && styles?.fontWeight)
-        return styles.fontWeight === "bold" || Number(styles.fontWeight) >= 600;
-      if (name === "em" && styles?.fontStyle)
-        return styles.fontStyle === "italic";
-      return (
-        ms.some((m) => m.type.name === name) ||
-        (name === "strong" && !!resolved.bold) ||
-        (name === "em" && !!resolved.italic)
-      );
-    });
-  const common = (name: string, fallback: string) => {
-    const values = marks.map((ms) =>
-      String(
-        ms.find((m) => m.type.name === "textStyle")?.attrs[name] || fallback,
-      ),
-    );
-    return values.length && values.some((v) => v !== values[0])
-      ? ""
-      : values[0] || fallback;
-  };
-  const font = common("fontFamily", resolved.fontFamily || "Segoe UI");
-  const size = common("fontSize", `${resolved.fontSize}px`).replace(/px$/, "");
-  const color = common("color", resolved.color || "#1a1a1a");
-  const colorValue = (value: string, fallback: string) => {
-    if (/^#[\da-f]{6}$/i.test(value)) return value;
-    const rgb = value.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-    return rgb
-      ? "#" +
-          rgb
-            .slice(1)
-            .map((n) => Number(n).toString(16).padStart(2, "0"))
-            .join("")
-      : fallback;
-  };
-  const [sizeDraft, setSizeDraft] = useState(size);
-  useEffect(() => setSizeDraft(size), [size]);
   return createPortal(
-    <div
-      className="rich-editor"
-      data-revision={revision}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <div className="text-panel-heading"><strong>{t("文本格式")}</strong><span>{t("正在原位编辑")}</span></div>
-      <div className="rich-toolbar" role="toolbar" aria-label={t("文本格式")}>
-        <div className="text-section-label">{t("字体")} / {t("字号")}</div>
-        <div className="text-font-row">
-        <Select.Root
-          value={font || "__mixed"}
-          onValueChange={(fontFamily) => format({ fontFamily })}
-        >
-          <Select.Trigger aria-label={t("字体")} />
-          <Select.Content data-rich-editor-ui>
-            {!font && (
-              <Select.Item value="__mixed" disabled>
-                {t("混合字体")}
-              </Select.Item>
-            )}
-            {[
-              ...new Set([
-                ...(font ? [font] : []),
-                "Segoe UI",
-                "Microsoft YaHei",
-                "Arial",
-                "Georgia",
-                "Consolas",
-              ]),
-            ].map((f) => (
-              <Select.Item key={f} value={f}>
-                {f}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-        <TextField.Root
-          aria-label={t("字号")}
-          type="number"
-          min="1"
-          max="300"
-          value={sizeDraft}
-          placeholder={t("混合")}
-          onChange={(e) => setSizeDraft(e.target.value)}
-          onBlur={() => {
-            if (+sizeDraft > 0 && +sizeDraft <= 300 && sizeDraft !== size)
-              format({ fontSize: `${sizeDraft}px` });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-          }}
-          style={{ width: 68 }}
-        />
-        </div>
-        <div className="text-section-label">{t("文字样式")}</div>
-        <div className="text-style-row">
-        {(
-          [
-            "strong",
-            "em",
-            "underline",
-            "strike",
-            "superscript",
-            "subscript",
-          ] as const
-        ).map((name, i) => (
-          <Button
-            key={name}
-            size="1"
-            variant={active(name) ? "solid" : "soft"}
-            aria-pressed={active(name)}
-            aria-label={
-              [
-                t("加粗"),
-                t("斜体"),
-                t("下划线"),
-                t("删除线"),
-                t("上标"),
-                t("下标"),
-              ][i]
-            }
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              if (
-                (name === "strong" &&
-                  (resolved.bold ||
-                    marks.some((ms) =>
-                      ms.some(
-                        (m) =>
-                          m.type.name === "textStyle" && m.attrs.fontWeight,
-                      ),
-                    ))) ||
-                (name === "em" &&
-                  (resolved.italic ||
-                    marks.some((ms) =>
-                      ms.some(
-                        (m) => m.type.name === "textStyle" && m.attrs.fontStyle,
-                      ),
-                    )))
-              ) {
-                format(
-                  name === "strong"
-                    ? { fontWeight: active(name) ? "normal" : "bold" }
-                    : { fontStyle: active(name) ? "normal" : "italic" },
-                );
-              } else run(toggleMark(richSchema.marks[name]));
-            }}
-          >
-            {["B", "I", "U", "S", "x²", "x₂"][i]}
-          </Button>
-        ))}
-        <Button
-          size="1"
-          variant="soft"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() =>
-            run((state, dispatch, view) => {
-              for (let d = state.selection.$from.depth; d > 0; d--)
-                if (
-                  state.selection.$from.node(d).type ===
-                  richSchema.nodes.bullet_list
-                )
-                  return liftListItem(richSchema.nodes.list_item)(
-                    state,
-                    dispatch,
-                    view,
-                  );
-              return wrapInList(richSchema.nodes.bullet_list)(
-                state,
-                dispatch,
-                view,
-              );
-            })
-          }
-        >
-          {t("• 列表")}
-        </Button>
-        <Button
-          size="1"
-          variant="soft"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() =>
-            run((state, dispatch, view) => {
-              for (let d = state.selection.$from.depth; d > 0; d--)
-                if (
-                  state.selection.$from.node(d).type ===
-                  richSchema.nodes.ordered_list
-                )
-                  return liftListItem(richSchema.nodes.list_item)(
-                    state,
-                    dispatch,
-                    view,
-                  );
-              return wrapInList(richSchema.nodes.ordered_list)(
-                state,
-                dispatch,
-                view,
-              );
-            })
-          }
-        >
-          {t("1. 列表")}
-        </Button>
-        </div>
-        <div className="text-section-label">{t("文字颜色")} / {t("文字背景")}</div>
-        <div className="text-color-row">
-        <input
-          aria-label={t("文字颜色")}
-          type="color"
-          value={colorValue(color, "#000000")}
-          onChange={(e) => format({ color: e.target.value })}
-        />
-        <input
-          aria-label={t("文字背景")}
-          type="color"
-          value={colorValue(
-            common("backgroundColor", resolved.backgroundColor || "#ffffff"),
-            "#ffffff",
-          )}
-          onChange={(e) => format({ backgroundColor: e.target.value })}
-        />
-        </div>
-      </div>
+    <div className="rich-editor" data-revision={revision} data-rich-editor-ui onPointerDown={(event) => event.stopPropagation()}>
       <TextContentTools view={view.current} revision={revision} />
       <div className="text-finish-row">
-        <Button size="1" onClick={() => finishRef.current(true)}>
-          {t("完成")}
-        </Button>
-        <Button
-          size="1"
-          variant="ghost"
-          onClick={() => finishRef.current(false)}
-        >
-          {t("取消")}
-        </Button>
+        <Button size="1" onClick={() => finishRef.current(true)}>{t("完成")}</Button>
+        <Button size="1" variant="ghost" onClick={() => finishRef.current(false)}>{t("取消")}</Button>
       </div>
-      <span className="rich-hint">
-        {t("Ctrl+Enter 完成 · Esc 取消 · Ctrl+Z 撤销文字修改")}
-      </span>
     </div>,
     document.getElementById("text-format-dock")!,
   );

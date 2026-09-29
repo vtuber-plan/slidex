@@ -2,11 +2,31 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { DOMParser } from "prosemirror-model";
 import katex from "katex";
+import Editor, { loader, type OnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { t, useLocale } from "./i18n";
 import { richSchema, serializeRichDoc } from "./RichText";
 import type { SlideElement } from "../src/types";
 
 export interface CellLocation { row: number; col: number }
+
+self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+loader.config({ monaco });
+monaco.languages.register({ id: "slidex-tex" });
+monaco.languages.setMonarchTokensProvider("slidex-tex", {
+  tokenizer: {
+    root: [
+      [/%.*$/, "comment"],
+      [/\\(?:begin|end)(?=\{)/, "keyword"],
+      [/\\[a-zA-Z]+\*?/, "keyword"],
+      [/\\[^a-zA-Z\s]/, "keyword"],
+      [/[{}\[\]()]/, "delimiter.bracket"],
+      [/[_^&]/, "operator"],
+      [/\d+(?:\.\d+)?/, "number"],
+    ],
+  },
+});
 
 function objectNode(canvas: HTMLElement | null, id: string) {
   return Array.from(canvas?.querySelectorAll<HTMLElement>(".slx-el") || [])
@@ -23,34 +43,69 @@ export function FormulaCanvasEditor({ element, canvas, scale, onDone }: {
   const initial = element.tex || element.content || "";
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState("");
   const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [size, setSize] = useState({ width: 640, height: 440 });
   const current = useRef(initial), done = useRef(onDone), finishRef = useRef<(commit: boolean) => void>(() => {});
-  const input = useRef<HTMLTextAreaElement>(null), panel = useRef<HTMLDivElement>(null);
+  const moved = useRef(false);
+  const gesture = useRef<{ kind: "move" | "resize"; x: number; y: number; left: number; top: number; width: number; height: number } | null>(null);
+  const errorRef = useRef("");
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const model = useRef<monaco.editor.ITextModel | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
   done.current = onDone;
+  const validate = (tex: string) => {
+    const target = objectNode(canvas.current, element.id)?.querySelector<HTMLElement>(".slx-formula");
+    try {
+      const html = katex.renderToString(tex, { throwOnError: true, displayMode: true });
+      setPreview(html);
+      setError("");
+      errorRef.current = "";
+      if (target) {
+        if (tex) katex.render(tex, target, { throwOnError: true, displayMode: true });
+        else target.textContent = "";
+      }
+      if (model.current) monaco.editor.setModelMarkers(model.current, "slidex-tex", []);
+    } catch (reason) {
+      const parseError = reason as Error & { position?: number; length?: number };
+      const message = parseError.message || t("公式语法无效");
+      setError(message);
+      errorRef.current = message;
+      if (model.current) {
+        const start = model.current.getPositionAt(Math.max(0, parseError.position ?? tex.length));
+        const end = model.current.getPositionAt(Math.min(tex.length, (parseError.position ?? tex.length) + Math.max(1, parseError.length ?? 1)));
+        monaco.editor.setModelMarkers(model.current, "slidex-tex", [{
+          startLineNumber: start.lineNumber, startColumn: start.column,
+          endLineNumber: end.lineNumber, endColumn: end.lineNumber === start.lineNumber ? Math.max(start.column + 1, end.column) : end.column,
+          message, severity: monaco.MarkerSeverity.Error,
+        }]);
+      }
+    }
+  };
   useLayoutEffect(() => {
     const target = objectNode(canvas.current, element.id)?.querySelector<HTMLElement>(".slx-formula");
     if (!target) return;
     const original = target.innerHTML;
-    const locate = () => {
+    const locate = (clamp = false) => {
+      if (moved.current) {
+        if (!clamp) return;
+        const rect = panel.current?.getBoundingClientRect();
+        if (rect) {
+          setSize({ width: Math.min(rect.width, window.innerWidth - 16), height: Math.min(rect.height, window.innerHeight - 16) });
+          setPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)), top: Math.max(8, Math.min(rect.top, window.innerHeight - rect.height - 8)) });
+        }
+        return;
+      }
       const rect = target.getBoundingClientRect();
       setPosition({
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - 336)),
-        top: rect.bottom + 12 + 160 < window.innerHeight ? rect.bottom + 12 : Math.max(8, rect.top - 172),
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(640, window.innerWidth - 16) - 8)),
+        top: rect.bottom + 12 + 440 < window.innerHeight ? rect.bottom + 12 : Math.max(8, rect.top - 452),
       });
-    };
-    const render = (tex: string) => {
-      try {
-        katex.renderToString(tex, { throwOnError: true, displayMode: true });
-        setError("");
-      } catch {
-        setError(t("公式语法无效"));
-      }
-      if (tex) katex.render(tex, target, { throwOnError: false, displayMode: true });
-      else target.textContent = "";
     };
     let finished = false;
     const finish = (commit: boolean) => {
       if (finished) return;
+      if (commit && errorRef.current) { editor.current?.focus(); return; }
       finished = true;
       if (commit && current.current !== initial) done.current(current.current);
       else done.current();
@@ -62,55 +117,85 @@ export function FormulaCanvasEditor({ element, canvas, scale, onDone }: {
       flushSync(() => finish(true));
     };
     document.addEventListener("pointerdown", outside, true);
-    window.addEventListener("resize", locate);
-    window.addEventListener("scroll", locate, true);
+    const onResize = () => locate(true);
+    const onScroll = () => locate();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
     locate();
-    render(current.current);
-    input.current?.focus();
-    input.current?.select();
+    validate(current.current);
     return () => {
       if (window.__slxCommitText) delete window.__slxCommitText;
       document.removeEventListener("pointerdown", outside, true);
-      window.removeEventListener("resize", locate);
-      window.removeEventListener("scroll", locate, true);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
       if (target.isConnected) target.innerHTML = original;
     };
   }, [element.id, scale]);
   const change = (tex: string) => {
     current.current = tex;
     setDraft(tex);
-    const target = objectNode(canvas.current, element.id)?.querySelector<HTMLElement>(".slx-formula");
-    if (!target) return;
-    try {
-      katex.renderToString(tex, { throwOnError: true, displayMode: true });
-      setError("");
-    } catch {
-      setError(t("公式语法无效"));
+    validate(tex);
+  };
+  const onMount: OnMount = (instance) => {
+    editor.current = instance;
+    model.current = instance.getModel();
+    validate(current.current);
+    instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => finishRef.current(true));
+    instance.addCommand(monaco.KeyCode.Escape, () => finishRef.current(false));
+    instance.setSelection(instance.getModel()!.getFullModelRange());
+    instance.focus();
+  };
+  const startGesture = (event: React.PointerEvent<HTMLElement>, kind: "move" | "resize") => {
+    if (event.button !== 0 || !panel.current) return;
+    const rect = panel.current.getBoundingClientRect();
+    gesture.current = { kind, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    moved.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const updateGesture = (event: React.PointerEvent<HTMLElement>) => {
+    const start = gesture.current;
+    if (!start) return;
+    if (start.kind === "move") {
+      setPosition({
+        left: Math.max(8, Math.min(start.left + event.clientX - start.x, window.innerWidth - start.width - 8)),
+        top: Math.max(8, Math.min(start.top + event.clientY - start.y, window.innerHeight - start.height - 8)),
+      });
+    } else {
+      setSize({
+        width: Math.max(Math.min(360, window.innerWidth - start.left - 8), Math.min(start.width + event.clientX - start.x, window.innerWidth - start.left - 8)),
+        height: Math.max(Math.min(300, window.innerHeight - start.top - 8), Math.min(start.height + event.clientY - start.y, window.innerHeight - start.top - 8)),
+      });
     }
-    if (tex) katex.render(tex, target, { throwOnError: false, displayMode: true });
-    else target.textContent = "";
   };
   return createPortal(
-    <div ref={panel} className="formula-canvas-editor" style={position} onPointerDown={(e) => e.stopPropagation()}>
-      <label htmlFor="slx-formula-source">{t("公式内容")}</label>
-      <textarea
-        ref={input}
-        id="slx-formula-source"
-        aria-label={t("公式内容")}
+    <div ref={panel} className="formula-canvas-editor" style={{ ...position, ...size }} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="formula-editor-title" onPointerDown={(event) => startGesture(event, "move")} onPointerMove={updateGesture} onPointerUp={() => { gesture.current = null; }} onPointerCancel={() => { gesture.current = null; }}>
+        {t("公式内容")}<span aria-hidden="true">⠿</span>
+      </div>
+      <div className="formula-monaco" aria-label={t("公式内容")}>
+      <Editor
+        path={`formula-${element.id}.tex`}
+        language="slidex-tex"
+        theme={localStorage.getItem("slidex-appearance") === "dark" ? "vs-dark" : "vs"}
         value={draft}
-        rows={3}
-        spellCheck={false}
-        onChange={(e) => change(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finishRef.current(false); }
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finishRef.current(true); }
+        onChange={(value) => change(value ?? "")}
+        onMount={onMount}
+        options={{
+          automaticLayout: true, minimap: { enabled: false }, lineNumbers: "on",
+          fontSize: 14, lineHeight: 22, wordWrap: "on", scrollBeyondLastLine: false,
+          glyphMargin: false, folding: false, padding: { top: 8, bottom: 8 },
         }}
       />
+      </div>
+      <label className="formula-preview-label">{t("预览")}</label>
+      <div className="formula-live-preview" aria-label={t("预览")} dangerouslySetInnerHTML={{ __html: preview }} />
       <div className="formula-editor-actions">
         <span role="alert">{error}</span>
         <button type="button" onClick={() => finishRef.current(false)}>{t("取消")}</button>
         <button type="button" onClick={() => finishRef.current(true)}>{t("完成")}</button>
       </div>
+      <div className="formula-editor-resize" role="separator" aria-label={t("缩放公式编辑器")} onPointerDown={(event) => startGesture(event, "resize")} onPointerMove={updateGesture} onPointerUp={() => { gesture.current = null; }} onPointerCancel={() => { gesture.current = null; }} />
     </div>,
     document.querySelector(".radix-themes") || document.body,
   );

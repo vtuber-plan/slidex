@@ -116,7 +116,7 @@ try {
         document.querySelector("#canvasHost").getBoundingClientRect().top,
     ),
   );
-  await page.locator('.ribbon-tab::-p-text(开始)').click();
+  await page.locator('.ribbon-tab::-p-text(编辑)').click();
   check(
     "paste button allows system clipboard on fresh load",
     !(await page.$eval('[aria-label="粘贴"]', (el) => el.disabled)),
@@ -188,20 +188,21 @@ try {
   await page.keyboard.down("Control");
   await page.keyboard.press("a");
   await page.keyboard.up("Control");
+  await page.waitForFunction(() => document.querySelector('.text-ribbon-font [aria-label="字号"]')?.value === '');
   check(
     "mixed selection shows mixed font and size",
     (await page.$eval(
-      '.rich-toolbar [aria-label="字号"]',
+      '.text-ribbon-font [aria-label="字号"]',
       (el) => el.value === "",
     )) &&
       (
         await page.$eval(
-          '.rich-toolbar [aria-label="字体"]',
-          (el) => el.textContent,
+          '.text-ribbon-font [aria-label="字体"]',
+          (el) => el.getAttribute('placeholder'),
         )
       ).includes("混合字体"),
   );
-  await page.type('.rich-toolbar [aria-label="字号"]', "30");
+  await page.type('.text-ribbon-font [aria-label="字号"]', "30");
   await page.keyboard.press("Enter");
   await clickText("完成");
   const mixedContent = parseSlideX(await xml()).deck.slides[0].elements.find(
@@ -312,7 +313,7 @@ try {
     "insert text",
     parseSlideX(await xml()).deck.slides[0].elements.length === 5,
   );
-  await page.locator('.ribbon-tab::-p-text(开始)').click();
+  await page.locator('.ribbon-tab::-p-text(编辑)').click();
   await page.click('[aria-label="撤销"]');
   check(
     "undo transaction",
@@ -447,7 +448,7 @@ try {
   );
   await page.locator('.ribbon-tab::-p-text(排列)').click();
   await page.click('[aria-label="左对齐"]');
-  await page.locator('.ribbon-tab::-p-text(开始)').click();
+  await page.locator('.ribbon-tab::-p-text(编辑)').click();
   await page.keyboard.press("Delete");
   check(
     "locked object survives alignment and deletion commands",
@@ -491,7 +492,7 @@ try {
   await page.click('[aria-label="新增页面"]');
   await page.locator('.ribbon-tab::-p-text(插入)').click();
   await page.click('[aria-label="插入对象"] button');
-  await page.locator('.ribbon-tab::-p-text(开始)').click();
+  await page.locator('.ribbon-tab::-p-text(编辑)').click();
   await clickText("锁定对象");
   await page.click('[aria-label="删除页面"]');
   check(
@@ -663,7 +664,7 @@ try {
     ),
   );
   await page.click('[aria-label="取消组合"]');
-  await page.locator('.ribbon-tab::-p-text(开始)').click();
+  await page.locator('.ribbon-tab::-p-text(编辑)').click();
   check(
     "ungroup retains nested animation targets",
     (await xml()).includes('target="text"') &&

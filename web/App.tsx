@@ -54,6 +54,7 @@ import { Tool } from "./ui";
 import { HistoryDialog } from "./History";
 import { DesktopWindowControls, desktopPlatform } from "./DesktopWindowControls";
 import { EditingTools } from "./EditingTools";
+import { TextRibbon } from "./TextRibbon";
 import { ErrorMessage } from "./Diagnostics";
 import {PageList} from './PageList';
 import {LayoutMenu} from './LayoutMenu';
@@ -87,7 +88,7 @@ function shapeSvg(name: string, w: number, h: number) {
   return `<svg viewBox="${shape.viewBox}"><path d="${shape.d}" fill-rule="${shape.fillRule}"/></svg>`;
 }
 const ribbonLabels = {
-  home: "开始",
+  home: "编辑",
   insert: "插入",
   design: "设计",
   animations: "动画",
@@ -99,6 +100,8 @@ const ribbonLabels = {
 type RibbonTab = keyof typeof ribbonLabels;
 export default function App() {
   const [ribbonTab, setRibbonTab] = useState<RibbonTab>("home");
+  const editingText = useEditor((state) => !!state.editing && container(state).elements.some((element) => element.id === state.editing && element.type === "text"));
+  useEffect(() => { if (editingText) setRibbonTab("home"); }, [editingText]);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("design");
   const selectRibbonTab = (tab: RibbonTab) => {
     setRibbonTab(tab);
@@ -256,6 +259,9 @@ export default function App() {
     [library, setLibrary] = useState<"shape" | "icon" | null>(null),
     [shapeCategory,setShapeCategory]=useState(''),
     [search, setSearch] = useState("");
+  const selectedDrawing = s.selection.length === 1
+    ? container(s).elements.find((element) => element.id === s.selection[0] && element.type === "shape" && !element.locked)
+    : undefined;
   const [autosave, setAutosave] = useState(
     localStorage.getItem("slidex-autosave") !== "false",
   );
@@ -718,33 +724,39 @@ export default function App() {
               <div className="ribbon-panel" id="ribbon-panel" role="tabpanel" aria-labelledby={`ribbon-tab-${ribbonTab}`}>
               {ribbonTab === "home" && <>
               <RibbonGroup label={t("剪贴板")}>
-              <Tool
-                label={t("复制")}
-                disabled={!s.selection.length}
-                onClick={s.copy}
-              >
-                <Copy size={16} />
-              </Tool>
-              <Tool label={t("粘贴")} onClick={s.paste}>
-                <FilePlus size={16} />
-              </Tool>
-              <Tool
-                label={t("删除")}
-                disabled={!s.selection.length}
-                onClick={s.remove}
-              >
-                <Trash2 size={16} />
-              </Tool>
+                <RibbonButton label="粘贴" onClick={s.paste} disabled={editingText}><FilePlus size={24} /></RibbonButton>
+                <div className="ribbon-command-stack">
+                  <button aria-label={t("剪切")} disabled={editingText || !s.selection.length} onClick={() => { s.copy(); s.remove(); }}><span>✂</span>{t("剪切")}</button>
+                  <button aria-label={t("复制")} disabled={editingText || !s.selection.length} onClick={s.copy}><Copy size={14} />{t("复制")}</button>
+                </div>
+              </RibbonGroup>
+              <RibbonGroup label={t("幻灯片")}>
+                <RibbonButton label="新增页面" onClick={s.addPage} disabled={editingText}><Plus size={24}/></RibbonButton>
+                <div className="ribbon-command-stack">
+                  <button aria-label={t("复制页面")} disabled={editingText} onClick={s.duplicatePage}><Copy size={14}/>{t("复制页面")}</button>
+                  <button aria-label={t("删除页面")} disabled={editingText} onClick={s.deletePage}><Trash2 size={14}/>{t("删除页面")}</button>
+                </div>
+              </RibbonGroup>
+              <TextRibbon />
+              <RibbonGroup label={t("绘图")}>
+                <div className="ribbon-shape-gallery" role="group" aria-label={t("形状")}>
+                  <button aria-label={t("插入文本")} onClick={() => s.insert("text")}><Type size={17}/></button>
+                  <button aria-label={t("插入线条")} onClick={() => s.insert("line")}><Minus size={17}/></button>
+                  <button aria-label={t("插入形状")} onClick={() => { setSearch(""); setLibrary("shape"); }}><Shapes size={17}/></button>
+                  <button aria-label={t("更多形状")} onClick={() => { setSearch(""); setLibrary("shape"); }}><ChevronDown size={15}/></button>
+                </div>
+                <div className="ribbon-command-stack ribbon-drawing-controls">
+                  <label>{t("形状填充")}<input aria-label={t("形状填充")} type="color" disabled={!selectedDrawing} value={/^#[\da-f]{6}$/i.test(selectedDrawing?.fill || "") ? selectedDrawing!.fill : "#ffffff"} onChange={(event) => selectedDrawing && s.patch(selectedDrawing.id, { fill: event.target.value, fillObj: undefined })}/></label>
+                  <label>{t("形状轮廓")}<input aria-label={t("形状轮廓")} type="color" disabled={!selectedDrawing} value={/^#[\da-f]{6}$/i.test(selectedDrawing?.stroke || "") ? selectedDrawing!.stroke : "#000000"} onChange={(event) => selectedDrawing && s.patch(selectedDrawing.id, { stroke: event.target.value })}/></label>
+                </div>
+                <RibbonButton label="排列" onClick={() => selectRibbonTab("arrange")}><Group size={21}/></RibbonButton>
               </RibbonGroup>
               <RibbonGroup label={t("编辑")}>
                 <EditingTools />
-              </RibbonGroup>
-              <RibbonGroup label={t("幻灯片")}>
-                <Tool label={t("新增页面")} onClick={s.addPage}><Plus size={17}/></Tool>
-                <Tool label={t("复制页面")} onClick={s.duplicatePage}><Copy size={17}/></Tool>
-                <Tool label={t("删除页面")} onClick={s.deletePage}><Trash2 size={17}/></Tool>
+                <Tool label={t("全选")} disabled={editingText} onClick={() => s.select(container(s).elements.filter((element) => !element.locked).map((element) => element.id))}><Grid2X2 size={16}/></Tool>
               </RibbonGroup>
               </>}
+              <div id="text-format-dock" data-rich-editor-ui hidden={ribbonTab !== "home" || !editingText} />
               {ribbonTab === "design" && <>
                 <RibbonGroup label={t("页面")}>
                   <Tool label={t("页面设计")} onClick={() => {

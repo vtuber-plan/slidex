@@ -305,6 +305,13 @@ DSL 源码与检查…|DSL source and diagnostics…
 排列|Arrange
 剪贴板|Clipboard
 预览|Preview
+段落|Paragraph
+默认字体|Default font
+选择字体|Choose font
+上对齐|Align top
+下对齐|Align bottom
+换行|Wrap
+缩放公式编辑器|Resize formula editor
 动画面板|Animation panel
 重做|Redo
 复制|Copy
@@ -622,6 +629,19 @@ Y 轴设置|Y axis settings
 正在加载 SlideX…|Loading SlideX…
 上一页|Previous slide
 下一步|Next step
+放映工具|Presentation tools
+放映墨迹|Presentation ink
+返回上次位置|Return to last viewed slide
+查看所有幻灯片|See all slides
+局部放大|Magnify slide
+黑屏|Black screen
+白屏|White screen
+鼠标指针|Mouse pointer
+激光笔|Laser pointer
+画笔|Pen
+荧光笔|Highlighter
+清除本页墨迹|Erase ink on this slide
+结束放映|End show
 幻灯片网格|Slide grid
 演讲者视图|Presenter view
 全屏|Fullscreen
@@ -638,6 +658,18 @@ Y 轴设置|Y axis settings
 删除线|Strikethrough
 上标|Superscript
 下标|Subscript
+选择字号|Choose font size
+增大字号|Increase font size
+减小字号|Decrease font size
+清除格式|Clear formatting
+项目符号与缩进|Bullets and indentation
+绘图|Drawing
+形状填充|Shape fill
+形状轮廓|Shape outline
+插入文本|Insert text
+插入线条|Insert line
+更多形状|More shapes
+全选|Select all
 • 列表|• List
 1. 列表|1. List
 混合字体|Mixed fonts

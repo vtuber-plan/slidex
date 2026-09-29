@@ -60,6 +60,8 @@ slidex export my-deck/deck.slx -f png --pages 1 --manifest --json
 slidex export my-deck/deck.slx -f pptx --editable --json
 ```
 
+放映时右键打开工具菜单，可切换黑屏或白屏、激光笔、画笔和荧光笔，清除当前页墨迹、返回上次查看的页面，以及放大右键位置附近的幻灯片。放大后单击可移动放大中心，按 Esc 退出放大；黑/白屏可单击恢复，也可用 B/W 切换。墨迹仅在本次放映中保留，不会写入文稿。
+
 `format --check` 只检查格式，`format --write` 会改写指定文件。`inspect` 列出项目版本和对象 ID。需要按版本增量修改时，可以先运行 `slidex patch <deck.slx> <patch.json> --dry-run` 预览改动；补丁格式见[补丁协议](docs/ai-patch.md)。`slidex language <deck.slx> --offset N` 则可向开发工具提供补全和定义定位信息。
 
 导出 PNG、PDF 或 PPTX 需要本机安装 Chrome、Edge 或 Chromium。如果未能自动找到浏览器，请设置 `CHROME_PATH`。命令行导出的文件保存在文稿旁的 `out/` 目录。`--pages` 和 `--manifest` 只适用于 PNG；PDF 和 PPTX 目前会导出整份文稿。每次导出都会生成 `.report.json`，其中记录缺失字体、效果降级和转为图片的对象，交付前建议查看。

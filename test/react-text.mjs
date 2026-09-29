@@ -317,11 +317,10 @@ try {
   );
   await page.focus(".ProseMirror");
   await mod("a");
+  await page.waitForFunction(() => document.querySelector('.text-ribbon-font [aria-label="字体"]')?.value === '');
   check(
     "mixed pasted fonts reflected in toolbar",
-    (await page.$eval(".rich-editor", (el) => el.textContent)).includes(
-      "混合字体",
-    ),
+    (await page.$eval('.text-ribbon-font [aria-label="字体"]', (el) => el.value)) === "",
   );
   await page.locator("summary::-p-text(段落排版)").click();
   await fill('[aria-label="段落行距"]', "1.8");

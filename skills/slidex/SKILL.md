@@ -25,9 +25,29 @@ The .slx format is a constrained XML subset: a `<deck>` root holds `<slide>` pag
 ### step0. Check local prerequisites
 Default delivery includes validation, visual review, and exports, which need a local toolchain. **Before generating**, resolve the **skill root** first — the absolute directory containing the currently loaded `SKILL.md`; references live under `references/` inside it. Then verify:
 
-1. **SlideX CLI**: run `slidex version` (or `slidex help`). Do not assume the working directory is the SlideX repository, and do not confuse the unscoped npm package `slidex` with this project (`@xiahan/slidex`). In a built checkout, invoke `node /path/to/slidex/dist/cli.js` directly and use the same invocation for every later command. If the CLI is unavailable, report the missing runtime; do not substitute an unrelated presentation format. Authorized install options are `npm install -g @xiahan/slidex@next` (the package declares Node.js 18+; CI uses 22) or the versioned CLI `.tgz` attached to a GitHub Release. Do not install software without the user's approval.
+1. **SlideX CLI**: run `slidex version` (or `slidex help`). Do not assume the working directory is the SlideX repository, and do not confuse the unscoped npm package `slidex` with this project (`@xiahan/slidex`). In a built checkout, invoke `node /path/to/slidex/dist/cli.js` directly and use the same invocation for every later command. If the CLI is unavailable, report the missing runtime; do not substitute an unrelated presentation format. Follow the installation options below, but do not install software without the user's approval.
 2. **Chrome / Edge / Chromium**: PNG, PDF, PPTX, and HTML exports all render through a local headless browser (auto-discovered; set `CHROME_PATH` if discovery fails). Without a browser, authoring and validation still work, but label visual review and every export as blocked and deliver as partial output; do not claim visual verification and do not silently skip the steps.
 3. **Network**: required only when the deck references remote images/fonts or the user asks you to fetch materials. Local rendering and exports otherwise run offline; custom `<fonts>` sources silently fall back to system fonts when offline.
+
+### Install the CLI (with user approval)
+The skill contains instructions, not the SlideX runtime. Use Node.js 18 or newer (CI uses 22). To install the published release candidate from npm, use the scoped package's `next` tag (the default `latest` tag can point to an older release):
+
+```sh
+npm install -g @xiahan/slidex@next
+slidex version
+```
+
+To build the current `main` branch from the official GitHub source instead, use a fresh checkout outside any existing deck directory:
+
+```sh
+git clone https://github.com/vtuber-plan/slidex.git
+cd slidex
+npm ci
+npm run build
+node dist/cli.js version
+```
+
+Run subsequent CLI commands with `node /absolute/path/to/slidex/dist/cli.js` from the built checkout, or with `slidex` after the global npm installation. For an existing checkout, inspect local changes before updating it; do not overwrite them with a reset or clean. A versioned CLI `.tgz` from GitHub Releases is another installation option. Installing the CLI does not register this skill with an agent; install the `skills/slidex/` folder separately in the agent's skills directory when needed.
 
 ### step1. Read the context thoroughly
 Read **all files uploaded by the user**, the provided URLs, and `references/authoring.md` to fully understand the requirements before writing any DSL. For editing or templating tasks, read the existing project first (see step3).

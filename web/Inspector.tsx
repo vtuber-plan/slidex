@@ -104,7 +104,6 @@ export function Inspector({ preview, tab, setTab }: { preview: () => void; tab: 
           <Tabs.Trigger value="animation">{t("动画")}</Tabs.Trigger>
         </Tabs.List>}
         <Tabs.Content value="design" forceMount className="design-tab">
-          <div id="text-format-dock" data-rich-editor-ui />
           <div className="panel-body" hidden={!!s.editing && el?.type === "text"}>
             {el && s.selection.length === 1 ? (
               <>
@@ -434,6 +433,7 @@ function ElementFields({ element: el }: { element: SlideElement }) {
     "points",
     "crop",
     "src",
+    ...(el.type === "text" ? ["align", "wrap", "color", "font-size", "font-family", "bold", "italic", "line-height", "letter-spacing", "background-color"] : []),
     ...(el.type === "formula" ? ["tex"] : []),
     ...(["shape", "text"].includes(el.type) ? ["fill"] : []),
     ...(["shape", "line"].includes(el.type)

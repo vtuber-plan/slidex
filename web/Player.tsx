@@ -1,5 +1,6 @@
 import { t, useLocale } from "./i18n";
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {flushSync} from 'react-dom';
 import { Button } from "@radix-ui/themes";
 import {
@@ -9,11 +10,20 @@ import {
   Grid2X2,
   X,
   Presentation,
+  MousePointer2,
+  PenLine,
+  Highlighter,
+  Eraser,
+  ZoomIn,
+  CircleDot,
 } from "lucide-react";
 import type { Deck } from "../src/types";
 import { createPlayer } from "../src/player";
 import { SlideSurface, RenderResources, Thumbnail } from "./SlideSurface";
 import { Tool } from "./ui";
+
+type PointerTool = "cursor" | "laser" | "pen" | "highlighter";
+type InkStroke = { page: number; tool: "pen" | "highlighter"; points: Array<{ x: number; y: number }> };
 
 export function Player({
   deck,
@@ -30,13 +40,27 @@ export function Player({
 }) {
   useLocale();
   const root = useRef<HTMLDivElement>(null),
+    slideFrame = useRef<HTMLDivElement>(null),
+    menuRef = useRef<HTMLDivElement>(null),
     holders = useRef<(HTMLDivElement | null)[]>([]),
     controller = useRef<ReturnType<typeof createPlayer> | null>(null);
+  const history = useRef<number[]>([]),
+    lastPage = useRef(start),
+    returning = useRef(false),
+    drawing = useRef<InkStroke | null>(null);
   const [current, setCurrent] = useState(start),
     [mounted,setMounted]=useState(()=>[start-1,start,start+1]),
     [scale, setScale] = useState(1),
     [grid, setGrid] = useState(false),
-    [notes, setNotes] = useState(false);
+    [notes, setNotes] = useState(false),
+    [menu, setMenu] = useState<{ x: number; y: number } | null>(null),
+    [screen, setScreen] = useState<"black" | "white" | null>(null),
+    [pointerTool, setPointerTool] = useState<PointerTool>("cursor"),
+    [ink, setInk] = useState<InkStroke[]>([]),
+    [activeInk, setActiveInk] = useState<InkStroke | null>(null),
+    [laser, setLaser] = useState<{ x: number; y: number } | null>(null),
+    [zoom, setZoom] = useState(false),
+    [zoomOrigin, setZoomOrigin] = useState({ x: 0.5, y: 0.5 });
   const channel = useRef<BroadcastChannel | null>(null),
     sessionDeck = useRef(deck);
   sessionDeck.current = deck;
@@ -64,7 +88,14 @@ export function Player({
       deck,
       holders.current.filter((x): x is HTMLDivElement => !!x),
       (i) => {
+        if (i !== lastPage.current) {
+          if (!returning.current) history.current.push(lastPage.current);
+          lastPage.current = i;
+        }
+        returning.current = false;
         setCurrent(i);
+        setMenu(null);
+        setLaser(null);
         channel.current?.postMessage({ type: "state", index: i });
         if (embedded && window.parent !== window)
           window.parent.postMessage(
@@ -98,8 +129,37 @@ export function Player({
     return () => observer.disconnect();
   }, [deck.width, deck.height]);
   useEffect(() => {
+    if (!menu) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [menu]);
+  const returnToLastPage = () => {
+    const previous = history.current.pop();
+    if (previous === undefined) return;
+    returning.current = true;
+    controller.current?.show(previous);
+  };
+  const pointOnSlide = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(deck.width, (event.clientX - rect.left) * deck.width / rect.width)),
+      y: Math.max(0, Math.min(deck.height, (event.clientY - rect.top) * deck.height / rect.height)),
+    };
+  };
+  const inkPath = (stroke: InkStroke) => stroke.points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest("input,textarea,select")) return;
+      if (e.key === "Escape" && menu) { setMenu(null); e.preventDefault(); return; }
+      if (e.key === "Escape" && screen) { setScreen(null); e.preventDefault(); return; }
+      if (e.key === "Escape" && zoom) { setZoom(false); e.preventDefault(); return; }
+      if (e.key.toLowerCase() === "b" && !e.altKey && !e.ctrlKey && !e.metaKey) { setScreen((value) => value === "black" ? null : "black"); return; }
+      if (e.key.toLowerCase() === "w" && !e.altKey && !e.ctrlKey && !e.metaKey) { setScreen((value) => value === "white" ? null : "white"); return; }
+      if (screen) return;
       if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) {
         controller.current?.next();
         e.preventDefault();
@@ -118,7 +178,7 @@ export function Player({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [deck.slides.length, onClose, grid]);
+  }, [deck.slides.length, onClose, grid, menu, screen, zoom]);
   const presenter = () => {
     window.open(
       `/present-speaker?session=${encodeURIComponent(session)}`,
@@ -127,11 +187,26 @@ export function Player({
     );
   };
   return (
-    <div className={`player ${embedded ? "embedded" : ""}`} ref={root}>
+    <div className={`player ${embedded ? "embedded" : ""}`} ref={root}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        const bounds = root.current!.getBoundingClientRect();
+        const slideBounds = slideFrame.current?.getBoundingClientRect();
+        if (slideBounds && event.clientX >= slideBounds.left && event.clientX <= slideBounds.right && event.clientY >= slideBounds.top && event.clientY <= slideBounds.bottom)
+          setZoomOrigin({ x: (event.clientX - slideBounds.left) / slideBounds.width, y: (event.clientY - slideBounds.top) / slideBounds.height });
+        setMenu({ x: Math.max(0, Math.min(event.clientX - bounds.left, bounds.width - 230)), y: Math.max(0, Math.min(event.clientY - bounds.top, bounds.height - 440)) });
+      }}>
       <RenderResources deck={deck} />
       <div
         className="player-stage"
         onClick={(e) => {
+          if (screen) { setScreen(null); return; }
+          if (pointerTool !== "cursor") return;
+          if (zoom) {
+            const bounds = slideFrame.current?.getBoundingClientRect();
+            if (bounds) setZoomOrigin({ x: Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (e.clientY - bounds.top) / bounds.height)) });
+            return;
+          }
           const target = (e.target as HTMLElement).closest<HTMLElement>(
             "[data-slide-target]",
           );
@@ -146,13 +221,20 @@ export function Player({
           controller.current?.next();
         }}
       >
-        <div
+        <div ref={slideFrame} className={`player-slide-frame player-tool-${pointerTool}${zoom ? " player-zoomed" : ""}`}
+          onPointerMove={(event) => {
+            if (pointerTool !== "laser") return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setLaser({ x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+          }}
+          onPointerLeave={() => setLaser(null)}
           style={{
             width: deck.width * scale,
             height: deck.height * scale,
             position: "relative",
           }}
         >
+          <div className="player-zoom-layer" style={{ width: "100%", height: "100%", transform: zoom ? "scale(2)" : undefined, transformOrigin: `${zoomOrigin.x * 100}% ${zoomOrigin.y * 100}%` }}>
           {deck.slides.map((slide, i) => (
             <div
               key={slide.id || i}
@@ -170,8 +252,52 @@ export function Player({
               {mounted.includes(i)&&<SlideSurface deck={deck} slide={slide} />}
             </div>
           ))}
+          <svg className="player-ink" viewBox={`0 0 ${deck.width} ${deck.height}`} aria-label={t("放映墨迹")}
+            style={{ pointerEvents: pointerTool === "pen" || pointerTool === "highlighter" ? "auto" : "none" }}
+            onPointerDown={(event) => {
+              if (event.button !== 0 || (pointerTool !== "pen" && pointerTool !== "highlighter")) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drawing.current = { page: current, tool: pointerTool, points: [pointOnSlide(event)] };
+              setActiveInk(drawing.current);
+              event.preventDefault();
+            }}
+            onPointerMove={(event) => {
+              if (!drawing.current) return;
+              drawing.current = { ...drawing.current, points: [...drawing.current.points, pointOnSlide(event)] };
+              setActiveInk(drawing.current);
+            }}
+            onPointerUp={(event) => {
+              if (!drawing.current) return;
+              const stroke = { ...drawing.current, points: [...drawing.current.points, pointOnSlide(event)] };
+              setInk((previous) => [...previous, stroke]);
+              drawing.current = null;
+              setActiveInk(null);
+            }}
+            onPointerCancel={() => { drawing.current = null; setActiveInk(null); }}>
+            {[...ink.filter((stroke) => stroke.page === current), ...(activeInk?.page === current ? [activeInk] : [])].map((stroke, index) =>
+              <path key={index} d={inkPath(stroke)} fill="none" stroke={stroke.tool === "pen" ? "#e13232" : "#ffe45b"} strokeWidth={stroke.tool === "pen" ? 3 : 19} strokeOpacity={stroke.tool === "pen" ? 1 : .45} strokeLinecap="round" strokeLinejoin="round" />)}
+          </svg>
+          </div>
+          {pointerTool === "laser" && laser && <div className="player-laser" style={{ left: laser.x, top: laser.y }} />}
         </div>
       </div>
+      {screen && <div className={`player-blank player-blank-${screen}`} aria-label={t(screen === "black" ? "黑屏" : "白屏")} onClick={() => setScreen(null)} />}
+      {menu && <div ref={menuRef} className="player-context-menu" role="menu" aria-label={t("放映工具")} style={{ left: menu.x, top: menu.y }}>
+        <button role="menuitem" onClick={() => { controller.current?.next(); setMenu(null); }}>{t("下一步")}</button>
+        <button role="menuitem" disabled={current === 0} onClick={() => { controller.current?.previous(); setMenu(null); }}>{t("上一页")}</button>
+        <button role="menuitem" disabled={!history.current.length} onClick={returnToLastPage}>{t("返回上次位置")}</button>
+        <button role="menuitem" onClick={() => { setGrid(true); setMenu(null); }}>{t("查看所有幻灯片")}</button>
+        <button role="menuitemcheckbox" aria-checked={zoom} onClick={() => { setZoom(!zoom); setMenu(null); }}><ZoomIn size={15}/>{t("局部放大")} {zoom ? "✓" : ""}</button>
+        <div className="player-menu-divider" />
+        <button role="menuitem" onClick={() => { setScreen("black"); setMenu(null); }}>{t("黑屏")}</button>
+        <button role="menuitem" onClick={() => { setScreen("white"); setMenu(null); }}>{t("白屏")}</button>
+        <div className="player-menu-divider" />
+        {([ ["cursor", "鼠标指针", MousePointer2], ["laser", "激光笔", CircleDot], ["pen", "画笔", PenLine], ["highlighter", "荧光笔", Highlighter] ] as const).map(([tool, label, Icon]) =>
+          <button key={tool} role="menuitemradio" aria-checked={pointerTool === tool} onClick={() => { setPointerTool(tool); setMenu(null); }}><Icon size={15} />{t(label)}{pointerTool === tool && <span className="player-menu-check">✓</span>}</button>)}
+        <button role="menuitem" disabled={!ink.some((stroke) => stroke.page === current)} onClick={() => { setInk((previous) => previous.filter((stroke) => stroke.page !== current)); setMenu(null); }}><Eraser size={15} />{t("清除本页墨迹")}</button>
+        <div className="player-menu-divider" />
+        {onClose && <button role="menuitem" onClick={onClose}>{t("结束放映")}</button>}
+      </div>}
       <div className="player-controls">
         <div className="flex items-center gap-2">
           <Tool
