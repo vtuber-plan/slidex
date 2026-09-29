@@ -64,13 +64,18 @@ try {
     await page.click('[data-page-index="1"] button', {button:'right'});
     assert.match(await page.$eval('[role="menu"]', el => el.textContent), /已选页面：1/);
     assert.deepEqual(await page.$$eval('[role="option"][aria-selected="true"]', els => els.map(el => el.getAttribute('data-page-index'))), ['1']);
-    await page.locator('[role="menuitem"]::-p-text(新建页面)').click();
+    await page.evaluate(()=>[...document.querySelectorAll('[role="menuitem"]')].find(el=>el.textContent?.includes('新建页面'))?.click());
     assert.equal((await deck()).slides.length, 4);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('[role="menu"]',{hidden:true});
     await undo();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-page-index]').length===3);
     await page.click('[data-page-index="1"] button');
+    await page.waitForFunction(()=>document.querySelector('[data-page-index="1"]')?.getAttribute('aria-selected')==='true');
     await page.keyboard.down("Shift");
     await page.click('[data-page-index="2"] button');
     await page.keyboard.up("Shift");
+    assert.deepEqual(await page.$$eval('[role="option"][aria-selected="true"]',els=>els.map(el=>el.getAttribute('data-page-index'))),['1','2']);
     await page.click('[data-page-index="2"] button', {button:'right'});
     await page.locator('[role="menuitem"]::-p-text(页面上移)').click();
     assert.deepEqual(

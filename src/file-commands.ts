@@ -15,7 +15,7 @@ export function createDocument(destination:string,source:string,xml?:string){
   const parsed=parseSlideX(output);if(parsed.errors.length)throw Error(parsed.errors.map(e=>e.message).join('\n'));
   stampEditorMetadata(parsed.deck);
   output=serializeDeck(parsed.deck);
-  if(xml&&path.dirname(target)!==path.dirname(source)){
+  if(xml&&source&&path.dirname(target)!==path.dirname(source)){
     const base=fs.realpathSync(path.dirname(source));
     const mime:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.css':'text/css'};
     const embedded=new Map<string,string>();

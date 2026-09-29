@@ -8,7 +8,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ServerHandle } from '../dist/server.js';
-import { templateDeck } from '../dist/template.js';
 import {isLocale,extraTranslation,type Locale} from '../dist/locales.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,12 +27,7 @@ const userDataDir = (): string => app.getPath('userData');
 
 async function ensureDeck(argvPath: string | undefined): Promise<string> {
   if (argvPath && fs.existsSync(argvPath) && argvPath.toLowerCase().endsWith('.slx')) return path.resolve(argvPath);
-  const fallback = path.join(userDataDir(), 'untitled.slx');
-  if (!fs.existsSync(fallback)) {
-    fs.mkdirSync(path.dirname(fallback), { recursive: true });
-    fs.writeFileSync(fallback, templateDeck('未命名演示'), 'utf8');
-  }
-  return fallback;
+  return '';
 }
 
 async function openDeckDialog(): Promise<void> {
@@ -62,8 +56,8 @@ async function saveAs(): Promise<void> {
 
 async function openPresentWindow(): Promise<void> {
   if (!win) return;
-  const saved = await win.webContents.executeJavaScript('window.__slxDirty === true ? window.__slxSave() : Promise.resolve(true)').catch(() => false) as boolean;
-  if (!saved) return;
+  const staged = await win.webContents.executeJavaScript('window.__slxStageDraft?.() ?? Promise.resolve(false)').catch(() => false) as boolean;
+  if (!staged) return;
   presentWin = new BrowserWindow({
     width: 1280, height: 760, backgroundColor: '#101419',
     title: M('SlideX 放映', 'SlideX Present'), autoHideMenuBar: true,
@@ -237,25 +231,27 @@ app.whenReady().then(async () => {
   const { startServer } = await import('../dist/server.js');
   server = await startServer(deckFile, { port: 0, preferencesFile:path.join(userDataDir(),'preferences.json'), onOpen: file => {
     deckFile = file;
-    win?.setTitle(`SlideX — ${file}`);
-    app.addRecentDocument(file);
+    win?.setTitle(file ? `SlideX — ${file}` : 'SlideX');
+    if(file)app.addRecentDocument(file);
   }, pickDocument:async(mode,sourceFile)=>{
     if(!win)return undefined;
-    const result=await dialog.showSaveDialog(win,{title:mode==='new'?M('新建 SlideX 演示','New SlideX deck'):M('另存为','Save as'),defaultPath:path.join(path.dirname(sourceFile),mode==='new'?'untitled.slx':path.basename(sourceFile,'.slx')+'-copy.slx'),filters:[{name:'SlideX',extensions:['slx']}]});
+    const result=await dialog.showSaveDialog(win,{title:mode==='new'?M('新建 SlideX 演示','New SlideX deck'):M('另存为','Save as'),defaultPath:sourceFile?path.join(path.dirname(sourceFile),path.basename(sourceFile,'.slx')+'-copy.slx'):path.join(app.getPath('documents'),'未命名演示.slx'),filters:[{name:'SlideX',extensions:['slx']}]});
     return result.canceled?undefined:result.filePath;
   }, pickExport: async (format,sourceFile) => {
     if(!win)return undefined;
+    const exportDirectory=sourceFile?path.dirname(sourceFile):app.getPath('documents');
+    const exportBase=sourceFile?path.basename(sourceFile,path.extname(sourceFile)):'未命名演示';
     if(format==='png'){
-      const picked=await dialog.showOpenDialog(win,{title:M('选择图片导出文件夹','Choose image export folder'),defaultPath:path.dirname(sourceFile),properties:['openDirectory','createDirectory']});
+      const picked=await dialog.showOpenDialog(win,{title:M('选择图片导出文件夹','Choose image export folder'),defaultPath:exportDirectory,properties:['openDirectory','createDirectory']});
       if(picked.canceled||!picked.filePaths[0])return undefined;
-      const directory=picked.filePaths[0],base=path.basename(sourceFile,path.extname(sourceFile));
+      const directory=picked.filePaths[0],base=exportBase;
       if(fs.readdirSync(directory).some(name=>name.startsWith(base+'-')&&(/\.png$/i.test(name)||name===base+'-images.json'))){
         const answer=await dialog.showMessageBox(win,{type:'question',message:M('目标文件夹已有同名导出，是否覆盖本次导出的文件？','Replace existing files from this export?'),buttons:[M('取消','Cancel'),M('覆盖','Replace')],defaultId:0,cancelId:0});
         if(answer.response!==1)return undefined;
       }
       return {directory};
     }
-    const picked=await dialog.showSaveDialog(win,{title:M('导出文件','Export file'),defaultPath:path.join(path.dirname(sourceFile),path.basename(sourceFile,path.extname(sourceFile))+'.'+format),filters:[{name:format.toUpperCase(),extensions:[format]}]});
+    const picked=await dialog.showSaveDialog(win,{title:M('导出文件','Export file'),defaultPath:path.join(exportDirectory,exportBase+'.'+format),filters:[{name:format.toUpperCase(),extensions:[format]}]});
     if(picked.canceled||!picked.filePath)return undefined;
     return {outputFile:picked.filePath};
   }, pickDeck: async () => {

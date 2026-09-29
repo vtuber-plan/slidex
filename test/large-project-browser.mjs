@@ -24,7 +24,6 @@ try{await withBrowser(async browser=>{
   await page.evaluate(()=>{window.testChannel.onmessage=e=>{if(e.data.type==='snapshot')window.testSnapshot=e.data;};window.testChannel.postMessage({type:'ready'});});
   await page.waitForFunction(()=>window.testSnapshot?.index===50&&window.testSnapshot.deck.slides.length===100);
   await page.goto(base+'/preview');await page.waitForSelector('.preview-grid .slx-slide');assert.equal(await page.$$eval('.preview-grid>button',n=>n.length),100);assert.ok(await page.$$eval('.preview-grid .slx-slide',n=>n.length)<40);
-  await page.evaluate(()=>localStorage.setItem('slidex-autosave','false'));
   await page.goto(base);await page.waitForSelector('#canvasHost [data-id="label"]');
   await page.locator('.ribbon-tab::-p-text(工具)').click();await page.click('.ribbon-panel [aria-label="DSL 源码与检查…"]');await page.waitForSelector('.source-monaco textarea.inputarea');
   const outlineButtons=await page.$$('.source-outline button');assert.equal(outlineButtons.length,100);await outlineButtons.at(-1).click();
@@ -32,8 +31,7 @@ try{await withBrowser(async browser=>{
   await page.click('#canvasHost [data-id="label"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' recovered');await page.click('.canvas-bottom > span');
   assert.ok(await page.evaluate(()=>window.__slxGetXml().includes('recovered')),'text commit before draft');
   await page.waitForFunction(async()=>{const r=await fetch('/api/revisions');return (await r.json()).revisions.some(v=>v.draft&&v.xml.includes('recovered'));});
-  await page.reload();await page.waitForSelector('#canvasHost [data-id="label"]');await page.click('[aria-label="本地版本历史"]');await page.waitForSelector('.history-row');
-  await page.$$eval('.history-row',rows=>{const row=rows.find(r=>r.textContent.includes('未保存的恢复草稿'));if(!row)throw Error('missing recovery draft');row.querySelector('button').click();});await page.waitForFunction(()=>window.__slxGetXml().includes('recovered'));
+  await page.reload();await page.waitForSelector('[role="dialog"] button::-p-text(恢复草稿)');await page.locator('[role="dialog"] button::-p-text(恢复草稿)').click();await page.waitForFunction(()=>window.__slxGetXml().includes('recovered'));
   await page.evaluate(()=>window.__slxCommand('undo'));await page.waitForFunction(()=>!window.__slxGetXml().includes('recovered'));
   assert.deepEqual(errors,[]);
 });}finally{server.close();}

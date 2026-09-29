@@ -79,6 +79,7 @@ declare global {
     __slxTextCommand?: (command: string) => boolean;
     __slxOpenDocument?: (path: string) => Promise<boolean>;
     __slxHasUnsavedChanges?: () => boolean;
+    __slxStageDraft?: () => Promise<boolean>;
   }
 }
 function shapeSvg(name: string, w: number, h: number) {
@@ -115,6 +116,8 @@ export default function App() {
   const [replacingFile, setReplacingFile] = useState(false);
   const replaceInProgress = useRef(false);
   const replaceDecision = useRef<((proceed: boolean) => void) | null>(null);
+  const pendingSave = useRef<((saved: boolean) => void) | null>(null);
+  const finishPendingSave = (saved: boolean) => { pendingSave.current?.(saved); pendingSave.current = null; };
   function finishReplaceDecision(proceed: boolean) {
     replaceDecision.current?.(proceed);
     replaceDecision.current = null;
@@ -123,7 +126,7 @@ export default function App() {
   async function confirmBeforeReplace(): Promise<boolean> {
     window.__slxCommitText?.();
     const state = useEditor.getState();
-    if (serializeDeck(state.deck) === state.saved && (!source || xml === serializeDeck(state.deck))) return true;
+    if (state.file && serializeDeck(state.deck) === state.saved && (!source || xml === serializeDeck(state.deck))) return true;
     return new Promise<boolean>((resolve) => {
       replaceDecision.current = resolve;
       setConfirmReplace(true);
@@ -131,8 +134,10 @@ export default function App() {
   }
   async function saveBeforeReplace() {
     setConfirmBusy(true);
+    setConfirmReplace(false);
     try {
       if (await window.__slxSave?.()) finishReplaceDecision(true);
+      else setConfirmReplace(true);
     } finally {
       setConfirmBusy(false);
     }
@@ -189,27 +194,39 @@ export default function App() {
   }
   useEffect(() => { window.__slxOpenDocument = openDocument; return () => { delete window.__slxOpenDocument; }; }, []);
   const language = useLocale();
-  const [fileCommand,setFileCommand]=useState<'new'|'saveAs'|null>(null),[destination,setDestination]=useState(''),[fileBusy,setFileBusy]=useState(false);
-  async function createFile(mode:'new'|'saveAs',path:string){
-    if(replaceInProgress.current)return;
-    if(mode==='new')replaceInProgress.current=true;
+  const [fileCommand,setFileCommand]=useState<'saveAs'|null>(null),[destination,setDestination]=useState(''),[fileBusy,setFileBusy]=useState(false);
+  async function createFile(path:string){
+    if(replaceInProgress.current&&!pendingSave.current)return;
     setFileBusy(true);
-    if(mode==='new')setReplacingFile(true);
     try{
       window.__slxCommitText?.();const state=useEditor.getState();
-      if(mode==='new')setFileCommand(null);
-      if(mode==='new'&&!(await confirmBeforeReplace()))return;
-      const response=await fetch('/api/create-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,path,expectedPath:state.file,xml:mode==='saveAs'?serializeDeck(useEditor.getState().deck):undefined})});
+      const response=await fetch('/api/create-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'saveAs',path,expectedPath:state.file,expectedVersion:state.version,xml:serializeDeck(state.deck)})});
       const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'保存失败');
-      await useEditor.getState().load();setFileCommand(null);setInspectorTab("design");
+      await useEditor.getState().load();setFileCommand(null);setInspectorTab("design");finishPendingSave(true);
       if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
-    }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);replaceInProgress.current=false;setReplacingFile(false);}
+    }catch(error){useEditor.setState({error:String(error)});}finally{setFileBusy(false);}
   }
-  async function chooseFileCommand(mode:'new'|'saveAs'){
+  async function newDocument(){
+    if(replaceInProgress.current)return;
+    replaceInProgress.current=true;setReplacingFile(true);
+    try{
+      if(!(await confirmBeforeReplace()))return;
+      const state=useEditor.getState();
+      const response=await fetch('/api/new-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedPath:state.file,expectedVersion:state.version})});
+      const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'新建失败');
+      await useEditor.getState().load();setInspectorTab('design');
+      if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
+    }catch(error){useEditor.setState({error:String(error)});}finally{replaceInProgress.current=false;setReplacingFile(false);}
+  }
+  async function chooseFileCommand(mode:'saveAs'){
     window.__slxCommitText?.();
     try{const result=await(await fetch('/api/pick-document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})})).json();
-      if(result.native){if(result.path)await createFile(mode,result.path);}else{setDestination('');setFileCommand(mode);}
-    }catch(error){useEditor.setState({error:String(error)});}
+      if(result.native){if(result.path)await createFile(result.path);else finishPendingSave(false);}else{setDestination('');setFileCommand(mode);}
+    }catch(error){useEditor.setState({error:String(error)});finishPendingSave(false);}
+  }
+  async function saveDocument():Promise<boolean>{
+    if(useEditor.getState().file)return useEditor.getState().save();
+    return new Promise(resolve=>{pendingSave.current=resolve;void chooseFileCommand('saveAs');});
   }
   const [preferences,setPreferences]=useState(false);
   const [exportOptions,setExportOptions]=useState(false);
@@ -250,16 +267,16 @@ export default function App() {
   const session = useMemo(() => uid("present"), []),
     committedDeck = s.gesture || s.deck,
     serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
-    dirty = serialized !== s.saved || !!s.editing || !!s.gesture;
+    dirty = !s.file || serialized !== s.saved || !!s.editing || !!s.gesture;
   const diagnostics = useMemo(() => {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
   }, [serialized]);
   useEffect(()=>{
-    if(!s.ready||serialized===s.saved||s.gesture)return;
-    const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized})}).catch(()=>{});},800);
+    if(!autosave||!s.ready||serialized===s.saved||s.gesture||replacingFile||s.recoveryXml)return;
+    const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized,expectedVersion:s.version})}).catch(()=>{});},800);
     return()=>clearTimeout(timer);
-  },[serialized,s.saved,s.file,s.ready,!!s.gesture]);
+  },[autosave,serialized,s.saved,s.file,s.version,s.ready,!!s.gesture,replacingFile,s.recoveryXml]);
   const openSource=(formatted=false)=>{
     window.__slxCommitText?.();
     const current=serializeDeck(useEditor.getState().deck);
@@ -276,7 +293,7 @@ export default function App() {
   const applySource=()=>{if(useEditor.getState().applySource(xml))leaveSource();};
   const saveSource=async()=>{
     if(!useEditor.getState().applySource(xml))return;
-    if(await useEditor.getState().save()){
+    if(await saveDocument()){
       const savedXml=serializeDeck(useEditor.getState().deck);
       xmlRef.current=savedXml;
       setXml(savedXml);
@@ -294,7 +311,7 @@ export default function App() {
     window.addEventListener('popstate',back);return()=>window.removeEventListener('popstate',back);
   },[]);
   useEffect(()=>{
-    const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='new'||action==='saveAs')void chooseFileCommand(action);if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
+    const handler=(e: Event)=>{const action=(e as CustomEvent<string>).detail;window.__slxCommitText?.();if(action==='new')void newDocument();if(action==='saveAs')void chooseFileCommand('saveAs');if(action==='preferences')setPreferences(true);if(action==='export')setExportOptions(true);if(action==='source')openSource();};
     window.addEventListener('slidex-menu',handler);return()=>window.removeEventListener('slidex-menu',handler);
   },[]);
   useEffect(() => {
@@ -337,24 +354,7 @@ export default function App() {
       delete window.__slxCommand;
     };
   }, []);
-  useEffect(() => {
-    localStorage.setItem("slidex-autosave", String(autosave));
-    if (
-      !autosave ||
-      !s.ready ||
-      !dirty ||
-      replacingFile ||
-      s.editing ||
-      s.gesture ||
-      s.error ||
-      !["/", "/index.html"].includes(location.pathname)
-    )
-      return;
-    const timer = setTimeout(() => {
-      void useEditor.getState().save();
-    }, 1800);
-    return () => clearTimeout(timer);
-  }, [autosave, serialized, dirty, replacingFile, s.ready, s.editing, s.gesture, s.error]);
+  useEffect(() => { localStorage.setItem("slidex-autosave", String(autosave)); }, [autosave]);
   useEffect(() => {
     window.__slxGetXml = () => {
       window.__slxCommitText?.();
@@ -362,12 +362,20 @@ export default function App() {
     };
     window.__slxSave = async () => {
       if (sourceRef.current && xmlRef.current !== serializeDeck(useEditor.getState().deck) && !useEditor.getState().applySource(xmlRef.current)) return false;
-      return useEditor.getState().save();
+      return saveDocument();
+    };
+    window.__slxStageDraft = async () => {
+      window.__slxCommitText?.();
+      const state=useEditor.getState();
+      const currentXml=serializeDeck(state.deck);
+      if(parseSlideX(currentXml).errors.length)return false;
+      const response=await fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:state.file,xml:currentXml,expectedVersion:state.version})});
+      return response.ok;
     };
     window.__slxHasUnsavedChanges = () => {
       window.__slxCommitText?.();
       const state = useEditor.getState();
-      return serializeDeck(state.deck) !== state.saved || (sourceRef.current && xmlRef.current !== serializeDeck(state.deck));
+      return !state.file || serializeDeck(state.deck) !== state.saved || (sourceRef.current && xmlRef.current !== serializeDeck(state.deck));
     };
     window.__slxDirty = dirty || (sourceRef.current && xmlRef.current !== serialized);
     const before = (e: BeforeUnloadEvent) => {
@@ -395,10 +403,10 @@ export default function App() {
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         window.__slxCommitText?.();
-        if(e.shiftKey)void chooseFileCommand('saveAs');else void state.save();
+        if(e.shiftKey)void chooseFileCommand('saveAs');else void saveDocument();
         return;
       }
-      if(mod&&e.key.toLowerCase()==='n'){e.preventDefault();void chooseFileCommand('new');return;}
+      if(mod&&e.key.toLowerCase()==='n'){e.preventDefault();void newDocument();return;}
       if(mod&&e.key.toLowerCase()==='o'){e.preventDefault();void pickOpenDocument();return;}
       if(state.editing)return;
       if (e.key === "Escape" && state.groupPath.length && !state.gesture) {
@@ -471,11 +479,11 @@ export default function App() {
     try {
       const pages = format==='png' ? (pageMode==='current'?String(useEditor.getState().page+1):pageMode==='range'?pageRange:undefined) : undefined;
       if(format==='png')parsePages(pages,useEditor.getState().deck.slides.length);
-      if (!(await s.save())) return;
+      window.__slxCommitText?.();
       const r = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true, progress:true }),
+        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true, progress:true, xml:serializeDeck(useEditor.getState().deck) }),
       });
       if (!r.ok) throw Error(`${r.status} ${r.statusText}`);
       let data: {ok?:boolean;canceled?:boolean;error?:string;downloads?:string[];report?:import('../src/export/report').ExportReport;files?:string[]} | undefined;
@@ -629,7 +637,7 @@ export default function App() {
                   </Button>
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content>
-                  <DropdownMenu.Item shortcut="Ctrl+N" disabled={fileBusy} onSelect={()=>void chooseFileCommand('new')}>{t('新建…')}</DropdownMenu.Item>
+                  <DropdownMenu.Item shortcut="Ctrl+N" disabled={fileBusy} onSelect={()=>void newDocument()}>{t('新建…')}</DropdownMenu.Item>
                   <DropdownMenu.Item
                     shortcut="Ctrl+O" onSelect={()=>void pickOpenDocument()}
                   >
@@ -651,7 +659,7 @@ export default function App() {
                     {t("下载 XML 文档")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator />
-                  <DropdownMenu.Item shortcut="Ctrl+S" onSelect={()=>{window.__slxCommitText?.();void s.save();}}>{t("保存")}</DropdownMenu.Item>
+                  <DropdownMenu.Item shortcut="Ctrl+S" onSelect={()=>{window.__slxCommitText?.();void saveDocument();}}>{t("保存")}</DropdownMenu.Item>
                   <DropdownMenu.Item shortcut="Ctrl+Shift+S" disabled={fileBusy} onSelect={()=>void chooseFileCommand('saveAs')}>{t('另存为…')}</DropdownMenu.Item>
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item disabled={exporting} onSelect={()=>{window.__slxCommitText?.();setExportOptions(true);}}>{t("导出…")}</DropdownMenu.Item>
@@ -974,12 +982,12 @@ export default function App() {
             <Dialog.Root open={preferences} onOpenChange={setPreferences}>
               <Dialog.Content maxWidth="460px">
                 <Dialog.Title>{t("偏好设置")}</Dialog.Title>
-                <Dialog.Description mb="4">{t("设置自动保存，仅影响当前设备的编辑器。")}</Dialog.Description>
+                <Dialog.Description mb="4">{t("修改只写入恢复草稿；点击保存才会更新原文件。")}</Dialog.Description>
                 <div className="settings-fields">
                   <label>{t("语言")}<select aria-label="Language / 语言" value={language} onChange={e=>setLocale(e.target.value as Locale)}>{LOCALES.map(locale=><option key={locale.id} value={locale.id}>{locale.label}</option>)}</select></label>
                   {['ja','es'].includes(language)&&<p>{t('新增语言为预览版；未翻译的文案回退为英文。')}</p>}
                   <label>{t("外观")}<select aria-label={t("外观")} value={dark?'dark':'light'} onChange={e=>setDark(e.target.value==='dark')}><option value="light">{t("浅色界面")}</option><option value="dark">{t("深色界面")}</option></select></label>
-                  <label><span>{t("自动保存")}</span><input type="checkbox" aria-label={t("自动保存")} checked={autosave} onChange={e=>setAutosave(e.target.checked)}/></label>
+                  <label><span>{t("自动保存恢复草稿")}</span><input type="checkbox" aria-label={t("自动保存恢复草稿")} checked={autosave} onChange={e=>setAutosave(e.target.checked)}/></label>
                 </div>
                 <div className="dialog-actions"><Dialog.Close><Button>{t("完成")}</Button></Dialog.Close></div>
               </Dialog.Content>
@@ -987,7 +995,7 @@ export default function App() {
             <Dialog.Root open={exportOptions} onOpenChange={open=>{if(!exporting)setExportOptions(open);}}>
               <Dialog.Content maxWidth="500px">
                 <Dialog.Title>{t("导出文档")}</Dialog.Title>
-                <Dialog.Description mb="4">{t("导出前保存文档。桌面版随后选择保存位置；浏览器版输出到文档旁的 out 文件夹。")}</Dialog.Description>
+                <Dialog.Description mb="4">{t("导出当前编辑内容，无需先保存原文件。桌面版随后选择导出位置。")}</Dialog.Description>
                 <div className="settings-fields">
                   <label>{t("格式")}<select aria-label={t("导出格式")} disabled={exporting} value={exportFormat} onChange={e=>setExportFormat(e.target.value)}>{['png','pdf','pptx','html'].map(f=><option key={f} value={f}>{f.toUpperCase()}</option>)}</select></label>
                   {exportFormat==='pptx'&&<>
@@ -1159,15 +1167,25 @@ export default function App() {
             )}
           </>
         )}
-        <Dialog.Root open={fileCommand!==null} onOpenChange={open=>{if(!open&&!fileBusy)setFileCommand(null);}}>
+        <Dialog.Root open={fileCommand!==null} onOpenChange={open=>{if(!open&&!fileBusy){setFileCommand(null);finishPendingSave(false);}}}>
           <Dialog.Content maxWidth="540px">
-            <Dialog.Title>{t(fileCommand==='new'?'新建…':'另存为…')}</Dialog.Title>
+            <Dialog.Title>{t('另存为…')}</Dialog.Title>
             <Dialog.Description>{t('请选择新的 .slx 文件路径；已有文件不会被覆盖。')}</Dialog.Description>
-            <form onSubmit={e=>{e.preventDefault();if(fileCommand)void createFile(fileCommand,destination);}}>
+            <form onSubmit={e=>{e.preventDefault();if(fileCommand)void createFile(destination);}}>
               <TextField.Root aria-label={t('文件路径')} value={destination} onChange={e=>setDestination(e.target.value)} disabled={fileBusy}/>
               {s.error&&<p role="alert">{s.error}</p>}
-              <div className="dialog-actions"><Button type="button" variant="soft" disabled={fileBusy} onClick={()=>setFileCommand(null)}>{t('取消')}</Button><Button type="submit" disabled={fileBusy||!destination.trim()}>{t(fileCommand==='new'?'新建':'保存')}</Button></div>
+              <div className="dialog-actions"><Button type="button" variant="soft" disabled={fileBusy} onClick={()=>{setFileCommand(null);finishPendingSave(false);}}>{t('取消')}</Button><Button type="submit" disabled={fileBusy||!destination.trim()}>{t('保存')}</Button></div>
             </form>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root open={!!s.recoveryXml} onOpenChange={()=>{}}>
+          <Dialog.Content maxWidth="440px">
+            <Dialog.Title>{t('发现未保存的恢复草稿')}</Dialog.Title>
+            <Dialog.Description>{t('上次编辑的草稿保存在本机。恢复后仍需点击保存，才会写入原文件。')}</Dialog.Description>
+            <div className="dialog-actions">
+              <Button variant="soft" color="red" onClick={()=>{void fetch('/api/draft',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file})}).then(response=>{if(!response.ok)throw Error(t('无法丢弃恢复草稿'));useEditor.setState({recoveryXml:''});}).catch(error=>useEditor.setState({error:String(error)}));}}>{t('丢弃')}</Button>
+              <Button onClick={()=>{if(useEditor.getState().applySource(s.recoveryXml))useEditor.setState({recoveryXml:''});}}>{t('恢复草稿')}</Button>
+            </div>
           </Dialog.Content>
         </Dialog.Root>
         <Dialog.Root open={openFile} onOpenChange={setOpenFile}>

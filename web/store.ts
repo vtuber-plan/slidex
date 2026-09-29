@@ -58,6 +58,7 @@ interface EditorState {
   status: string;
   error: string;
   ready: boolean;
+  recoveryXml: string;
   zoom: number;
   zoomMode: "fit" | "manual";
   editing: string;
@@ -200,6 +201,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   status: "",
   error: "",
   ready: false,
+  recoveryXml: "",
   zoom: 1,
   zoomMode: "fit",
   editing: "",
@@ -211,7 +213,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (!r.ok) throw Error("无法读取文档");
       const data = await r.json();
       const parsed = parseSlideX(data.xml);
-      recordRevision(data.path, serializeDeck(parsed.deck));
+      if(data.path)recordRevision(data.path, serializeDeck(parsed.deck));
       set({
         deck: parsed.deck,
         file: data.path,
@@ -219,6 +221,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         version:data.version||'',multiFile:!!data.multiFile,
         saved: serializeDeck(parsed.deck),
         ready: true,
+        recoveryXml: typeof data.recoveryXml === 'string' ? data.recoveryXml : '',
         page: 0,
         pageSelection:[parsed.deck.slides[0].id],
         pageAnchor:parsed.deck.slides[0].id,
@@ -572,6 +575,7 @@ export async function uploadMedia(file: File): Promise<string | null> {
       r.onerror = reject;
       r.readAsDataURL(file);
     });
+    if (!useEditor.getState().file) return data;
     const ext = file.name.split(".").at(-1) || "png";
     const r = await fetch("/api/media", {
       method: "POST",

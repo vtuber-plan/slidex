@@ -18,9 +18,9 @@ export function historyStore(directory: string) {
       directory,
       createHash("sha256")
         .update(
-          process.platform === "win32"
+          file ? (process.platform === "win32"
             ? path.resolve(file).toLowerCase()
-            : path.resolve(file),
+            : path.resolve(file)) : '@untitled',
         )
         .digest("hex") + ".json",
     );
@@ -88,7 +88,7 @@ export function historyStore(directory: string) {
     saved: (file: string, xml: string) => {
       record(file, xml);
       const h = read(file);
-      if (h.draft?.xml === xml) {
+      if (h.draft) {
         delete h.draft;
         write(file, h);
       }

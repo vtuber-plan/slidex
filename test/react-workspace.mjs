@@ -15,7 +15,7 @@ const page=await browser.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 page.on('dialog',dialog=>dialog.accept());
 await page.setViewport({width:1440,height:1000});
-const openMenu=async()=>{await page.locator('.command-bar button::-p-text(文件)').click();await page.locator('[role="menuitem"]::-p-text(打开本地文件)').click();};
+const openMenu=async()=>{await page.locator('.command-bar button::-p-text(文件)').click();await page.waitForSelector('[role="menuitem"]');await page.evaluate(()=>[...document.querySelectorAll('[role="menuitem"]')].find(el=>el.textContent?.includes('打开本地文件'))?.click());};
 try {
   await page.goto(`http://127.0.0.1:${server.port}`);await page.waitForSelector('#canvasHost [data-id="text"]');
   const geometry=()=>page.$eval('#canvasHost',el=>{const r=el.getBoundingClientRect();return [r.x,r.y,r.width,r.height];});

@@ -19,7 +19,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 await page.setViewport({ width: 1440, height: 900 });
-const selectTab = (label) => page.locator(`.ribbon-tab::-p-text(${label})`).click();
+const selectTab = async (label) => {await page.locator(`.ribbon-tab::-p-text(${label})`).click();await page.waitForFunction(label=>document.querySelector('.ribbon-tab[aria-selected="true"]')?.textContent===label,{},label);};
 const deck = () => page.evaluate(() => window.__slxGetXml()).then((xml) => parseSlideX(xml).deck);
 try {
   await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'networkidle0' });
@@ -87,6 +87,7 @@ try {
   await page.click('.ribbon-panel [aria-label="参考线与网格…"]');
   await page.waitForSelector('[role="dialog"] [aria-label="网格间距"]');
   await page.locator('[role="dialog"] button::-p-text(完成)').click();
+  await page.waitForSelector('[role="dialog"]',{hidden:true});
   await page.screenshot({ path: path.join(dir, 'ribbon-view.png') });
   await selectTab('工具');
   assert.ok(await page.$('.ribbon-panel [aria-label="DSL 源码与检查…"]'));

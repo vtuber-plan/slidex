@@ -18,6 +18,7 @@ import {serializeDeck} from './serializer.js';
 import {isLocale} from './locales.js';
 import {createDocument} from './file-commands.js';
 import {stampEditorMetadata} from './editor-metadata.js';
+import {templateDeck} from './template.js';
 import {applyProjectPatch,PatchError} from './patch.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,13 +53,16 @@ export interface ServerHandle {
 }
 
 export function startServer(deckPath: string, opts: { port?: number; host?: string; preferencesFile?: string; pickDocument?: (mode:'new'|'saveAs',file:string)=>Promise<string|undefined>; pickExport?: (format: string, deckFile: string) => Promise<{directory?: string; outputFile?: string} | undefined>; pickDeck?: () => Promise<string | undefined>; onOpen?: (file: string) => void } = {}): Promise<ServerHandle> {
-  let deckFile = path.resolve(deckPath);
-  let deckDir = path.dirname(deckFile);
+  let deckFile = deckPath ? path.resolve(deckPath) : '';
+  let deckDir = deckFile ? path.dirname(deckFile) : (opts.preferencesFile ? path.dirname(opts.preferencesFile) : process.cwd());
+  let virtualXml: string | null = deckFile ? null : templateDeck('未命名演示');
+  let virtualVersion = randomUUID();
   const outDir = () => path.join(deckDir, 'out');
   const exportDownloads=new Map<string,string>();
   const history=historyStore(path.join(opts.preferencesFile?path.dirname(opts.preferencesFile):path.join(os.homedir(),'.slidex'),'history'));
   let cached:Project|undefined;
   const currentProject=()=>{
+    if(virtualXml!==null){const parsed=parseSlideX(virtualXml);return {...parsed,path:'',xml:virtualXml,version:virtualVersion,multiFile:false,files:[]} as Project;}
     if(cached?.path===deckFile&&!cached.errors.length&&cached.files.every(file=>{try{const stat=fs.statSync(file.path);return stat.mtimeMs===file.mtimeMs&&stat.size===file.size;}catch{return false;}}))return cached;
     return cached=loadProject(deckFile);
   };
@@ -112,13 +116,26 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const body=await readBody(req);
       if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}
       if(body.expectedPath!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      if(!deckFile&&typeof body.expectedVersion==='string'&&body.expectedVersion!==currentProject().version){send(res,409,{error:'文档已变化'});return;}
       if(!['new','saveAs'].includes(String(body.mode))||typeof body.path!=='string'||!body.path.trim()||(body.mode==='saveAs'&&typeof body.xml!=='string')){send(res,400,{error:'无效的文件操作'});return;}
       const file=createDocument(body.path.trim(),deckFile,body.mode==='saveAs'?body.xml:undefined);
-      deckFile=file;deckDir=path.dirname(file);cached=undefined;opts.onOpen?.(file);send(res,200,{ok:true,path:file});return;
+      const oldFile=deckFile;
+      deckFile=file;deckDir=path.dirname(file);virtualXml=null;cached=undefined;opts.onOpen?.(file);
+      if(oldFile!==file)history.discardDraft(oldFile);
+      send(res,200,{ok:true,path:file});return;
+    }
+    if(p==='/api/new-document'&&req.method==='POST'){
+      const body=await readBody(req);
+      if(body.expectedPath!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      if(!deckFile&&typeof body.expectedVersion==='string'&&body.expectedVersion!==currentProject().version){send(res,409,{error:'文档已变化'});return;}
+      history.discardDraft(deckFile);
+      deckFile='';deckDir=opts.preferencesFile?path.dirname(opts.preferencesFile):process.cwd();
+      virtualXml=templateDeck('未命名演示');virtualVersion=randomUUID();cached=undefined;opts.onOpen?.('');
+      send(res,200,{ok:true});return;
     }
     if(p==='/api/language'&&req.method==='POST'){const body=await readBody(req);if(body._tooLarge){send(res,413,{error:'请求体过大'});return;}send(res,200,languageInfo(String(body.xml||''),Number(body.offset)||0));return;}
     if(p==='/api/revisions'&&req.method==='GET'){
-      if(u.searchParams.get('path')&&path.resolve(u.searchParams.get('path')!)!==deckFile){send(res,409,{error:'文档已切换'});return;}
+      if(u.searchParams.has('path')&&u.searchParams.get('path')!==deckFile){send(res,409,{error:'文档已切换'});return;}
       const h=history.read(deckFile);send(res,200,{version:1,revisions:[...(h.draft?[h.draft]:[]),...h.revisions]});return;
     }
     if(p==='/api/draft'&&req.method==='DELETE'){
@@ -133,7 +150,10 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       if(body.path!==deckFile){send(res,409,{error:'文档已切换'});return;}
       if(p==='/api/draft'){
         if(typeof body.xml!=='string'||parseSlideX(body.xml).errors.length){send(res,400,{error:'草稿无效'});return;}
-        history.draft(deckFile,body.xml);
+        const project=currentProject();
+        if(typeof body.expectedVersion==='string'&&body.expectedVersion!==project.version){send(res,409,{error:'文档已变化'});return;}
+        if(body.xml===serializeDeck(project.deck))history.discardDraft(deckFile);
+        else history.draft(deckFile,body.xml);
       }else{
         const list=Array.isArray(body.revisions)?body.revisions.slice(0,20):[];
         history.import(deckFile,list.filter(r=>typeof r?.xml==='string'&&Number.isFinite(r?.time)&&!parseSlideX(r.xml).errors.length));
@@ -170,15 +190,19 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     }
     if (req.method === 'GET' && p === '/api/deck') {
       const project=currentProject(),xml=project.xml;
-      let historyWarning='';
-      try{if(!project.errors.length)history.record(deckFile,serializeDeck(project.deck));}catch(error){historyWarning='历史记录暂不可用：'+String((error as Error).message);}
-      const stat = fs.statSync(deckFile);
-      send(res, 200, { path: deckFile, dir: deckDir, name: path.basename(deckFile), xml, mtimeMs: stat.mtimeMs,version:project.version,multiFile:project.multiFile,files:project.files.map(f=>f.path),errors:project.errors,warnings:project.warnings,historyWarning });
+      if(u.searchParams.get('draft')==='1'){
+        const draft=history.read(deckFile).draft;
+        send(res,200,{path:deckFile,xml:draft&&!parseSlideX(draft.xml).errors.length?draft.xml:xml});return;
+      }
+      let historyWarning='',recoveryXml='';
+      try{if(deckFile&&!project.errors.length)history.record(deckFile,serializeDeck(project.deck));const draft=history.read(deckFile).draft;if(draft&&draft.xml!==serializeDeck(project.deck))recoveryXml=draft.xml;}catch(error){historyWarning='历史记录暂不可用：'+String((error as Error).message);}
+      const stat=deckFile?fs.statSync(deckFile):null;
+      send(res, 200, { path: deckFile, dir: deckDir, name: deckFile?path.basename(deckFile):'未命名演示', xml, mtimeMs: stat?.mtimeMs||0,version:project.version,multiFile:project.multiFile,files:project.files.map(f=>f.path),errors:project.errors,warnings:project.warnings,historyWarning,recoveryXml });
       return;
     }
     if (req.method === 'GET' && p === '/api/stat') {
-      const stat = fs.statSync(deckFile);
-      send(res, 200, { path: deckFile, mtimeMs: stat.mtimeMs, size: stat.size,version:currentProject().version });
+      const stat=deckFile?fs.statSync(deckFile):null;
+      send(res, 200, { path: deckFile, mtimeMs: stat?.mtimeMs||0, size: stat?.size||Buffer.byteLength(virtualXml||''),version:currentProject().version });
       return;
     }
     if (req.method === 'GET' && /^\/render\/\d+$/.test(p)) {
@@ -228,12 +252,14 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       if (parsed.errors.length) { send(res, 200, { ok: false, error: parsed.errors.map(e => e.message).join('\n') }); return; }
       deckFile = abs2;
       deckDir = path.dirname(abs2);
+      virtualXml=null;cached=undefined;
       opts.onOpen?.(deckFile);
       send(res, 200, { ok: true, path: deckFile, dir: deckDir });
       return;
     }
     if (req.method === 'POST' && p === '/api/save') {
       const { xml = '', expectedMtime, expectedPath,expectedVersion } = await readBody(req);
+      if(!deckFile){send(res,409,{ok:false,error:'请先为未命名文稿选择保存路径。'});return;}
       const project=loadProject(deckFile);
       if((typeof expectedVersion==='string'&&expectedVersion!==project.version)||(project.multiFile&&typeof expectedVersion!=='string')){send(res,409,{ok:false,error:'项目依赖已变化，请重新打开文档后保存。'});return;}
       if ((typeof expectedPath === 'string' && path.resolve(expectedPath) !== deckFile) || (typeof expectedMtime === 'number' && expectedMtime !== fs.statSync(deckFile).mtimeMs)) {
@@ -293,12 +319,14 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false, progress = false } = await readBody(req);
+      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false, progress = false, xml } = await readBody(req);
+      let exportScratch='';
       try {
         if (pages !== undefined && typeof pages !== 'string') throw Error('pages 必须是页码范围字符串');
         if (typeof manifest !== 'boolean') throw Error('manifest 必须是布尔值');
         if (typeof progress !== 'boolean') throw Error('progress 必须是布尔值');
         if(!['png','pdf','pptx','html'].includes(format))throw Error('不支持的导出格式');
+        if(xml!==undefined&&(typeof xml!=='string'||parseSlideX(xml).errors.length))throw Error('当前文稿无效，无法导出');
         let destination:{directory?:string;outputFile?:string}={};
         if(chooseDestination && opts.pickExport){
           const picked=await opts.pickExport(format,deckFile);
@@ -310,7 +338,13 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
           res.flushHeaders();
         }
         const emit=(data:object)=>res.write(JSON.stringify(data)+'\n');
-        const result = await exportDeck(deckFile, { format, scale, editable, pages, manifest, ...destination,
+        let exportFile=deckFile;
+        if(typeof xml==='string'){
+          exportScratch=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-export-deck-'));
+          exportFile=createDocument(path.join(exportScratch,deckFile?path.basename(deckFile):'untitled.slx'),deckFile,xml);
+          if(!destination.directory&&!destination.outputFile)destination.directory=outDir();
+        }
+        const result = await exportDeck(exportFile, { format, scale, editable, pages, manifest, ...destination,
           onProgress:progress ? state=>emit({type:'progress',...state}) : undefined });
         const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
         if(progress){emit({type:'result',ok:true,...result,downloads});res.end();}
@@ -320,6 +354,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         if(res.headersSent){res.write(JSON.stringify({type:'result',...failure})+'\n');res.end();}
         else send(res, 200, failure);
       }
+      finally{if(exportScratch)fs.rmSync(exportScratch,{recursive:true,force:true});}
       return;
     }
     send(res, 404, { error: 'no route: ' + p });

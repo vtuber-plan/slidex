@@ -600,6 +600,7 @@ try {
   );
   await clickText("关闭");
   await page.waitForSelector('[role="dialog"]', { hidden: true });
+  await page.waitForFunction(()=>!document.querySelector('.rt-BaseDialogScroll'));
   await page.click('#canvasHost .slx-el[data-id="text"]', { clickCount: 2 });
   await page.waitForSelector(".ProseMirror");
   await page.click(".ProseMirror");

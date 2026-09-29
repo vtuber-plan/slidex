@@ -14,7 +14,7 @@ const button=text=>page.locator(`button::-p-text(${text})`).click();
 const menu=async(name,item)=>{if(name==='工具'){await page.locator('.ribbon-tab::-p-text(工具)').click();await page.click(`.ribbon-panel [aria-label="${item}…"]`);return;}await page.locator(`.command-bar button::-p-text(${name})`).click();await page.locator(`[role="menuitem"]::-p-text(${item})`).click();};
 try{
   await page.goto(`http://127.0.0.1:${server.port}`);await page.waitForSelector('#canvasHost [data-id="t"]');
-  await menu('文件','偏好设置');await page.select('[aria-label="外观"]','dark');await page.click('[aria-label="自动保存"]');
+  await menu('文件','偏好设置');await page.select('[aria-label="外观"]','dark');await page.click('[aria-label="自动保存恢复草稿"]');
   await page.select('[aria-label="Language / 语言"]','en');await page.waitForFunction(()=>document.documentElement.lang==='en');await button('Done');
   await page.reload();await page.waitForSelector('#canvasHost');assert.equal(await page.evaluate(()=>localStorage.getItem('slidex-appearance')),'dark');assert.equal(await page.evaluate(()=>localStorage.getItem('slidex-autosave')),'false');
   const previousPort=server.port;server.close();server=await startServer(file,{port:0,preferencesFile});assert.notEqual(server.port,previousPort);

@@ -44,6 +44,12 @@ const en: Record<string, string> = Object.fromEntries(
 多文件项目：此处编辑合并视图；保存会原子更新页面引用。|Multi-file project: edits use the merged view; saving atomically updates page references.
 版本与恢复草稿保存在本机，跨应用重启保留。恢复会产生一条可撤销的编辑记录。|Versions and recovery drafts are stored locally across restarts. Restoring creates an undoable edit.
 未保存的恢复草稿|Unsaved recovery draft
+发现未保存的恢复草稿|Unsaved recovery draft found
+上次编辑的草稿保存在本机。恢复后仍需点击保存，才会写入原文件。|Your previous draft is stored locally. Save after restoring to write it to the original file.
+恢复草稿|Restore draft
+自动保存恢复草稿|Automatically save recovery drafts
+修改只写入恢复草稿；点击保存才会更新原文件。|Edits go to a recovery draft. Only Save updates the original file.
+导出当前编辑内容，无需先保存原文件。桌面版随后选择导出位置。|Export the current edits without saving the original file. Choose the export location in the desktop app.
 正在读取版本历史…|Loading version history…
 高级形状参数|Advanced shape parameters
 形状分类|Shape category

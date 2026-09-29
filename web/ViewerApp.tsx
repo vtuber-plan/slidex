@@ -14,7 +14,7 @@ export default function ViewerApp() {
     [playing, setPlaying] = useState(location.pathname !== "/preview");
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/deck")
+    fetch(location.pathname === '/present' || location.pathname === '/present-speaker' ? "/api/deck?draft=1" : "/api/deck")
       .then((r) => {
         if (!r.ok) throw Error(t("无法读取文档"));
         return r.json();
