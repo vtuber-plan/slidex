@@ -212,7 +212,7 @@ export function themeXml(): string {
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="SlideX">
 <a:themeElements>
 <a:clrScheme name="SlideX"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="232A31"/></a:dk2><a:lt2><a:srgbClr val="FAF8F4"/></a:lt2><a:accent1><a:srgbClr val="14606C"/></a:accent1><a:accent2><a:srgbClr val="B4632C"/></a:accent2><a:accent3><a:srgbClr val="4F7A38"/></a:accent3><a:accent4><a:srgbClr val="2563EB"/></a:accent4><a:accent5><a:srgbClr val="6E7A82"/></a:accent5><a:accent6><a:srgbClr val="D9A521"/></a:accent6><a:hlink><a:srgbClr val="2563EB"/></a:hlink><a:folHlink><a:srgbClr val="7C4DCC"/></a:folHlink></a:clrScheme>
-<a:fontScheme name="SlideX"><a:majorFont><a:latin typeface="MiSans"/><a:ea typeface="MiSans"/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="MiSans"/><a:ea typeface="MiSans"/><a:cs typeface=""/></a:minorFont></a:fontScheme>
+<a:fontScheme name="SlideX"><a:majorFont><a:latin typeface="Segoe UI"/><a:ea typeface="Microsoft YaHei"/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Segoe UI"/><a:ea typeface="Microsoft YaHei"/><a:cs typeface=""/></a:minorFont></a:fontScheme>
 <a:fmtScheme name="SlideX">
 <a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>
 <a:lnStyleLst><a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>

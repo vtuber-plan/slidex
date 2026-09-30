@@ -17,6 +17,15 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-native-recovery-'))
 const result=await exportDeck(source,{format:'pptx',editable:true,directory});
 assert.deepEqual(result.report.summary,{native:6,rasterized:0,unsupported:0});
 const parts=await unzipIndependent(fs.readFileSync(result.files[0]));
+const spacedSource=path.join(directory,'spaced.slx');
+fs.writeFileSync(spacedSource,'<deck version="1"><slide><text id="spaced" x="10" y="10" w="300" h="160" font-size="13" line-height="1.5"><p>First</p>\n<p>Second</p></text><text id="small" x="10" y="180" w="300" h="80" font-size="9" line-height="1.25"><p>First</p>\n<p>Second</p></text></slide></deck>');
+const spacedResult=await exportDeck(spacedSource,{format:'pptx',editable:true,directory:path.join(directory,'spaced-export')});
+const spacedParts=await unzipIndependent(fs.readFileSync(spacedResult.files[0]));
+const spacedXml=spacedParts.get('ppt/slides/slide1.xml').toString();
+assert.match(spacedXml,/<a:lnSpc><a:spcPct val="100000"\/><\/a:lnSpc><a:buNone\/><\/a:pPr><a:endParaRPr lang="zh-CN" sz="1300"\/>/);
+assert.match(spacedXml,/<a:lnSpc><a:spcPct val="83333"\/><\/a:lnSpc><a:buNone\/><\/a:pPr><a:endParaRPr lang="zh-CN" sz="900"\/>/);
+assert.doesNotMatch(spacedXml,/<a:t>\s+<\/a:t>/);
+assert.match(spacedParts.get('ppt/theme/theme1.xml').toString(),/<a:latin typeface="Segoe UI"\/><a:ea typeface="Microsoft YaHei"\/>/);
 const opacity=parts.get('ppt/slides/slide1.xml').toString();
 assert.match(opacity,/name="text transparent-text"/);
 assert.match(opacity,/name="rect transparent-shape"/);

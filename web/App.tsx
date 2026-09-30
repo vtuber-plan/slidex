@@ -240,7 +240,6 @@ export default function App() {
   const [exportProgress,setExportProgress]=useState<ExportProgress|null>(null);
   const [pageMode,setPageMode]=useState('all');
   const [pageRange,setPageRange]=useState('');
-  const [exportScale,setExportScale]=useState(2);
   const [imageManifest,setImageManifest]=useState(true);
   const [sourceMessage,setSourceMessage]=useState('');
   const [sourceExit,setSourceExit]=useState(false);
@@ -489,7 +488,7 @@ export default function App() {
       const r = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, editable, scale:exportScale, pages, manifest:format==='png'&&imageManifest, chooseDestination:true, progress:true, xml:serializeDeck(useEditor.getState().deck) }),
+        body: JSON.stringify({ format, editable, pages, manifest:format==='png'&&imageManifest, chooseDestination:true, progress:true, xml:serializeDeck(useEditor.getState().deck) }),
       });
       if (!r.ok) throw Error(`${r.status} ${r.statusText}`);
       let data: {ok?:boolean;canceled?:boolean;error?:string;downloads?:string[];report?:import('../src/export/report').ExportReport;files?:string[]} | undefined;
@@ -1019,7 +1018,6 @@ export default function App() {
                     {pageMode==='range'&&<label>{t("页码范围")}<input aria-label={t("页码范围")} disabled={exporting} placeholder="1,3-5" value={pageRange} onChange={e=>setPageRange(e.target.value)}/></label>}
                     <label>{t("附带图片清单（LLM）")}<input type="checkbox" disabled={exporting} checked={imageManifest} onChange={e=>setImageManifest(e.target.checked)}/></label>
                   </>}
-                  {['png','pptx'].includes(exportFormat)&&<label>{t("图片倍率")}<select aria-label={t("图片倍率")} disabled={exporting} value={exportScale} onChange={e=>setExportScale(+e.target.value)}>{[1,2,3,4].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>}
                   {exportFormat!=='png'&&<p>{t("此格式导出全部页面。")}</p>}
                 </div>
                 {exporting&&<div className="export-progress" role="status" aria-live="polite">

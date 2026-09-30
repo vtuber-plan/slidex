@@ -1,6 +1,6 @@
 {
   "name": "slidex",
-  "version": "1.7.0-rc.14",
+  "version": "1.7.0-rc.15",
   "description": "SlideX — an XML-based slide language and WYSIWYG editor/viewer for AI-friendly deck authoring, with pixel-true export to PPTX / PNG / PDF.",
   "repository": {
     "type": "git",
@@ -44,6 +44,7 @@
     "@fortawesome/fontawesome-free": "^6.7.2",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/themes": "^3.3.0",
+    "@xmldom/xmldom": "^0.8.15",
     "katex": "^0.18.7",
     "lucide-react": "^1.47.0",
     "monaco-editor": "^0.52.2",

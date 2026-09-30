@@ -1,5 +1,34 @@
 # PPTX visual QA
 
+## Dynamic-repair survey, 45 pages
+
+Compared `dynamic-repair-survey/deck.slx` at 960×540 against PowerPoint-rendered
+PPTX. In editable export, whitespace between explicit `<p>` blocks was written
+as a run containing a newline. PowerPoint treated that run as multiple lines,
+moving later paragraphs down (page 3 `cause`, x=60, y=276, w=400, h=196:
+the fourth bullet reached the footer). The native writer now emits one empty
+paragraph with controlled spacing for that visible `pre-wrap` newline. The
+theme also used MiSans, which was unavailable on the QA machine, while the
+browser fell back to Segoe UI and Microsoft YaHei. Matching those fallback
+fonts in the PPTX theme reduced different glyph widths and wrapping.
+
+Editable whole-page changed pixels (RGB threshold 24) averaged **6.203% →
+5.655%**; 43 of 45 pages improved. The largest remaining page is 10 at
+10.991%, where method rows `h1`–`h7` and explanatory text `warn-t` wrap
+differently. Page 42 worsened from 9.981% to 9.998%: small citation paragraphs
+`c1`–`c3` still accumulate PowerPoint-specific line-height/kerning differences.
+Page 37's narrow arrow regions `p-a1`–`p-a4` differ by 57–61% locally, but
+have small whole-page impact. These native objects remain editable; this is
+not a pixel-perfect typography fix.
+
+For the former default image-based PPTX, 2× capture averaged 4.288% changed pixels
+at 960×540 due to PowerPoint resampling. Capturing at the matching output
+size with 1× gave 0% changed pixels on all 45 pages at that size,
+but provides less resolution at larger display sizes. The original `.slx`
+was not modified. Image-based PPTX and PNG now default to 1× with no user-facing
+scale option; editable PPTX retains internal 2× fallback captures. Reproduce
+with `node test/pptx-visual.mjs --modes=image,image-2x,editable <deck.slx>`.
+
 ## Targeted 22-page editable-deck comparison (2026-09-28)
 
 The `genai-cognitive-risk-deck/deck.slx` comparison at 960×540 identified
@@ -29,7 +58,7 @@ The automatic-row and inset assertions are in `test/pptx-native-recovery.mjs`.
 
 The PNG export is the SlideX reference image. On Windows with PowerPoint installed,
 run `npm run build` and then `node test/pptx-visual.mjs` to export fixtures to
-PNG, default 2x image PPTX, 1x image PPTX, and editable PPTX. The script opens the PPTX files in
+PNG, default 1x image PPTX, diagnostic 2x image PPTX, and editable PPTX. The script opens the PPTX files in
 PowerPoint, renders every slide at deck resolution, and saves per-page metrics,
 rendered images, and difference images under the printed temporary directory.
 `changedPercent` counts pixels whose largest RGB channel difference exceeds 24;
@@ -45,7 +74,7 @@ merged tables, single and multiple chart series. The `comparison.json`, PPTX
 files, rendered pages, and heatmaps from this run are in
 `.qa-images/pptx-visual-2026-09-27/` (a local, gitignored QA artifact).
 
-| Fixture | Pages | Default image PPTX, whole page | 1x image PPTX, whole page | Editable PPTX, whole page |
+| Fixture | Pages | Historical 2x image PPTX, whole page | 1x image PPTX, whole page | Editable PPTX, whole page |
 | --- | ---: | ---: | ---: | ---: |
 | Typography | 2 | 2.103%-2.547% | 0% | 5.675%-6.086% |
 | Geometry and fallbacks | 2 | 0.036%-0.238% | 0% | 0.344%-0.435% |
@@ -61,11 +90,11 @@ channel differences remain nonzero on several pages.
 Run `node test/pptx-visual.mjs --sizes=480,1280,1920` with the same four
 fixtures. Reference PNGs were captured directly from Chromium at each output
 size; PowerPoint exported the PPTX pages at matching dimensions. `image-matched`
-embeds a PNG rendered at the requested output size (`--scale` equals output
-width divided by deck width). All files and per-page metrics are in
+embeds a PNG rendered at the requested output size (an internal test-only scale
+equal to output width divided by deck width). All files and per-page metrics are in
 `.qa-images/pptx-visual-sizes-2026-09-27/`.
 
-| Output | Default 2x image | 1x image | Matched image | Editable PPTX |
+| Output | Historical 2x image | 1x image | Matched image | Editable PPTX |
 | --- | ---: | ---: | ---: | ---: |
 | 480 x 270 | 4.844% | 4.694% | 0.115% | 8.004% |
 | 1280 x 720 | 1.919% | 3.261% | 0.014% | 6.196% |
@@ -73,24 +102,21 @@ width divided by deck width). All files and per-page metrics are in
 
 Each cell is the **worst whole-page changed-pixel percentage among 12 pages**,
 using the same RGB threshold of 24. At 960 x 540, the prior run found a maximum
-of 2.547% for default 2x images and 0.117% for 1x images. The matching output
+of 2.547% for the former default 2x images and 0.117% for 1x images. The matching output
 size removes almost all image-PPTX resampling differences in this environment.
 It does not remove the PowerPoint native text/chart layout differences in editable
 PPTX. Results at 480 x 270 also show that downsampling a larger embedded image
 can be worse than embedding a page rendered directly at 480 x 270.
 
-For a fixed delivery size, choose `--scale <output width / deck width>` for an
-image-based PPTX, e.g. `--scale 0.5` for 480 x 270 or `--scale 1.3333333333`
-for 1280 x 720 when the deck is 960 x 540. This choice trades resolution at
-other display sizes for fidelity at the chosen size. A PowerPoint slideshow may
+The matched-image figures are diagnostic internal captures, not a user-facing
+export setting. They trade resolution at other display sizes for fidelity at
+the chosen size. A PowerPoint slideshow may
 use a different display or scaling path than `Presentation.Export`; verify the
 actual delivery path when visual matching is critical.
 
 The 2x image PPTX is resampled by PowerPoint when rendered at 960 x 540. Text
-edges are the largest effect. Image PPTX now honors `--scale 1` instead of forcing
-a minimum of 2x, so a user can choose native-resolution matching at that output
-size. The default remains 2x to retain detail when the slide is displayed or
-exported at higher resolution. `--scale 1` is not universally more similar: the
+edges are the largest effect. Image PPTX now uses native-resolution 1x capture
+by default. At larger output sizes, it may be less sharp. 1x is not universally more similar: the
 single-series chart fixture includes 1x pages with up to 0.117% changed pixels.
 
 For editable PPTX, primitive shapes match closely. Text glyph position, font

@@ -78,7 +78,7 @@ slidex export my-deck/deck.slx -f pptx --editable --json
 | PPTX | 优先保证画面效果的交付 | 默认每页是一张图片，无法逐个编辑对象 |
 | PPTX `--editable` | 在 PowerPoint 中继续编辑受支持的对象 | 原生对象与图片混用；Office 中的效果可能不同 |
 
-图片式 PPTX 默认以文稿尺寸的 2 倍渲染每页。如果目标输出尺寸已经确定，可把 `--scale` 设为“输出宽度 ÷ 文稿宽度”。例如，一份 960 × 540 的文稿，输出仍为 960 × 540 时使用 `--scale 1`；输出为 480 × 270 时使用 `--scale 0.5`。让嵌入图片与目标尺寸一致，可以减少 PowerPoint 再次缩放带来的差异；保留默认的 2 倍分辨率，则更适合需要较大输出尺寸的场景。详见 [PowerPoint 视觉对比与测试](docs/pptx-visual-qa.md)。
+PNG 和图片式 PPTX 固定按文稿原始尺寸（1×）渲染，减少 PowerPoint 在该尺寸下的重采样差异；放大显示 PPTX 时，图片可能变得模糊。可编辑 PPTX 对不支持的对象仍使用内部高清裁图。详见 [PowerPoint 视觉对比与测试](docs/pptx-visual-qa.md)。
 
 静态导出只保留最终画面，不包含放映器的全部动画效果。详见[导出效果与已知限制](docs/export-reliability.md)。
 

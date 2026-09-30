@@ -53,7 +53,7 @@ CLI：`slidex language deck.slx --offset 120`。本地 API：POST `/api/language
 沿用「导出图片给 LLM」及 CLI：
 
 ```sh
-slidex export deck.slx -f png --pages 1,3-5 --scale 2 --manifest --json
+slidex export deck.slx -f png --pages 1,3-5 --manifest --json
 ```
 
 省略 pages 导出全部页面，单页使用 `--pages 2`。`*-images.json` 保留版本 1 的已有字段并新增状态、像素尺寸、绝对路径和诊断：

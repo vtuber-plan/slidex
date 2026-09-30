@@ -36,7 +36,6 @@ interface ApiBody {
   xml?: string;
   path?: string;
   format?: string;
-  scale?: number;
   editable?: boolean;
   name?: string;
   data?: string;
@@ -319,9 +318,11 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       return;
     }
     if (req.method === 'POST' && p === '/api/export') {
-      const { format = 'png', scale = 2, editable = false, pages, manifest = false, chooseDestination = false, progress = false, xml } = await readBody(req);
+      const body = await readBody(req);
+      const { format = 'png', editable = false, pages, manifest = false, chooseDestination = false, progress = false, xml } = body;
       let exportScratch='';
       try {
+        if ('scale' in body) throw Error('导出倍率已固定为 1×；请移除 scale');
         if (pages !== undefined && typeof pages !== 'string') throw Error('pages 必须是页码范围字符串');
         if (typeof manifest !== 'boolean') throw Error('manifest 必须是布尔值');
         if (typeof progress !== 'boolean') throw Error('progress 必须是布尔值');
@@ -344,7 +345,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
           exportFile=createDocument(path.join(exportScratch,deckFile?path.basename(deckFile):'untitled.slx'),deckFile,xml);
           if(!destination.directory&&!destination.outputFile)destination.directory=outDir();
         }
-        const result = await exportDeck(exportFile, { format, scale, editable, pages, manifest, ...destination,
+        const result = await exportDeck(exportFile, { format, editable, pages, manifest, ...destination,
           onProgress:progress ? state=>emit({type:'progress',...state}) : undefined });
         const downloads=result.files.map(file=>{const token=randomUUID();exportDownloads.set(token,file);return '/api/export-file/'+token;});
         if(progress){emit({type:'result',ok:true,...result,downloads});res.end();}

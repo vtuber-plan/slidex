@@ -48,7 +48,7 @@ async function executeExport(deckFile:string, options:ExportOptions={}):Promise<
       const file=result.files.find(f=>f.endsWith('-images.json'))!;
       const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
       Object.assign(manifest,{status:report.status,diagnostics:[...parsed.errors,...parsed.warnings],failure:null});
-      manifest.pages.forEach((p:{image:string})=>Object.assign(p,{path:path.join(outDir,p.image),width:Math.round(parsed.deck.width*(options.scale??2)),height:Math.round(parsed.deck.height*(options.scale??2)),status:'success',diagnostics:[]}));
+      manifest.pages.forEach((p:{image:string})=>Object.assign(p,{path:path.join(outDir,p.image),width:Math.round(parsed.deck.width*(options.scale??1)),height:Math.round(parsed.deck.height*(options.scale??1)),status:'success',diagnostics:[]}));
       fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
     }
     const reportName=(options.outputFile?path.basename(options.outputFile):path.basename(abs,path.extname(abs))+'.'+format)+'.report.json';
@@ -66,7 +66,7 @@ async function executeExport(deckFile:string, options:ExportOptions={}):Promise<
 
 async function renderDeck(
   deckFile: string,
-  { format = 'png', scale = 2, editable = false, pages, manifest = false, directory, outputFile, onProgress }: ExportOptions = {},
+  { format = 'png', scale = 1, editable = false, pages, manifest = false, directory, outputFile, onProgress }: ExportOptions = {},
   report?: ExportReport,
 ): Promise<{ files: string[]; outDir: string }> {
   const abs = path.resolve(deckFile);

@@ -76,7 +76,7 @@ For the packaged Electron editor/viewer, download the Windows, macOS, or Linux b
 | PPTX | A visually oriented handoff | Full-slide images by default; individual objects are not editable |
 | PPTX `--editable` | Editing supported objects in PowerPoint | Mixed native objects and image fallbacks; Office rendering may differ |
 
-Image-based PPTX uses 2x page images by default. For a fixed output size, set `--scale` to output width divided by deck width (for example, `--scale 1` for 960 × 540 or `--scale 0.5` for 480 × 270 with a 960 × 540 deck). Matching the embedded image to the output size can reduce PowerPoint resampling differences; 2x retains more detail at larger output sizes. See [PowerPoint visual QA](docs/pptx-visual-qa.md).
+PNG and image-based PPTX use page images at the deck's native resolution (1×). This avoids PowerPoint resampling at that size; enlarging the PPTX may soften the image. Editable PPTX keeps higher-resolution internal captures for unsupported objects. See [PowerPoint visual QA](docs/pptx-visual-qa.md).
 
 Static exports show the final visual state, not the viewer's full animation behavior. See [export fidelity and limitations](docs/export-reliability.md).
 

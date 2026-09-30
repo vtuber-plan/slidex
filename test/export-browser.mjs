@@ -42,10 +42,17 @@ try {
       ).json(),
     );
     assert.equal(canceled.status, "canceled");
+    const scaled = await (await fetch(base + "/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format: "png", scale: 2 }),
+    })).json();
+    assert.equal(scaled.ok, false);
+    assert.match(scaled.error, /倍率已固定/);
     const streamed = await fetch(base + "/api/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format: "pptx", editable: false, scale: 1, chooseDestination: true, progress: true }),
+      body: JSON.stringify({ format: "pptx", editable: false, chooseDestination: true, progress: true }),
     });
     assert.match(streamed.headers.get("content-type"), /application\/x-ndjson/);
     const events = (await streamed.text()).trim().split("\n").map(line => JSON.parse(line));
@@ -55,6 +62,9 @@ try {
     assert.equal(events.at(-1).type, "result");
     assert.equal(events.at(-1).ok, true);
     assert.ok(fs.existsSync(events.at(-1).files[0]));
+    const imageParts = await unzipIndependent(fs.readFileSync(events.at(-1).files[0]));
+    const embeddedPage = imageParts.get("ppt/media/image1.png");
+    assert.deepEqual([embeddedPage.readUInt32BE(16), embeddedPage.readUInt32BE(20)], [960, 540]);
     await page.goto(base + "/render/0", { waitUntil: "networkidle0" });
     const table = await page.$eval("table", (el) => ({
       height: el.getBoundingClientRect().height,
@@ -101,11 +111,14 @@ try {
     format: "png",
     pages: "2",
     manifest: true,
-    scale: 1,
     directory: dir,
   });
   assert.deepEqual(png.report.pages, [{ page: 2, id: "fallback" }]);
   assert.equal(png.files.filter((f) => f.endsWith(".png")).length, 1);
+  const image = fs.readFileSync(png.files.find(f => f.endsWith(".png")));
+  const manifest = JSON.parse(fs.readFileSync(png.files.find(f => f.endsWith("-images.json")), "utf8"));
+  assert.deepEqual([image.readUInt32BE(16), image.readUInt32BE(20)], [manifest.width, manifest.height]);
+  assert.equal(manifest.scale, 1);
   assert.equal(fs.readFileSync(file, "utf8"), before);
   assert.ok(!fs.readdirSync(dir).some((n) => n.startsWith(".slidex-export-")));
   const brokenFile = path.join(dir, "broken.slx"),

@@ -133,7 +133,7 @@ Adopt the approach that matches the design direction:
 2. **Visual review with rendered page images** — required before final export when the model supports image input:
    - Render the deck (all pages for a new deck; changed pages for an edit):
      ```sh
-     slidex export deck.slx -f png --pages 1,3-5 --scale 1 --manifest --json
+     slidex export deck.slx -f png --pages 1,3-5 --manifest --json
      ```
    - Parse **this invocation's** `status` before reading any manifest file: a failed run publishes no new manifest and an older successful manifest may remain in place. On `failed`, read `failure.code`/`failure.message` and the diagnostics.
    - Read the page images via each `pages[].path` and check every page against this list:
@@ -160,10 +160,10 @@ Adopt the approach that matches the design direction:
 2. Export only the deliverables the user requested. Formats and their trade-offs:
    | Format | Use it for | Important limit |
    | --- | --- | --- |
-   | `png` | Page previews, visual review, images for an AI assistant | Static; supports `--pages`, `--scale`, `--manifest` |
+   | `png` | Page previews, visual review, images for an AI assistant | Static 1× images; supports `--pages`, `--manifest` |
    | `pdf` | Sharing or printing | Whole deck; vector text; fonts affect layout |
    | `html` | A standalone browser player | Inlines local assets; explicitly remote assets need network |
-   | `pptx` | A visually oriented handoff | Full-slide images (2x by default, `--scale` to adjust); not object-editable; speaker notes are written to real notes |
+   | `pptx` | A visually oriented handoff | Full-slide images at deck resolution (1×); not object-editable; speaker notes are written to real notes |
    | `pptx --editable` | Editing supported objects in PowerPoint | Native objects for text, basic shapes, images, lines; complex content rasterizes; Office fonts/wrapping may differ |
    PNG/PDF/PPTX export the whole deck when `--pages` is omitted; PDF and PPTX do not support page ranges.
 3. Every export returns a status and writes a `.report.json` capability report. Examine it and describe material fallbacks, degraded content, and font substitutions — never promise pixel-identical editable output. Export failures return `status: failed` with `failure.code` (`DOCUMENT_INVALID` / `EXPORT_FAILED` / `RECOVERY_REQUIRED`) and a nonzero exit status; report them, do not paper over them.

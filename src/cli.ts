@@ -132,18 +132,18 @@ async function main() {
     }
     case 'export': {
       const file = args[1];
-      if (!file) die('用法: slidex export <deck.slx> [-f png|pdf|pptx|html] [--editable] [--scale 2]');
+      if (!file) die('用法: slidex export <deck.slx> [-f png|pdf|pptx|html] [--editable]');
       const format = flag('-f', flag('--format', 'png'))!;
-      const scale = Number(flag('--scale', '2'));
+      if (hasFlag('--scale')) die('导出倍率已固定为 1×；请移除 --scale');
       const editable = hasFlag('--editable') || hasFlag('-e');
       const pages = flag('--pages');
       if (hasFlag('--pages') && (!pages || pages.startsWith('--'))) die('--pages 需要页码，例如 1,3-5');
       const { exportDeck } = await import('./export/export.js');
       const json=hasFlag('--json');
-      if(!json)console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}（scale ${scale}）…`);
+      if(!json)console.log(`导出 ${format.toUpperCase()}${editable ? '（可编辑混合）' : ''}…`);
       const t0 = Date.now();
       let r;
-      try { r = await exportDeck(path.resolve(file), { format, scale, editable, pages, manifest: hasFlag('--manifest') }); }
+      try { r = await exportDeck(path.resolve(file), { format, editable, pages, manifest: hasFlag('--manifest') }); }
       catch(error){if(json){console.log(JSON.stringify({version:1,status:'failed',source:path.resolve(file),...(error as {details?:object}).details,error:String((error as Error).message)}));process.exitCode=1;break;}throw error;}
       if(json){console.log(JSON.stringify(r));break;}
       for (const f of r.files) console.log('  → ' + f);
@@ -177,7 +177,7 @@ async function main() {
   slidex language <deck.slx> --offset N  JSON 补全、诊断和引用定义（UTF-16 偏移）
   slidex inspect <deck.slx>           输出版本、页面与对象 ID（JSON）
   slidex patch <deck.slx> <patch.json> [--dry-run]  校验并原子应用 AI 增量补丁
-  slidex export <deck.slx> -f png|pdf|pptx|html [--editable] [--scale 2]
+  slidex export <deck.slx> -f png|pdf|pptx|html [--editable]
                                         导出（输出到 deck 同目录 out/）
                  [--pages 1,3-5] [--manifest] PNG 页码范围及 LLM 图片清单
                  [--json]             输出机器可读结果及导出能力报告

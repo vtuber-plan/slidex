@@ -106,7 +106,7 @@ slidex format my-deck/deck.slx --check        # --write changes the file; one fi
 slidex language my-deck/deck.slx --offset 120 # completions/definitions; UTF-16 offsets; read-only
 slidex inspect my-deck/deck.slx               # project version hash + page/object IDs
 slidex patch my-deck/deck.slx patch.json --dry-run  # drop --dry-run to apply atomically
-slidex export my-deck/deck.slx -f png --pages 1,3-5 --scale 1 --manifest --json
+slidex export my-deck/deck.slx -f png --pages 1,3-5 --manifest --json
 slidex export my-deck/deck.slx -f pdf --json
 slidex export my-deck/deck.slx -f pptx --editable --json
 slidex export my-deck/deck.slx -f html --json
@@ -124,10 +124,10 @@ Machine-readable contracts:
 
 | Format | Use it for | Important limit |
 | --- | --- | --- |
-| `png` | Page previews, visual review, images for an AI assistant | Static image; `--pages`, `--scale`, `--manifest` |
+| `png` | Page previews, visual review, images for an AI assistant | Static 1× image; `--pages`, `--manifest` |
 | `pdf` | Sharing or printing | Whole deck; vector selectable text; fonts affect layout |
 | `html` | A standalone browser player | Inlines CSS/JS/local media/KaTeX/Font Awesome; explicitly remote assets still need network |
-| `pptx` | A visually oriented handoff | Full-slide images (2x default; `--scale` = output width ÷ deck width); layout pixel-identical to preview; `notes` become real speaker notes; not object-editable |
+| `pptx` | A visually oriented handoff | Full-slide images at deck resolution (1×); `notes` become real speaker notes; not object-editable |
 | `pptx --editable` | Editing supported objects in PowerPoint | Text, basic shapes, images, lines/arrows map to native objects; non-stacked bar/line/area/pie/scatter charts embed natively with XLSX data; complex content (radar/bubble/waterfall, code, formulas, icons, custom shapes, masked images, nested groups beyond the supported set) rasterizes; Office fonts and wrapping may differ; element animations mostly unsupported |
 
 Visual fidelity and editability are separate choices. Installed fonts affect wrapping; font availability checks do not guarantee glyph coverage on the recipient's machine. Read the capability report and describe material fallbacks rather than promising pixel-identical editable output.

@@ -1,6 +1,6 @@
 // pptx-native.js — 原生/混合可编辑 PPTX：
 // text / 内置形状 / image / 直线箭头 → 原生 PPT 对象（可编辑）；
-// 图表 / 代码 / 公式 / 图标 / 表格 / custom 形状 → 按元素边界裁图嵌入。
+// 图表与可转换公式 → 原生对象；其余复杂对象按元素边界裁图嵌入。
 // 颜色带 alpha 用 <a:alpha>；渐变映射线性 gradFill；阴影映射 outerShdw。
 
 import fs from 'node:fs';
@@ -13,6 +13,7 @@ import type { Deck, SlideContainer, SlideElement, TableCell } from '../types.js'
 import {shapePolygon} from '../shape-library.js';
 import {nativeChartSupported,chartPart,chartWorkbook} from './pptx-charts.js';
 import {transitionXml,timingXml} from './pptx-animation.js';
+import {mathOmml,inlineMathSegments} from './math-omml.js';
 
 const EMU = 12700; // 1px(=1pt) = 12700 EMU
 const emu = (px?: number | null): number => Math.round((px || 0) * EMU);
@@ -47,6 +48,7 @@ export type PlanItem =
   | { kind: 'table'; el: SlideElement }
   | { kind: 'chart'; el: SlideElement }
   | { kind: 'text'; el: SlideElement }
+  | { kind: 'formula'; el: SlideElement }
   | { kind: 'shape'; el: SlideElement }
   | { kind: 'line'; el: SlideElement }
   | { kind: 'pic'; el: SlideElement };
@@ -120,11 +122,15 @@ function planElement(el: SlideElement, items: PlanItem[], deck: Deck, prefix = '
       if ((el.rowsData || []).some(row => row.some(cell => String(cell.text || '').includes('\\(')))) { crop('table-math'); return; }
       items.push({kind:'table',el}); return;
     case 'text': {
-      // 公式降级为裁图（在 plan 时快速判定）
-      if (String(el.content || '').includes('\\(')) { crop('inline-math'); return; }
+      if (String(el.content || '').includes('\\(') && (el.shadow || (el.opacity !== undefined && el.opacity !== 1) || el.letterSpacing || el.wrap === false || String(el.content).includes('\n'))) { crop('inline-math'); return; }
+      if (String(el.content || '').includes('\\(') && !inlineMathSegments(el.content || '')) { crop('inline-math'); return; }
       items.push({ kind: 'text', el });
       return;
     }
+    case 'formula':
+      if (mirrored || el.flipH || el.flipV || el.shadow || el.fill || el.fillObj || el.stroke || (el.opacity !== undefined && el.opacity !== 1)) { crop('formula-style'); return; }
+      if (!mathOmml(el.tex || decodeEnt(el.content || '').trim())) { crop('formula-syntax'); return; }
+      items.push({kind:'formula',el}); return;
     case 'shape':
       if(el.name==='donut'||el.name==='star5'){crop('shape-geometry');return;}
       if (NATIVE_SHAPES.has(el.name as string)||shapePolygon(el)) items.push({ kind: 'shape', el });
@@ -218,21 +224,35 @@ function adjXml(el: SlideElement): string {
 
 function textBodyXml(el: SlideElement, deck: Deck, linkIds?: Map<string, string> | null): string {
   const st = resolveTextStyle(el, deck);
+  const inline = inlineMathSegments(el.content || '');
+  if (inline) {
+    const size = Math.round((st.fontSize || 18) * 100);
+    const color = hex6(resolveColor(st.color || '#1A1A1A', deck));
+    const runPr = `<a:rPr sz="${size}"${st.bold ? ' b="1"' : ''}${st.italic ? ' i="1"' : ''}><a:solidFill><a:srgbClr val="${color}"/></a:solidFill>${st.fontFamily ? `<a:latin typeface="${esc(st.fontFamily)}"/>` : ''}</a:rPr>`;
+    const runs = inline.map(segment => segment.math
+      ? `<a14:m>${mathOmml(segment.math)!.replaceAll('</m:rPr>', `</m:rPr>${runPr}`)}</a14:m>`
+      : `<a:r>${runPr}<a:t xml:space="preserve">${esc(decodeEnt(segment.text))}</a:t></a:r>`).join('');
+    const align = String(st.align || 'left').split(/\s+/)[0];
+    return `<p:txBody><a:bodyPr anchor="${String(st.align || '').includes('middle') ? 'ctr' : 't'}" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="${align === 'center' ? 'ctr' : align === 'right' ? 'r' : 'l'}"/>${runs}<a:endParaRPr sz="${size}"/></a:p></p:txBody>`;
+  }
   const model = richToRuns(el.content || '', { color: st.color, fontSize: st.fontSize, fontFamily: st.fontFamily, bold: st.bold, italic: st.italic }) as RichModel;
   const [, va = 'top'] = String(st.align || 'left top').split(/\s+/);
   const anchor = va === 'middle' || va === 'center' ? 'ctr' : va === 'bottom' ? 'b' : 't';
   const wrap = el.wrap === false ? ' wrap="none"' : ' wrap="square"';
   const shadowXml = textShadowXml(el, deck); // 元素级 text shadow → 每个 run 的 rPr
   const parasXml = model.paragraphs.map(p => {
+    const whitespaceOnly = p.runs.length > 0 && p.runs.every(run => /^\s+$/.test(run.text));
     const algn = (p.align || String(st.align || 'left').split(/\s+/)[0] || 'left').replace('justify', 'just');
     const algnAttr = ` algn="${algn === 'center' ? 'ctr' : algn === 'right' ? 'r' : algn === 'just' ? 'just' : 'l'}"`;
     let pPr = `<a:pPr${algnAttr}`;
-    const lh = p.lineHeightPx ? `<a:lnSpc><a:spcPts val="${Math.round(p.lineHeightPx * 100)}"/></a:lnSpc>` : p.lineHeight ? `<a:lnSpc><a:spcPct val="${Math.round(p.lineHeight * 100000)}"/></a:lnSpc>` : st.lineHeight ? `<a:lnSpc><a:spcPct val="${Math.round(st.lineHeight * 100000)}"/></a:lnSpc>` : '';
+    const lh = whitespaceOnly ? `<a:lnSpc><a:spcPct val="${Math.round((p.lineHeight || st.lineHeight || 1.5) / 1.5 * 100000)}"/></a:lnSpc>` : p.lineHeightPx ? `<a:lnSpc><a:spcPts val="${Math.round(p.lineHeightPx * 100)}"/></a:lnSpc>` : p.lineHeight ? `<a:lnSpc><a:spcPct val="${Math.round(p.lineHeight * 100000)}"/></a:lnSpc>` : st.lineHeight ? `<a:lnSpc><a:spcPct val="${Math.round(st.lineHeight * 100000)}"/></a:lnSpc>` : '';
     const spcBef = p.marginTop ? `<a:spcBef><a:spcPts val="${Math.round(p.marginTop * 100)}"/></a:spcBef>` : '';
     const bullet = p.bullet === 'ol' ? '<a:buAutoNum type="arabicPeriod"/>' : p.bullet === 'ul' ? '<a:buChar char="•"/>' : '<a:buNone/>';
     const marL = p.bullet ? ` marL="228600" indent="-228600"` : p.marL ? ` marL="${emu(p.marL)}"` : '';
     pPr += `${marL}>${lh}${spcBef}${bullet}</a:pPr>`;
-    const runsXml = p.runs.map(r => {
+    const runsXml = whitespaceOnly
+      ? `<a:endParaRPr lang="zh-CN" sz="${Math.round((st.fontSize || 18) * 100)}"/>`
+      : p.runs.map(r => {
       const sz = Math.round((r.fontSize || st.fontSize || 18) * 100);
       const props = [`sz="${sz}"`];
       if (st.letterSpacing) props.push(`spc="${Math.round(st.letterSpacing * 75)}"`); // px → 1/100 pt（1px=0.75pt）
@@ -276,11 +296,29 @@ function shapeSpXml(el: SlideElement, deck: Deck, idNum: number): string {
 function textSpXml(el: SlideElement, deck: Deck, idNum: number, linkIds?: Map<string, string> | null): string {
   const st = resolveTextStyle(el, deck);
   const color = st.backgroundColor ? fillXml(st.backgroundColor, deck, el.opacity) : '<a:noFill/>';
-  return `<p:sp>
+  const shape = `<p:sp>
 <p:nvSpPr><p:cNvPr id="${idNum}" name="text ${esc(el.id || '')}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
 <p:spPr>${xfrmXml(el)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${color}<a:ln><a:noFill/></a:ln></p:spPr>
 ${textBodyXml(el, deck, linkIds)}
 </p:sp>`;
+  const inline = inlineMathSegments(el.content || '');
+  if (!inline) return shape;
+  const fallback = textSpXml({...el,content:inline.map(segment => segment.text).join('')},deck,idNum,linkIds);
+  return `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">${shape}</mc:Choice><mc:Fallback>${fallback}</mc:Fallback></mc:AlternateContent>`;
+}
+
+function formulaSpXml(el: SlideElement, deck: Deck, idNum: number): string {
+  const math = mathOmml(el.tex || decodeEnt(el.content || '').trim())!;
+  const color = resolveColor(el.color || '#1A1A1A', deck);
+  const runPr = `<a:rPr sz="${Math.round((el.fontSize || 20) * 100)}"><a:solidFill><a:srgbClr val="${hex6(color)}"/></a:solidFill><a:latin typeface="Cambria Math"/></a:rPr>`;
+  const styledMath = math.replaceAll('</m:rPr>', `</m:rPr>${runPr}`);
+  const shape = `<p:sp>
+<p:nvSpPr><p:cNvPr id="${idNum}" name="formula ${esc(el.id || '')}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+<p:spPr>${xfrmXml(el)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>
+<p:txBody><a:bodyPr anchor="ctr" wrap="none" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a14:m>${styledMath}</a14:m><a:endParaRPr sz="${Math.round((el.fontSize || 20) * 100)}"/></a:p></p:txBody>
+</p:sp>`;
+  const fallback = `<p:sp><p:nvSpPr><p:cNvPr id="${idNum}" name="formula fallback ${esc(el.id || '')}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrmXml(el)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r>${runPr}<a:t>${esc(el.tex || decodeEnt(el.content || '').trim())}</a:t></a:r></a:p></p:txBody></p:sp>`;
+  return `<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">${shape}</mc:Choice><mc:Fallback>${fallback}</mc:Fallback></mc:AlternateContent>`;
 }
 
 function tableXml(el: SlideElement, deck: Deck, idNum: number, linkIds?: Map<string,string>): string {
@@ -415,6 +453,7 @@ export function slideNativeXml(deck: Deck, slide: SlideContainer, plan: SlidePla
       case 'table': idNum++; return tableXml(item.el,deck,id,linkIds);
       case 'chart': return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${id}" name="chart ${esc(item.el.id)}"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(item.el.x)}" y="${emu(item.el.y)}"/><a:ext cx="${emu(item.el.w)}" cy="${emu(item.el.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="${relIds.get(item.el.id)}"/></a:graphicData></a:graphic></p:graphicFrame>`;
       case 'text': return textSpXml(item.el, deck, id, linkIds);
+      case 'formula': return formulaSpXml(item.el, deck, id);
       case 'shape': return shapeSpXml(item.el, deck, id);
       case 'line': return lineSpXml(item.el, deck, id);
       case 'pic': return picXml(item.el, deck, id, relIds.get(item.el.id));

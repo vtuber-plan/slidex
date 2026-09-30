@@ -125,6 +125,8 @@ sec('5. richtext-runs 与可编辑导出规划');
   t('行内样式 run', r.paragraphs[0].runs[1].color === '#FF0000');
   t('段落对齐', r.paragraphs[1].align === 'center');
   t('列表 bullet', r.paragraphs[2].bullet === 'ul');
+  const spaced = richToRuns('<p>first</p>\n<p>second</p>\n<p>third</p>', { fontSize: 13 });
+  t('段落间源码换行保留为空段', spaced.paragraphs.length === 5 && spaced.paragraphs[1].runs[0].text === '\n' && spaced.paragraphs[3].runs[0].text === '\n');
   t('行内公式 hasMath', richToRuns('<p>a \\(x^2\\) b</p>', {}).hasMath === true);
   const { planSlide } = await import('../dist/export/pptx-native.js');
   const rr = parseSlideX(`<deck version='1'><master id='m'><text id='logo' x='1' y='1' w='2' h='2'><p>L</p></text></master>
@@ -195,6 +197,7 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/pptx-native-recovery.mjs', hasChrome],
     ['test/release-manifest.mjs', true],
     ['test/export-reliability.mjs', true],
+    ['test/pptx-native-math.mjs', true],
     ['test/layout-operations.mjs', true],
     ['test/project-tools.mjs', hasChrome],
     ['test/large-project-browser.mjs', hasChrome],

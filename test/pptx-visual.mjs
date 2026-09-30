@@ -1,4 +1,4 @@
-// Optional real-PowerPoint visual QA: node test/pptx-visual.mjs [--sizes=480,960,1280,1920] [--modes=image,image-1x,image-matched,editable] [fixture.slx ...]
+// Optional real-PowerPoint visual QA: node test/pptx-visual.mjs [--sizes=480,960,1280,1920] [--modes=image,image-2x,image-matched,editable] [fixture.slx ...]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,8 +17,8 @@ const outputWidths = sizesArg ? sizesArg.slice('--sizes='.length).split(',').map
 if (outputWidths && (outputWidths.length === 0 || outputWidths.some(n => !Number.isInteger(n) || n <= 0))) {
   throw Error('Expected positive integer widths in --sizes=480,960,1280,1920');
 }
-const modes = modesArg ? modesArg.slice('--modes='.length).split(',') : ['image', 'image-1x', 'image-matched', 'editable'];
-if (!modes.length || modes.some(mode => !['image', 'image-1x', 'image-matched', 'editable'].includes(mode))) {
+const modes = modesArg ? modesArg.slice('--modes='.length).split(',') : ['image', 'image-2x', 'image-matched', 'editable'];
+if (!modes.length || modes.some(mode => !['image', 'image-2x', 'image-matched', 'editable'].includes(mode))) {
   throw Error('Unknown mode in --modes');
 }
 const fixtureArgs = process.argv.slice(2).filter(arg => arg !== sizesArg && arg !== modesArg && arg !== pagesArg);
@@ -52,7 +52,7 @@ try {
     const samples = [];
     const jobs = modes.flatMap(mode => mode === 'image-matched'
       ? sizes.map(size => ({mode, pptxName: `image-matched-${size.width}`, pptxScale: size.scale, outputSizes: [size]}))
-      : [{mode, pptxName: mode, pptxScale: mode === 'image-1x' ? 1 : 2, outputSizes: sizes}]);
+      : [{mode, pptxName: mode, pptxScale: mode === 'image-2x' ? 2 : 1, outputSizes: sizes}]);
     for (const {mode, pptxName, pptxScale, outputSizes} of jobs) {
       const pptx = path.join(dir, `${pptxName}.pptx`);
       await exportDeck(source, {format: 'pptx', editable: mode === 'editable', scale: pptxScale, outputFile: pptx});

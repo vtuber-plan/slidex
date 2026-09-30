@@ -159,7 +159,6 @@ DSL 源码与检查…|DSL source and diagnostics…
 当前页面|Current page
 页码范围|Page range
 附带图片清单（LLM）|Include image manifest (LLM)
-图片倍率|Image scale
 此格式导出全部页面。|This format exports all pages.
 开始导出|Start export
 导出进度|Export progress

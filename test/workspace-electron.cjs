@@ -41,7 +41,7 @@ const wait=async(fn)=>{for(let i=0;i<200;i++){if(await fn())return;await new Pro
     fileMenu.find(item=>['导出…','Export…'].includes(item.label)).click();
     await wait(()=>win.webContents.executeJavaScript('!!document.querySelector("[aria-label=导出格式],[aria-label=\\"Export format\\"]")'));
     console.log('PASS Electron preferences and unified export menu');
-    const runExport=format=>win.webContents.executeJavaScript(`fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:${JSON.stringify(format)},chooseDestination:true,scale:1})}).then(r=>r.json())`);
+    const runExport=format=>win.webContents.executeJavaScript(`fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format:${JSON.stringify(format)},chooseDestination:true})}).then(r=>r.json())`);
     const canceled=await runExport('pdf');if(!canceled.canceled||saveCalls!==1)throw Error('Canceled save dialog must cancel export');
     exportFile=path.join(dir,'custom-导出.pdf');const pdf=await runExport('pdf');
     if(!pdf.ok||pdf.files[0]!==exportFile||!fs.existsSync(exportFile))throw Error('PDF did not use selected destination');
