@@ -51,7 +51,7 @@ try {
   await page.click('#canvasHost [data-id="a"]');await page.keyboard.press('ArrowRight');
   assert.ok(await page.evaluate(()=>window.__slxSave()));assert.match(fs.readFileSync(file,'utf8'),/x="41"/);
   for(const format of uiOnly ? [] : ['html','png','pdf','pptx']) {
-    const result=await page.evaluate(async format=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format,scale:1})})).json(),format);
+    const result=await page.evaluate(async format=>(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({format})})).json(),format);
     assert.ok(result.ok,`${format}: ${result.error}`);assert.ok(result.files.every(file=>fs.statSync(file).size>100));console.log('  ✓ packaged '+format+' export');
     if(format==='pptx'){
       const pptx=result.files.find(file=>file.endsWith('.pptx'));
