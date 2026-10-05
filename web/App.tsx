@@ -69,6 +69,7 @@ import type { ExportProgress } from "../src/export/export";
 import { shapeSvg as shapePath } from "../src/render/shapes";
 import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
 import type { ElementType } from "../src/types";
+import {useSourceFiles} from './useSourceFiles';
 
 const SourceWorkspace = lazy(() => import("./SourceWorkspace").then(module => ({ default: module.SourceWorkspace })));
 
@@ -99,6 +100,8 @@ const ribbonLabels = {
 } as const;
 type RibbonTab = keyof typeof ribbonLabels;
 export default function App() {
+  const sourceProject=useSourceFiles();
+  const sourceProjectRef=useRef(sourceProject);sourceProjectRef.current=sourceProject;
   const [ribbonTab, setRibbonTab] = useState<RibbonTab>("home");
   const editingText = useEditor((state) => !!state.editing && container(state).elements.some((element) => element.id === state.editing && element.type === "text"));
   useEffect(() => { if (editingText) setRibbonTab("home"); }, [editingText]);
@@ -131,7 +134,7 @@ export default function App() {
   async function confirmBeforeReplace(): Promise<boolean> {
     window.__slxCommitText?.();
     const state = useEditor.getState();
-    if (state.file && serializeDeck(state.deck) === state.saved && (!source || xml === serializeDeck(state.deck))) return true;
+    if (state.file && !state.sourceFiles && serializeDeck(state.deck) === state.saved && (!sourceRef.current || (state.multiFile?!sourceProjectRef.current.dirty:xmlRef.current===serializeDeck(state.deck)))) return true;
     return new Promise<boolean>((resolve) => {
       replaceDecision.current = resolve;
       setConfirmReplace(true);
@@ -276,44 +279,47 @@ export default function App() {
   const session = useMemo(() => uid("present"), []),
     committedDeck = s.gesture || s.deck,
     serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
-    dirty = !s.file || serialized !== s.saved || !!s.editing || !!s.gesture;
+    dirty = !s.file || serialized !== s.saved || !!s.sourceFiles || !!s.editing || !!s.gesture;
   const diagnostics = useMemo(() => {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
   }, [serialized]);
   useEffect(()=>{
-    if(!autosave||!s.ready||serialized===s.saved||s.gesture||replacingFile||s.recoveryXml)return;
-    const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized,expectedVersion:s.version})}).catch(()=>{});},800);
+    if(!autosave||!s.ready||(serialized===s.saved&&!s.sourceFiles)||s.gesture||replacingFile||s.recoveryXml)return;
+    const timer=setTimeout(()=>{void fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file,xml:serialized,expectedVersion:s.version,sourceFiles:s.sourceFiles})}).catch(()=>{});},800);
     return()=>clearTimeout(timer);
-  },[autosave,serialized,s.saved,s.file,s.version,s.ready,!!s.gesture,replacingFile,s.recoveryXml]);
+  },[autosave,serialized,s.saved,s.file,s.version,s.ready,!!s.gesture,replacingFile,s.recoveryXml,s.sourceFiles]);
   const openSource=(formatted=false)=>{
     window.__slxCommitText?.();
     const current=serializeDeck(useEditor.getState().deck);
     const next=formatted?formatSlideX(current):current;
     xmlRef.current=next;setXml(next);
     setSourceMessage('');
+    if(useEditor.getState().multiFile)void sourceProject.open();
     if(!sourceRef.current){history.pushState({},'', '/source');sourceRef.current=true;setSource(true);}
   };
-  const leaveSource=()=>{history.replaceState({},'', '/');sourceRef.current=false;setSource(false);setSourceExit(false);};
+  const leaveSource=()=>{history.replaceState({},'', '/');sourceRef.current=false;setSource(false);setSourceExit(false);sourceProject.discard();};
   const requestSourceExit=()=>{
-    if(xmlRef.current!==serializeDeck(useEditor.getState().deck)){setSourceExit(true);return;}
+    if(useEditor.getState().multiFile?sourceProject.dirty:xmlRef.current!==serializeDeck(useEditor.getState().deck)){setSourceExit(true);return;}
     leaveSource();
   };
-  const applySource=()=>{if(useEditor.getState().applySource(xml))leaveSource();};
+  const applySource=async()=>{if(useEditor.getState().multiFile?await sourceProject.apply():useEditor.getState().applySource(xml))leaveSource();};
   const saveSource=async()=>{
-    if(!useEditor.getState().applySource(xml))return;
+    if(useEditor.getState().multiFile?!(await sourceProject.apply()):!useEditor.getState().applySource(xml))return;
     if(await saveDocument()){
       const savedXml=serializeDeck(useEditor.getState().deck);
       xmlRef.current=savedXml;
       setXml(savedXml);
       setSourceMessage(t('所有更改已保存'));
+      if(useEditor.getState().multiFile)await sourceProject.open();
     }
   };
   useEffect(()=>{xmlRef.current=xml;sourceRef.current=source;},[xml,source]);
   useEffect(()=>{if(s.ready&&source&&!xml){const next=serializeDeck(useEditor.getState().deck);xmlRef.current=next;setXml(next);}},[s.ready,source]);
+  useEffect(()=>{if(s.ready&&source&&s.multiFile&&!sourceProject.files.length&&!sourceProject.busy)void sourceProject.open();},[s.ready,source,s.multiFile]);
   useEffect(()=>{
     const back=()=>{
-      if(sourceRef.current&&xmlRef.current!==serializeDeck(useEditor.getState().deck)){
+      if(sourceRef.current&&(useEditor.getState().multiFile?sourceProjectRef.current.dirty:xmlRef.current!==serializeDeck(useEditor.getState().deck))){
         history.pushState({},'', '/source');setSourceExit(true);
       }else{sourceRef.current=location.pathname==='/source';setSource(sourceRef.current);}
     };
@@ -370,6 +376,7 @@ export default function App() {
       return serializeDeck(useEditor.getState().deck);
     };
     window.__slxSave = async () => {
+      if(sourceRef.current&&useEditor.getState().multiFile){if(!(await sourceProjectRef.current.apply()))return false;const ok=await saveDocument();if(ok)await sourceProjectRef.current.open();return ok;}
       if (sourceRef.current && xmlRef.current !== serializeDeck(useEditor.getState().deck) && !useEditor.getState().applySource(xmlRef.current)) return false;
       return saveDocument();
     };
@@ -378,21 +385,21 @@ export default function App() {
       const state=useEditor.getState();
       const currentXml=serializeDeck(state.deck);
       if(parseSlideX(currentXml).errors.length)return false;
-      const response=await fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:state.file,xml:currentXml,expectedVersion:state.version})});
+      const response=await fetch('/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:state.file,xml:currentXml,expectedVersion:state.version,sourceFiles:state.sourceFiles})});
       return response.ok;
     };
     window.__slxHasUnsavedChanges = () => {
       window.__slxCommitText?.();
       const state = useEditor.getState();
-      return !state.file || serializeDeck(state.deck) !== state.saved || (sourceRef.current && xmlRef.current !== serializeDeck(state.deck));
+      return !state.file || !!state.sourceFiles || serializeDeck(state.deck) !== state.saved || (sourceRef.current && (state.multiFile?sourceProjectRef.current.dirty:xmlRef.current !== serializeDeck(state.deck)));
     };
-    window.__slxDirty = dirty || (sourceRef.current && xmlRef.current !== serialized);
+    window.__slxDirty = dirty || !!s.sourceFiles || (sourceRef.current && (s.multiFile?sourceProject.dirty:xmlRef.current !== serialized));
     const before = (e: BeforeUnloadEvent) => {
       if (window.__slxHasUnsavedChanges?.()) e.preventDefault();
     };
     window.addEventListener("beforeunload", before);
     return () => { window.removeEventListener("beforeunload", before); delete window.__slxHasUnsavedChanges; };
-  }, [dirty, source, xml, serialized]);
+  }, [dirty, source, xml, serialized,sourceProject.dirty,s.sourceFiles]);
   useEffect(() => {
     localStorage.setItem("slidex-appearance", dark ? "dark" : "light");
   }, [dark]);
@@ -611,7 +618,7 @@ export default function App() {
         ) : source ? (
           <Suspense fallback={<main className="loading"><p>{t("正在载入源码编辑器…")}</p></main>}>
             <SourceWorkspace value={xml} onChange={setXml} onApply={applySource} onSave={()=>void saveSource()} onClose={requestSourceExit}
-              message={sourceMessage} setMessage={setSourceMessage} error={s.error} file={s.file} multiFile={s.multiFile} dark={dark}/>
+              message={sourceMessage} setMessage={setSourceMessage} error={s.error} file={s.file} multiFile={s.multiFile} dark={dark} project={s.multiFile?sourceProject:undefined}/>
           </Suspense>
         ) : (
           <>
@@ -1210,7 +1217,7 @@ export default function App() {
             <Dialog.Description>{t('上次编辑的草稿保存在本机。恢复后仍需点击保存，才会写入原文件。')}</Dialog.Description>
             <div className="dialog-actions">
               <Button variant="soft" color="red" onClick={()=>{void fetch('/api/draft',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:s.file})}).then(response=>{if(!response.ok)throw Error(t('无法丢弃恢复草稿'));useEditor.setState({recoveryXml:''});}).catch(error=>useEditor.setState({error:String(error)}));}}>{t('丢弃')}</Button>
-              <Button onClick={()=>{if(useEditor.getState().applySource(s.recoveryXml))useEditor.setState({recoveryXml:''});}}>{t('恢复草稿')}</Button>
+              <Button onClick={()=>{if(useEditor.getState().applySource(s.recoveryXml))useEditor.setState({recoveryXml:'',sourceFiles:s.recoverySourceFiles,recoverySourceFiles:undefined});}}>{t('恢复草稿')}</Button>
             </div>
           </Dialog.Content>
         </Dialog.Root>

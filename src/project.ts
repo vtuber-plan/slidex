@@ -1,13 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { parseXML, escapeHtml } from "./parser.js";
 import { parseSlideX } from "./ir.js";
-import { serializeDeck } from "./serializer.js";
 import type { Diag, ParseResult, XMLNode } from "./types.js";
+import { recoverProject } from "./project-transaction.js";
+import { writeProject } from "./source-project.js";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
 type SourceNode = XMLNode & { file?: string };
 export interface Project extends ParseResult {
+  sources?: {
+    documents: { path: string; text: string; root: XMLNode }[];
+    pages: { id: string; file: string; start: number; end: number }[];
+  };
   path: string;
   xml: string;
   version: string;
@@ -62,10 +67,15 @@ function emit(
   }
   return result;
 }
-export function loadProject(input: string): Project {
+export function loadProject(
+  input: string,
+  overrides?: Map<string, string>,
+): Project {
   const file = path.resolve(input),
     rootDir = fs.realpathSync(path.dirname(file));
-  const source = fs.readFileSync(file, "utf8");
+  if (!overrides) recoverProject(file);
+  const source =
+    overrides?.get(fs.realpathSync(file)) ?? fs.readFileSync(file, "utf8");
   if (!/<include\b/.test(source)) {
     const parsed = parseSlideX(source),
       stat = fs.statSync(file),
@@ -80,6 +90,16 @@ export function loadProject(input: string): Project {
     ];
     return {
       ...parsed,
+      sources: {
+        documents: [
+          {
+            path: real,
+            text: source,
+            root: parseXML(source, { sourceRanges: true }).root!,
+          },
+        ],
+        pages: [],
+      },
       path: file,
       xml: source,
       multiFile: false,
@@ -93,6 +113,7 @@ export function loadProject(input: string): Project {
     errors: Diag[] = [],
     seen = new Set<string>();
   let multiFile = false;
+  const documents: NonNullable<Project["sources"]>["documents"] = [];
   const fail = (code: string, message: string, node?: SourceNode) =>
     errors.push({
       code,
@@ -132,7 +153,7 @@ export function loadProject(input: string): Project {
       return;
     }
     seen.add(real);
-    const text = fs.readFileSync(real, "utf8"),
+    const text = overrides?.get(real) ?? fs.readFileSync(real, "utf8"),
       stat = fs.statSync(real);
     files.push({
       path: real,
@@ -140,10 +161,11 @@ export function loadProject(input: string): Project {
       mtimeMs: stat.mtimeMs,
       size: stat.size,
     });
-    const parsed = parseXML(text);
+    const parsed = parseXML(text, { sourceRanges: true });
     errors.push(...parsed.errors.map((e) => ({ ...e, file: real })));
     if (!parsed.root) return;
     const root = parsed.root as SourceNode;
+    documents.push({ path: real, text, root: structuredClone(root) });
     if (include && !["slide", "slides"].includes(root.name)) {
       fail(
         "E_INCLUDE_ROOT",
@@ -215,12 +237,21 @@ export function loadProject(input: string): Project {
     lineMap: { file: string; line: number; col: number }[] = [];
   const xml = tree ? emit(tree, lineMap) : "",
     parsed = parseSlideX(xml);
+  const pages = (tree?.children.filter((n) => n.name === "slide") || []).map(
+    (node, index) => ({
+      id: parsed.deck.slides[index]?.id || "",
+      file: (node as SourceNode).file!,
+      start: node.start!,
+      end: node.end!,
+    }),
+  );
   const locate = (e: Diag) => {
     const original = lineMap[Math.max(0, (e.line || 1) - 1)];
     return { ...e, ...original };
   };
   return {
     ...parsed,
+    sources: { documents, pages },
     path: file,
     xml,
     errors: [...errors, ...parsed.errors.map(locate)],
@@ -230,70 +261,11 @@ export function loadProject(input: string): Project {
     version: digest(files.map((f) => f.path + "\0" + f.hash).join("\n")),
   };
 }
-/** Copy-on-write pages + atomic manifest replacement. Original fragments are never overwritten. */
-export function saveProject(previous: Project, xml: string): Project {
-  const parsed = parseSlideX(xml);
-  if (parsed.errors.length)
-    throw Error(parsed.errors.map((e) => `${e.code}: ${e.message}`).join("\n"));
-  const fresh = loadProject(previous.path);
-  if (fresh.version !== previous.version || fresh.errors.some(e=>e.code.startsWith('E_INCLUDE_')||e.code==='E_MEDIA_PATH'))
-    throw Error("项目文件已在外部修改或缺失，请重新打开后再保存");
-  let output = xml;
-  if (previous.multiFile) {
-    const root = parseXML(serializeDeck(parsed.deck)).root!;
-    const base = path.dirname(previous.path),
-      pageDir = path.join(base, ".slidex-pages");
-    const checkMedia=(node:XMLNode)=>{
-      if(node.attrs.src&&!external(node.attrs.src)){
-        const target=path.resolve(base,node.attrs.src);
-        if(!inside(base,target)||(fs.existsSync(target)&&!inside(fs.realpathSync(base),fs.realpathSync(target))))throw Error('媒体路径不能越出项目目录');
-      }
-      node.children.forEach(checkMedia);
-    };checkMedia(root);
-    fs.mkdirSync(pageDir, { recursive: true });
-    if (!inside(fs.realpathSync(base), fs.realpathSync(pageDir)))
-      throw Error("页面存储目录不能越出项目目录");
-    root.children = root.children.map((node) => {
-      if (node.name !== "slide") return node;
-      const rebase = (item: XMLNode) => {
-        if (item.attrs.src && !external(item.attrs.src))
-          item.attrs.src = "../" + item.attrs.src;
-        item.children.forEach(rebase);
-      };
-      rebase(node);
-      const text = emit(node);
-      let name = digest(text) + ".slx",
-        target = path.join(pageDir, name);
-      // Preserve externally edited snapshots; publish a fresh immutable copy instead.
-      if (fs.existsSync(target) && fs.readFileSync(target, "utf8") !== text) {
-        name = digest(text) + "-" + randomUUID() + ".slx";
-        target = path.join(pageDir, name);
-      }
-      if (!fs.existsSync(target))
-        fs.writeFileSync(target, text, { encoding: "utf8", flag: "wx" });
-      return {
-        name: "include",
-        attrs: { src: ".slidex-pages/" + name },
-        children: [],
-        content: "",
-        line: 0,
-        col: 0,
-        selfClose: true,
-      };
-    });
-    output = emit(root);
-  }
-  // Recheck every dependency after staging; only then replace the authoritative manifest.
-  if (loadProject(previous.path).version !== previous.version)
-    throw Error("项目文件在保存期间发生变化");
-  const tmp = previous.path + "." + randomUUID() + ".tmp";
-  try {
-    fs.writeFileSync(tmp, output, "utf8");
-    const staged=loadProject(tmp);
-    if(staged.errors.length)throw Error(staged.errors.map(e=>e.message).join('\n'));
-    fs.renameSync(tmp, previous.path);
-  } finally {
-    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-  }
-  return loadProject(previous.path);
+/** Write canvas edits back to the original page/chapter files. */
+export function saveProject(
+  previous: Project,
+  xml: string,
+  overrides?: Map<string, string>,
+): Project {
+  return writeProject(previous, xml, overrides);
 }

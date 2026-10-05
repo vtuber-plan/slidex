@@ -5,12 +5,16 @@
 // ───────── XML 解析树（parser） ─────────
 
 export interface ParseXMLOptions {
+  sourceRanges?: boolean;
   /** 除 text/td/code/formula 外，额外按「原文」捕获内容的标签名 */
   rawContentTags?: string[];
 }
 
 /** 受控 XML 子集节点（parseXML 产出）。recovered = 属性出错后的部分恢复节点。 */
 export interface XMLNode {
+  /** UTF-16 source ranges, present when parseXML is called with sourceRanges. */
+  start?: number;
+  end?: number;
   name: string;
   attrs: Record<string, string | undefined>;
   children: XMLNode[];

@@ -5,6 +5,8 @@ export interface Revision {
   time: number;
   xml: string;
   draft?: boolean;
+  sourceFiles?:{path:string;xml:string}[];
+  sourceVersion?:string;
 }
 interface History {
   version: 1;
@@ -74,9 +76,9 @@ export function historyStore(directory: string) {
         h.revisions.pop();
       write(file, h);
     },
-    draft: (file: string, xml: string) => {
+    draft: (file: string, xml: string, source?:{sourceFiles:{path:string;xml:string}[];sourceVersion:string}) => {
       const h = read(file);
-      h.draft = { time: Date.now(), xml, draft: true };
+      h.draft = { time: Date.now(), xml, draft: true,...source };
       write(file, h);
     },
     discardDraft: (file: string) => {

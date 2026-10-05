@@ -20,13 +20,13 @@ fs.writeFileSync(path.join(dir,'pages/all.slx'),'<slides><include src="one.slx"/
 fs.writeFileSync(file,'<deck version="1" width="320" height="240"><include src="pages/all.slx"/></deck>');
 let project=loadProject(file);assert.deepEqual(project.errors,[]);assert.equal(project.deck.slides.length,2);assert.equal(project.deck.slides[0].elements[0].src,'pages/media/pic.svg');
 project.deck.slides[0].elements[1].content='Edited';
-let saved=saveProject(project,serializeDeck(project.deck));assert.deepEqual(saved.errors,[]);assert.equal(saved.deck.slides[0].elements[1].content,'Edited');assert.equal(fs.readFileSync(path.join(dir,'pages/one.slx'),'utf8'),fragment);assert.match(fs.readFileSync(file,'utf8'),/<include/);assert.equal(saved.deck.slides[0].elements[0].src,'pages/media/pic.svg');
+let saved=saveProject(project,serializeDeck(project.deck));assert.deepEqual(saved.errors,[]);assert.equal(saved.deck.slides[0].elements[1].content,'Edited');assert.match(fs.readFileSync(path.join(dir,'pages/one.slx'),'utf8'),/Edited/);assert.equal(fs.readFileSync(file,'utf8'),'<deck version="1" width="320" height="240"><include src="pages/all.slx"/></deck>');assert.equal(saved.deck.slides[0].elements[0].src,'pages/media/pic.svg');
 assert.throws(()=>saveProject(saved,serializeDeck(saved.deck).replace('pages/media/pic.svg','../outside.svg')),/媒体路径/);
 const old=fs.readFileSync(file,'utf8'),oldVersion=saved.version;
 const dependency=saved.files.find(f=>f.path!==file).path;fs.appendFileSync(dependency,'\n<!-- external -->');
 assert.throws(()=>saveProject(saved,serializeDeck(saved.deck)),/外部修改/);assert.equal(fs.readFileSync(file,'utf8'),old);
 saved=loadProject(file);assert.notEqual(saved.version,oldVersion);
-const rename=fs.renameSync;try{fs.renameSync=(from,to)=>{if(to===file)throw Error('simulated rename failure');return rename(from,to);};saved.deck.slides[0].notes='staged';assert.throws(()=>saveProject(saved,serializeDeck(saved.deck)),/simulated/);}finally{fs.renameSync=rename;}
+const rename=fs.renameSync;try{fs.renameSync=(from,to)=>{if(to===file)throw Error('simulated rename failure');return rename(from,to);};saved.deck.title='staged';assert.throws(()=>saveProject(saved,serializeDeck(saved.deck)),/simulated/);}finally{fs.renameSync=rename;}
 assert.equal(fs.readFileSync(file,'utf8'),old);assert.deepEqual(loadProject(file).errors,[]);
 assert.match(formatSlideX(old),/<include/);
 const invalid=path.join(dir,'invalid.slx');
@@ -51,7 +51,7 @@ try{
     await page.click('#canvasHost [data-id="text"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await page.click('.ProseMirror');await page.keyboard.type(' browser');await page.click('.canvas-bottom > span');assert.equal(await page.evaluate(()=>window.__slxSave()),true);
     await page.reload();await page.waitForSelector('#canvasHost [data-id="text"]');assert.match(await page.evaluate(()=>window.__slxGetXml()),/browser/);
   });
-  const reloaded=loadProject(file);assert.equal(reloaded.deck.slides[0].animations[0].target,'text');assert.match(fs.readFileSync(file,'utf8'),/<include/);assert.equal(fs.readFileSync(path.join(dir,'pages/one.slx'),'utf8'),fragment);
+  const reloaded=loadProject(file);assert.equal(reloaded.deck.slides[0].animations[0].target,'text');assert.match(fs.readFileSync(file,'utf8'),/<include/);assert.match(fs.readFileSync(path.join(dir,'pages/one.slx'),'utf8'),/browser/);assert.ok(!fs.existsSync(path.join(dir,'.slidex-pages')));
   const media=await fetch(base+'/f/pages/media/pic.svg');const etag=media.headers.get('etag');await media.text();assert.equal((await fetch(base+'/f/pages/media/pic.svg',{headers:{'If-None-Match':etag}})).status,304);
   const result=await exportDeck(file,{format:'png',pages:'2',scale:1,manifest:true});
   const manifest=JSON.parse(fs.readFileSync(result.files.find(f=>f.endsWith('-images.json')),'utf8'));assert.equal(manifest.pages[0].id,'two');assert.equal(manifest.pages[0].width,320);assert.ok(fs.existsSync(manifest.pages[0].path));assert.equal(manifest.failure,null);
@@ -60,4 +60,4 @@ try{
   const historyDir=path.join(dir,'corrupt-history'),store=historyStore(historyDir);store.record(file,doc.xml);
   const historyFile=path.join(historyDir,fs.readdirSync(historyDir)[0]);fs.writeFileSync(historyFile,'{corrupt');assert.throws(()=>store.record(file,draft));assert.equal(fs.readFileSync(historyFile,'utf8'),'{corrupt');
 }finally{server.close();}
-console.log('PASS project includes/media/source diagnostics, atomic COW save/conflicts, language service, durable recovery and manifest:',dir);
+console.log('PASS project includes/media/source diagnostics, original-file save/conflicts, language service, durable recovery and manifest:',dir);

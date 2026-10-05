@@ -55,10 +55,12 @@ interface EditorState {
   mtime: number;
   version:string;
   multiFile:boolean;
+  sourceFiles?:{path:string;xml:string}[];
   status: string;
   error: string;
   ready: boolean;
   recoveryXml: string;
+  recoverySourceFiles?:{path:string;xml:string}[];
   zoom: number;
   zoomMode: "fit" | "manual";
   editing: string;
@@ -219,9 +221,11 @@ export const useEditor = create<EditorState>((set, get) => ({
         file: data.path,
         mtime: data.mtimeMs,
         version:data.version||'',multiFile:!!data.multiFile,
+        sourceFiles:undefined,
         saved: serializeDeck(parsed.deck),
         ready: true,
         recoveryXml: typeof data.recoveryXml === 'string' ? data.recoveryXml : '',
+        recoverySourceFiles:data.recoverySourceFiles,
         page: 0,
         pageSelection:[parsed.deck.slides[0].id],
         pageAnchor:parsed.deck.slides[0].id,
@@ -251,6 +255,7 @@ export const useEditor = create<EditorState>((set, get) => ({
             expectedPath: file,
             expectedMtime: get().mtime,
             expectedVersion:get().version,
+            sourceFiles:get().sourceFiles,
           }),
         });
         const data = await r.json();
@@ -267,7 +272,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         savedDeck.metadata = metadata;
         const savedXml = serializeDeck(savedDeck);
         if (get().file === file)
-          set({ deck: { ...get().deck, metadata }, saved: savedXml, status: "已保存", error: data.historyWarning||"", mtime: data.mtimeMs,version:data.version||get().version });
+          set({ deck: { ...get().deck, metadata }, saved: savedXml, sourceFiles:undefined, status: "已保存", error: data.historyWarning||"", mtime: data.mtimeMs,version:data.version||get().version });
         recordRevision(file, savedXml);
         return true;
       } catch (e) {

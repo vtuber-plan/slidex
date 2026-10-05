@@ -64,6 +64,12 @@ export function parseXML(xml: string, opts: ParseXMLOptions = {}): XMLParseResul
 
   // 解析一个完整元素（开标签 → 内容 → 闭标签）。失败返回 null。
   function parseElement(depth = 0): XMLNode | null {
+    const start = i;
+    const result = parseElementInner(depth);
+    if (result && opts.sourceRanges) { result.start = start; result.end = i; }
+    return result;
+  }
+  function parseElementInner(depth = 0): XMLNode | null {
     if (depth > 200) { err(i, 'E_XML', '嵌套过深（>200）'); return null; }
     const start = i;
     if (s[i] !== '<') { err(i, 'E_XML', `期望标签，实际是 ${JSON.stringify(s.slice(i, i + 10))}`); return null; }

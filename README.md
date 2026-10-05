@@ -36,7 +36,7 @@ The editor and viewer use the same slide-rendering path. An AI workflow can ther
 </deck>
 ```
 
-A project can be one `.slx` file or an entry file with included pages and local `media/` assets. Keep the project directory together when moving it. The language also supports masters, tables, charts, images, shapes, formulas, code, themes, groups, and animation; see the [language specification](docs/spec.md) and [multi-file guide](docs/large-projects.md). The visual editor can edit the same document without requiring you to write XML by hand.
+A project can be one `.slx` file or an entry file with included pages and local `media/` assets. Keep the project directory together when moving it. The language also supports masters, tables, charts, images, shapes, formulas, code, themes, groups, and animation; see the [language specification](docs/spec.md) and [multi-file guide](docs/large-projects.md). The current editor writes canvas edits back to the original page/chapter files and offers per-file source tabs, project diagnostics and F12 navigation. See [source-file editing](docs/source-files.md) for writeback and recovery rules.
 
 ## Install and use
 

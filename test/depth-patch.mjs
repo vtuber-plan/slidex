@@ -149,6 +149,6 @@ const before=loadProject(multi),fragmentOriginal=fs.readFileSync(fragment,'utf8'
 const next=applyProjectPatch(before,{version:1,expectedVersion:before.version,operations:[{op:'set-object',pageId:'page',objectId:'t',properties:{content:'New'}}]});
 const saved=saveProject(before,next.xml);
 assert.equal(saved.deck.slides[0].elements[0].content,'New');
-assert.equal(fs.readFileSync(fragment,'utf8'),fragmentOriginal);
+assert.equal(fs.readFileSync(fragment,'utf8'),fragmentOriginal.replace('Old','New'));
 assert.match(fs.readFileSync(multi,'utf8'),/<include/);
 console.log('PASS image masks, radial fill, easing/repeat, export fallback and versioned atomic patch');

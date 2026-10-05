@@ -202,6 +202,8 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/pptx-native-math.mjs', true],
     ['test/layout-operations.mjs', true],
     ['test/project-tools.mjs', hasChrome],
+    ['test/source-writeback.mjs', true],
+    ['test/source-files-browser.mjs', hasChrome],
     ['test/large-project-browser.mjs', hasChrome],
     ['test/source-workspace.mjs', hasChrome],
     ['test/file-menu-locales.mjs', hasChrome],

@@ -355,6 +355,9 @@ PPTX 有损导入完成|PPTX imported with conversion losses
 文档检查通过|Document validated
 关闭|Close
 文档源码|Document source
+项目文件|Project files
+源码文件|Source files
+逐文件编辑；保存写回原文件，并校验整份项目。|Edit individual files. Saving updates original files and validates the entire project.
 编辑 XML 后验证并应用。保存和撤销与画布共享。|Edit XML, then validate and apply. Save and undo are shared with the canvas.
 XML 源码|XML source
 文档诊断|Diagnostics
