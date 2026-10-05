@@ -22,6 +22,7 @@ import { t, useLocale } from "./i18n";
 import { DesktopWindowControls } from "./DesktopWindowControls";
 import { parseXML } from "../src/parser";
 import type { useSourceFiles } from "./useSourceFiles";
+import { SourceFileTree } from "./SourceFileTree";
 
 export function SourceWorkspace({
   value: mergedValue,
@@ -163,30 +164,7 @@ export function SourceWorkspace({
         </span>
       </div>
       <div className={"source-body" + (project ? " source-multifile" : "")}>
-        {project && (
-          <nav className="source-files" aria-label={t("项目文件")}>
-            <strong>{t("项目文件")}</strong>
-            {project.busy && !project.files.length && <p>{t("正在加载…")}</p>}
-            {project.files.map((item) => (
-              <button
-                key={item.path}
-                title={item.name}
-                className={project.active === item.path ? "active" : ""}
-                style={{
-                  paddingLeft:
-                    12 + Math.max(0, item.name.split("/").length - 1) * 12,
-                }}
-                onClick={() => project.select(item.path)}
-              >
-                <FileCode2 size={14} />
-                <span>{item.name}</span>
-                {project.isDirty(item.path) && (
-                  <b aria-label={t("有未保存的更改")}>●</b>
-                )}
-              </button>
-            ))}
-          </nav>
-        )}
+        {project && <SourceFileTree project={project} />}
         <section className="source-code-pane" aria-label={t("XML 源码")}>
           {project && (
             <div
@@ -199,9 +177,16 @@ export function SourceWorkspace({
                   <button
                     role="tab"
                     aria-selected={project.active === name}
+                    aria-label={
+                      project.files.find((f) => f.path === name)?.name
+                    }
+                    title={project.files.find((f) => f.path === name)?.name}
                     onClick={() => project.select(name)}
                   >
-                    {project.files.find((f) => f.path === name)?.name}
+                    {project.files
+                      .find((f) => f.path === name)
+                      ?.name.split("/")
+                      .at(-1)}
                     {project.isDirty(name) ? " ●" : ""}
                   </button>
                   <button
@@ -212,6 +197,22 @@ export function SourceWorkspace({
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+          {project?.files.find((f) => f.path === project.active) && (
+            <div className="source-breadcrumb">
+              <span>
+                {project.files
+                  .find((f) => f.path === project.active)
+                  ?.name.split("/")
+                  .join(" / ")}
+              </span>
+              {!project.files.find((f) => f.path === project.active)
+                ?.referenced && (
+                <small>
+                  {t("未引用：保存写入此文件，加入 include 后显示在画布。")}
+                </small>
+              )}
             </div>
           )}
           <SourceEditor
@@ -225,6 +226,7 @@ export function SourceWorkspace({
                 : undefined
             }
             ref={editor}
+            readOnly={project?.busy}
             value={value}
             onChange={(next) => {
               onChange(next);

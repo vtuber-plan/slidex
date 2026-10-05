@@ -14,6 +14,11 @@ import {
 } from "./source-edits.js";
 import { publishProject, type FileChange } from "./project-transaction.js";
 import type { XMLNode } from "./types.js";
+import {
+  workspacePath,
+  detachedDiagnostics,
+  type DetachedSource,
+} from "./source-workspace.js";
 const digest = (text: string) =>
   createHash("sha256").update(text).digest("hex");
 
@@ -217,10 +222,24 @@ export function writeProject(
   previous: Project,
   xml: string,
   overrides?: Map<string, string>,
+  detached: DetachedSource[] = [],
 ): Project {
   const outputs = planProject(previous, xml, overrides),
     changes: FileChange[] = [];
   const dependencies = [...previous.files];
+  for (const file of detached) {
+    workspacePath(previous, file.path);
+    const errors = detachedDiagnostics(file.path, file.xml);
+    if (errors.length) throw Error(errors.map((e) => e.message).join("\n"));
+    if (!outputs.has(file.path)) outputs.set(file.path, file.xml);
+    if (!dependencies.some((d) => d.path === file.path))
+      dependencies.push({
+        path: file.path,
+        hash: file.hash,
+        mtimeMs: fs.statSync(file.path).mtimeMs,
+        size: Buffer.byteLength(fs.readFileSync(file.path, "utf8")),
+      });
+  }
   for (const [file, after] of outputs) {
     const before = fs.readFileSync(file, "utf8");
     if (before !== after) changes.push({ path: file, before, after });

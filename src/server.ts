@@ -14,6 +14,7 @@ import { exportDeck } from './export/export.js';
 import {loadProject,saveProject,type Project} from './project.js';
 import {planProject} from './source-project.js';
 import {projectDefinition} from './source-navigation.js';
+import {workspaceSources,workspaceFiles,workspaceDirectory,readWorkspaceFile} from './source-workspace.js';
 import {historyStore} from './revisions.js';
 import {languageInfo} from './language.js';
 import {serializeDeck} from './serializer.js';
@@ -47,17 +48,9 @@ interface ApiBody {
 
 function sourceOverrides(project:Project,files:unknown):Map<string,string>|undefined{
   if(files===undefined)return;
-  if(!Array.isArray(files))throw Error('源码文件列表无效');
-  const root=fs.realpathSync(path.dirname(project.path)),overrides=new Map<string,string>();
-  for(const file of files){
-    if(!file||typeof file.path!=='string'||typeof file.xml!=='string'||overrides.has(file.path)||!fs.existsSync(file.path))throw Error('源码文件不属于当前项目或重复');
-    const relative=path.relative(root,fs.realpathSync(file.path));
-    if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative)||fs.realpathSync(file.path)!==file.path)throw Error('源码文件路径越界');
-    overrides.set(file.path,file.xml);
-  }
-  const preview=loadProject(project.path,overrides),referenced=new Set(preview.files.map(d=>d.path));
-  for(const [file,xml] of overrides)if(!referenced.has(file)){if(xml!==fs.readFileSync(file,'utf8'))throw Error('已修改的源码文件不再被入口引用，请先保留引用或另存修改：'+file);overrides.delete(file);}
-  return overrides;
+  const source=workspaceSources(project,files);
+  if(source.errors.length)throw Error(source.errors.map(e=>`${e.file}:${e.line} ${e.message}`).join('\n'));
+  return source.overrides;
 }
 
 export interface ServerHandle {
@@ -124,23 +117,25 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
   async function route(req: IncomingMessage, res: ServerResponse) {
     const u = new URL(req.url || '/', 'http://x');
     const p = u.pathname;
-    if(req.method==='POST'&&['/api/source-project','/api/source-definition'].includes(p)){
+    if(req.method==='POST'&&['/api/source-project','/api/source-definition','/api/source-tree','/api/source-file'].includes(p)){
       const body=await readBody(req);
       if(body._tooLarge){send(res,413,{ok:false,error:'请求体过大'});return;}
       if(!deckFile||body.expectedPath!==deckFile){send(res,409,{ok:false,error:'文档已切换'});return;}
       const project=loadProject(deckFile);
       if(body.expectedVersion!==project.version){send(res,409,{ok:false,error:'项目依赖已变化，请重新打开后编辑源码'});return;}
       try{
-        const overrides=sourceOverrides(project,body.files);
+        if(p==='/api/source-tree'){send(res,200,{ok:true,...workspaceDirectory(project,typeof body.directory==='string'?body.directory:undefined)});return;}
+        if(p==='/api/source-file'){send(res,200,{ok:true,file:readWorkspaceFile(project,String(body.file||''))});return;}
+        const source=workspaceSources(project,body.files),overrides=source.overrides;
         const files=typeof body.xml==='string'?planProject(project,body.xml,overrides):overrides;
         const preview=loadProject(deckFile,files||new Map());
         if(p==='/api/source-definition'){
           send(res,200,{ok:true,definition:projectDefinition(preview,String(body.file||''),Number(body.offset)||0)});return;
         }
-        send(res,200,{ok:!preview.errors.length,xml:preview.xml,errors:preview.errors,warnings:preview.warnings,
-          files:preview.sources!.documents.map(d=>({path:d.path,name:path.relative(deckDir,d.path).split(path.sep).join('/'),xml:d.text})),
-          pages:preview.sources!.pages,version:project.version,sourceChanged:preview.sources!.documents.some(d=>d.text!==fs.readFileSync(d.path,'utf8'))});
-      }catch(error){send(res,400,{ok:false,error:String((error as Error).message)});}
+        const described=workspaceFiles(preview,source.detached),errors=[...preview.errors,...source.errors.filter(e=>source.detached.some(d=>d.path===e.file))];
+        send(res,200,{ok:!errors.length,xml:preview.xml,errors,warnings:preview.warnings,
+          files:described,pages:preview.sources!.pages,version:project.version,sourceChanged:described.some(d=>d.xml!==fs.readFileSync(d.path,'utf8'))});
+      }catch(error){send(res,/外部修改/.test(String(error))?409:400,{ok:false,error:String((error as Error).message)});}
       return;
     }
     if(p==='/api/pick-document'&&req.method==='POST'){
@@ -187,9 +182,10 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         if(typeof body.xml!=='string'||parseSlideX(body.xml).errors.length){send(res,400,{error:'草稿无效'});return;}
         const project=currentProject();
         if(typeof body.expectedVersion==='string'&&body.expectedVersion!==project.version){send(res,409,{error:'文档已变化'});return;}
-        const overrides=sourceOverrides(project,body.sourceFiles);
-        if(body.xml===serializeDeck(project.deck)&&!overrides?.size)history.discardDraft(deckFile);
-        else history.draft(deckFile,body.xml,overrides?{sourceFiles:[...overrides].map(([path,xml])=>({path,xml})),sourceVersion:project.version}:undefined);
+        const source=body.sourceFiles===undefined?undefined:workspaceSources(project,body.sourceFiles);
+        if(source?.errors.length)throw Error(source.errors.map(e=>`${e.file}:${e.line} ${e.message}`).join('\n'));
+        if(body.xml===serializeDeck(project.deck)&&!source?.overrides.size)history.discardDraft(deckFile);
+        else history.draft(deckFile,body.xml,source?{sourceFiles:workspaceFiles(source.preview,source.detached).map(({path,xml,hash})=>({path,xml,hash})),sourceVersion:project.version}:undefined);
       }else{
         const list=Array.isArray(body.revisions)?body.revisions.slice(0,20):[];
         history.import(deckFile,list.filter(r=>typeof r?.xml==='string'&&Number.isFinite(r?.time)&&!parseSlideX(r.xml).errors.length));
@@ -230,7 +226,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
         const draft=history.read(deckFile).draft;
         send(res,200,{path:deckFile,xml:draft&&!parseSlideX(draft.xml).errors.length?draft.xml:xml});return;
       }
-      let historyWarning='',recoveryXml='',recoverySourceFiles:{path:string;xml:string}[]|undefined;
+      let historyWarning='',recoveryXml='',recoverySourceFiles:{path:string;xml:string;hash?:string}[]|undefined;
       try{
         if(deckFile&&!project.errors.length)history.record(deckFile,serializeDeck(project.deck));
         const draft=history.read(deckFile).draft;
@@ -337,7 +333,7 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
       const metadata=stampEditorMetadata(r.deck,project.deck.metadata);
       const savedXml=serializeDeck(r.deck);
       let saved:Project;
-      try{saved=saveProject(project,savedXml,sourceOverrides(project,sourceFiles));cached=saved;}
+      try{const source=workspaceSources(project,sourceFiles);if(source.errors.length&&(sourceFiles!==undefined||project.multiFile))throw Error(source.errors.map(e=>`${e.file}:${e.line} ${e.message}`).join('\n'));saved=saveProject(project,savedXml,source.overrides,source.detached);cached=saved;}
       catch(error){send(res,/外部修改|依赖.*变化|保存期间/.test(String(error))?409:400,{ok:false,error:String((error as Error).message)});return;}
       let historyWarning='';try{history.saved(deckFile,savedXml);}catch(error){historyWarning='文档已保存，但历史记录写入失败：'+String((error as Error).message);}
       send(res, 200, { ok: true, errors: r.errors, warnings: r.warnings, metadata, mtimeMs: fs.statSync(deckFile).mtimeMs,version:saved.version,historyWarning });

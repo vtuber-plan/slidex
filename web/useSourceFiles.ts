@@ -7,6 +7,15 @@ export interface SourceFile {
   path: string;
   name: string;
   xml: string;
+  hash: string;
+  referenced: boolean;
+}
+export interface SourceTreeEntry {
+  path: string;
+  name: string;
+  label: string;
+  kind: "file" | "directory";
+  referenced: boolean;
 }
 export function useSourceFiles() {
   const [files, setFiles] = useState<SourceFile[]>([]),
@@ -16,6 +25,7 @@ export function useSourceFiles() {
   const [diagnostics, setDiagnostics] = useState<Diag[]>([]);
   const baseline = useRef<SourceFile[]>([]),
     generation = useRef(0),
+    selecting = useRef(0),
     fileRef = useRef(files);
   fileRef.current = files;
   const dirty = files.some(
@@ -82,6 +92,7 @@ export function useSourceFiles() {
       }),
     });
     const data = await response.json();
+    if (useEditor.getState().file !== state.file) throw Error("文档已切换");
     if (!response.ok || !data.ok)
       throw Error(
         data.error ||
@@ -108,7 +119,20 @@ export function useSourceFiles() {
         xml: serializeDeck(state.deck),
         files: state.sourceFiles,
       });
+      const detached = await Promise.all(
+        fileRef.current
+          .filter(
+            (f) =>
+              !f.referenced &&
+              !data.files.some((next: SourceFile) => next.path === f.path),
+          )
+          .map(
+            async (f) =>
+              (await post({ file: f.path }, "/api/source-file")).file,
+          ),
+      );
       if (token !== generation.current) return;
+      data.files.push(...detached);
       useEditor.setState({ error: "" });
       baseline.current = data.files;
       setFiles(data.files);
@@ -129,34 +153,73 @@ export function useSourceFiles() {
       if (token === generation.current) setBusy(false);
     }
   };
-  const select = (file: string) => {
+  const activate = (file: string) => {
     setActive(file);
     setTabs((current) =>
       current.includes(file) ? current : [...current, file],
     );
   };
-  const change = (value: string) =>
+  const select = async (file: string) => {
+    const token = ++selecting.current,
+      document = generation.current;
+    if (fileRef.current.some((f) => f.path === file)) {
+      activate(file);
+      return;
+    }
+    try {
+      const data = await post({ file }, "/api/source-file");
+      if (document !== generation.current) return;
+      baseline.current = [...baseline.current, data.file];
+      setFiles((current) =>
+        current.some((f) => f.path === file)
+          ? current
+          : [...current, data.file],
+      );
+      if (token === selecting.current) activate(file);
+    } catch (error) {
+      useEditor.setState({ error: String(error) });
+    }
+  };
+  const directory = async (path?: string) =>
+    (await post({ directory: path }, "/api/source-tree")) as {
+      path: string;
+      name: string;
+      entries: SourceTreeEntry[];
+    };
+  const change = (value: string) => {
+    useEditor.setState({ error: "" });
     setFiles((current) =>
       current.map((f) => (f.path === active ? { ...f, xml: value } : f)),
     );
+  };
   const apply = async () => {
     if (busy) return false;
+    const token = generation.current,
+      buffers = fileRef.current;
     setBusy(true);
     try {
-      const data = await post({ files: fileRef.current });
+      const data = await post({ files: buffers });
+      if (token !== generation.current) return false;
+      if (buffers !== fileRef.current)
+        throw Error("源码在验证期间发生修改，请再次应用");
       if (!useEditor.getState().applySource(data.xml)) return false;
       useEditor.setState({
         sourceFiles: data.sourceChanged
-          ? data.files.map((f: SourceFile) => ({ path: f.path, xml: f.xml }))
+          ? data.files.map((f: SourceFile) => ({
+              path: f.path,
+              xml: f.xml,
+              hash: f.hash,
+            }))
           : undefined,
         error: "",
       });
+      setFiles(data.files);
       return true;
     } catch (error) {
       useEditor.setState({ error: String(error) });
       return false;
     } finally {
-      setBusy(false);
+      if (token === generation.current) setBusy(false);
     }
   };
   const navigate = async (offset: number) => {
@@ -166,7 +229,7 @@ export function useSourceFiles() {
         "/api/source-definition",
       );
       if (data.definition) {
-        select(data.definition.file);
+        await select(data.definition.file);
         return data.definition;
       }
     } catch (error) {
@@ -184,7 +247,9 @@ export function useSourceFiles() {
   };
   const discard = () => {
     generation.current++;
+    selecting.current++;
     setFiles([]);
+    setDiagnostics([]);
     setBusy(false);
   };
   return {
@@ -196,6 +261,7 @@ export function useSourceFiles() {
     diagnostics,
     open,
     select,
+    directory,
     change,
     apply,
     navigate,

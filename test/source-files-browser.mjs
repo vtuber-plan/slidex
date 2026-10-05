@@ -59,7 +59,7 @@ try {
     );
     assert.match(
       await page.$eval(".source-files", (el) => el.textContent),
-      /chapters\/chapter.slx/,
+      /chapter.slx/,
     );
     // Position the real Monaco caret inside the include path; F12 follows it into the chapter.
     await page.waitForFunction(() =>
@@ -78,10 +78,11 @@ try {
     for (let i = 0; i < lines.at(-1).length + 4; i++)
       await page.keyboard.press("ArrowRight");
     await page.keyboard.press("F12");
-    await page.waitForFunction(() =>
-      document
-        .querySelector(".source-file-tabs [aria-selected=true]")
-        ?.textContent.includes("chapters/chapter.slx"),
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector(".source-file-tabs [aria-selected=true]")
+          ?.getAttribute("aria-label") === "chapters/chapter.slx",
     );
     assert.equal(
       await page.$$eval(
@@ -119,7 +120,7 @@ try {
     await page.keyboard.type("<!-- undo marker -->");
     await page.locator(".source-files button::-p-text(main.slx)").click();
     await page
-      .locator(".source-files button::-p-text(chapters/chapter.slx)")
+      .locator('.source-files [data-source-path="chapters/chapter.slx"]')
       .click();
     await page.waitForFunction(() =>
       document
@@ -171,7 +172,7 @@ try {
     assert.match(fs.readFileSync(chapter, "utf8"), /Source edited/);
     await open();
     await page
-      .locator(".source-files button::-p-text(chapters/chapter.slx)")
+      .locator('.source-files [data-source-path="chapters/chapter.slx"]')
       .click();
     await replace(
       '<slides><slide id="one"><text id="bad" x="1" y="1" w="20" h="20">Broken',
@@ -212,7 +213,7 @@ try {
       /chapter.slx/,
     );
     await page
-      .locator(".source-files button::-p-text(chapters/chapter.slx)")
+      .locator('.source-files [data-source-path="chapters/chapter.slx"]')
       .click();
     await replace(
       fs.readFileSync(chapter, "utf8").replace("Source edited", "Stale edit"),

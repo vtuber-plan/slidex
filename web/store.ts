@@ -55,12 +55,12 @@ interface EditorState {
   mtime: number;
   version:string;
   multiFile:boolean;
-  sourceFiles?:{path:string;xml:string}[];
+  sourceFiles?:{path:string;xml:string;hash?:string}[];
   status: string;
   error: string;
   ready: boolean;
   recoveryXml: string;
-  recoverySourceFiles?:{path:string;xml:string}[];
+  recoverySourceFiles?:{path:string;xml:string;hash?:string}[];
   zoom: number;
   zoomMode: "fit" | "manual";
   editing: string;

@@ -271,7 +271,10 @@ try {
     });
     assert.equal(draft.response.status, 200);
     const recovered = await (await fetch(base + "/api/deck")).json();
-    assert.deepEqual(recovered.recoverySourceFiles, sourceFiles);
+    assert.deepEqual(
+      recovered.recoverySourceFiles.map(({ path, xml }) => ({ path, xml })),
+      sourceFiles,
+    );
     assert.match(recovered.recoveryXml, /Source edited cover/);
     const parsed = parseSlideX(combined.data.xml);
     parsed.deck.slides[1].notes = "Canvas after source";

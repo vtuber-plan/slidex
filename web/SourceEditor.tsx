@@ -77,9 +77,10 @@ export const SourceEditor = forwardRef<
     dark: boolean;
     onDefinition?: (offset: number) => void | Promise<void>;
     modelPath?: string;
+    readOnly?: boolean;
   }
 >(function SourceEditor(
-  { value, onChange, diagnostics, dark, onDefinition, modelPath },
+  { value, onChange, diagnostics, dark, onDefinition, modelPath, readOnly },
   ref,
 ) {
   const definitionRef = useRef(onDefinition);
@@ -251,6 +252,7 @@ export const SourceEditor = forwardRef<
         onChange={(next) => onChange(next ?? "")}
         onMount={onMount}
         options={{
+          readOnly,
           automaticLayout: true,
           fontFamily: "Cascadia Code, Consolas, monospace",
           fontSize: 14,

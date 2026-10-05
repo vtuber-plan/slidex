@@ -356,6 +356,11 @@ PPTX 有损导入完成|PPTX imported with conversion losses
 关闭|Close
 文档源码|Document source
 项目文件|Project files
+刷新文件树|Refresh file tree
+当前文稿引用|Referenced by this deck
+未引用|Not included
+此目录没有 SLX 文件|No SLX files in this directory
+未引用：保存写入此文件，加入 include 后显示在画布。|Not included: saving updates this file; include it to show it on the canvas.
 源码文件|Source files
 逐文件编辑；保存写回原文件，并校验整份项目。|Edit individual files. Saving updates original files and validates the entire project.
 编辑 XML 后验证并应用。保存和撤销与画布共享。|Edit XML, then validate and apply. Save and undo are shared with the canvas.

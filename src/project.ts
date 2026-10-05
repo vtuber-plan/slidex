@@ -6,6 +6,7 @@ import { parseSlideX } from "./ir.js";
 import type { Diag, ParseResult, XMLNode } from "./types.js";
 import { recoverProject } from "./project-transaction.js";
 import { writeProject } from "./source-project.js";
+import type { DetachedSource } from "./source-workspace.js";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
 type SourceNode = XMLNode & { file?: string };
 export interface Project extends ParseResult {
@@ -266,6 +267,7 @@ export function saveProject(
   previous: Project,
   xml: string,
   overrides?: Map<string, string>,
+  detached?: DetachedSource[],
 ): Project {
-  return writeProject(previous, xml, overrides);
+  return writeProject(previous, xml, overrides, detached);
 }

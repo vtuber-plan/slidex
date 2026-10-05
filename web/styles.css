@@ -1147,6 +1147,19 @@ button:focus-visible {
 .source-files button {display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 12px;border:0;background:transparent;color:var(--gray-12);cursor:pointer;}
 .source-files button span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .source-files button.active,.source-files button:hover {background:var(--accent-4);}
+.source-files .source-tree-heading {display:flex;align-items:center;justify-content:space-between;padding:0 10px 6px 12px;font-size:12px;}
+.source-files .source-tree-heading button {width:auto;padding:5px;border-radius:4px;}
+.source-tree-root {display:flex;align-items:center;gap:6px;margin:0;padding:6px 12px 10px;color:var(--gray-10);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.source-files [role=treeitem] {min-height:32px;padding-top:6px;padding-bottom:6px;font-size:12px;gap:5px;}
+.source-files [role=treeitem] svg,.source-tree-indent {flex-shrink:0;}
+.source-tree-indent {width:12px;}
+.source-files [role=treeitem] small {margin-left:auto;color:var(--gray-9);font-size:10px;white-space:nowrap;}
+.source-files [role=treeitem] b {margin-left:auto;color:var(--accent-9);font-size:9px;}
+.source-files [role=treeitem]:focus-visible {outline:2px solid var(--accent-8);outline-offset:-2px;}
+.source-tree-hint,.source-tree-error {font-size:11px;padding:6px 12px;margin:0;color:var(--gray-10);}
+.source-tree-error {color:var(--red-11);overflow-wrap:anywhere;}
+.source-breadcrumb {display:flex;gap:12px;padding:6px 12px;border-bottom:1px solid var(--gray-4);font-size:11px;color:var(--gray-10);min-height:28px;flex-shrink:0;overflow:auto;white-space:nowrap;}
+.source-breadcrumb small {font-size:11px;color:var(--gray-10);margin-left:auto;}
 .source-multifile .source-code-pane {display:flex;flex-direction:column;}
 .source-multifile .source-monaco {position:relative;inset:auto;flex:1;min-height:0;}
 .source-file-tabs {display:flex;overflow:auto;flex-shrink:0;border-bottom:1px solid var(--gray-5);background:var(--gray-2);}
