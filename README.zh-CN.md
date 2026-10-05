@@ -84,7 +84,7 @@ PNG 和图片式 PPTX 固定按文稿原始尺寸（1×）渲染，减少 PowerP
 
 ## 安装 AI Skill
 
-[SlideX Skill](skills/slidex/SKILL.md) 会指导 AI 助手编写 `.slx`、校验和格式化文稿、逐页检查导出的图片，并阅读导出报告。Skill **只有使用说明，不包含命令行程序**。请先安装 `@xiahan/slidex@next`，再从 [GitHub Releases](https://github.com/vtuber-plan/slidex/releases) 下载 `slidex-skill-<版本>.zip`。压缩包内已有 `slidex/SKILL.md` 和参考文件。
+[SlideX Skill](skills/slidex/SKILL.md) 包含 [30 套设计系统](skills/slidex/references/design-systems/index.md)、字体与项目组织指南，以及自动拼接缩略图、检查 PPTX 包结构的 Python 工具，指导 AI 编写、校验、视觉检查和导出文稿。Skill **不包含 SlideX 命令行运行时**。请先安装 `@xiahan/slidex@next`，再从 [GitHub Releases](https://github.com/vtuber-plan/slidex/releases) 下载 `slidex-skill-<版本>.zip`，安装完整的 `slidex/` 文件夹。缩略图工具另需 Python 3.10+ 和 Pillow 10+；PPTX 检查工具只用 Python 标准库。当前 PPTX 导出不嵌入字体。
 
 使用 Codex 时，将压缩包解压到 `$CODEX_HOME/skills`；如果未设置 `CODEX_HOME`，默认目录是 `~/.codex/skills`。以 rc.9 版本为例：
 

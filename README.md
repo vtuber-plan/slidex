@@ -82,7 +82,7 @@ Static exports show the final visual state, not the viewer's full animation beha
 
 ## Install the AI skill
 
-The [SlideX skill](skills/slidex/SKILL.md) guides an agent through authoring, validation, formatting, page-image review, and export reports. It contains instructions, **not** the CLI runtime. Install `@xiahan/slidex@next` separately, then download `slidex-skill-<version>.zip` from [GitHub Releases](https://github.com/vtuber-plan/slidex/releases). The ZIP already contains a `slidex/` folder with `SKILL.md` and its reference files.
+The [SlideX skill](skills/slidex/SKILL.md) includes [30 design systems](skills/slidex/references/design-systems/index.md), font and project-organization guides, and Python helpers for contact sheets and PPTX package inspection. It guides an agent through authoring, validation, page-image review and export reports; it does **not** bundle the CLI runtime. Install `@xiahan/slidex@next` separately, then download `slidex-skill-<version>.zip` from [GitHub Releases](https://github.com/vtuber-plan/slidex/releases). The ZIP contains the complete `slidex/` skill folder. Contact sheets additionally need Python 3.10+ and Pillow 10+; PPTX inspection uses the Python standard library. Current PPTX exports do not embed fonts.
 
 For a typical Codex setup, extract the ZIP into `$CODEX_HOME/skills`, or `~/.codex/skills` when `CODEX_HOME` is unset. For example, after downloading the rc.9 ZIP:
 

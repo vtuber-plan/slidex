@@ -1,6 +1,6 @@
 # SlideX deck design guide
 
-Read this guide when designing a deck with self-directed design. When the user provides brand rules, a complete design scheme, or an existing project to continue, those take priority over this guide. Use it in three steps:
+Read this guide for new design or beautification. User brand rules, an explicit design scheme and an existing project take priority. For concrete visual directions, use the [30-system catalog](design-systems/index.md) and read only the chosen profile. Typography, source handoff and QA details live in [fonts](fonts.md), [project organization](project-organization.md) and [visual review](visual-review.md). Use this guide in three steps:
 
 1. **Follow the general rules** — they apply to every scenario and every page, together with the scenario guidance.
 2. **Determine the scenario** — choose the one matching the user's input (one primary scenario; add an auxiliary one only when truly necessary).
@@ -11,18 +11,20 @@ Read this guide when designing a deck with self-directed design. When the user p
 1. **Every page has a clear reader task**: what this page should make the reader understand, believe, decide, or do — think this through before designing the layout.
 2. **Paging has rhythm**: decide deliberately whether a table of contents or section dividers are needed; the reader should feel the rhythm change — some pages are taken in at a glance, others reward a careful read.
 3. **Prefer structure over prose**: use charts, tables, timelines, and shape compositions for structured information. SlideX has native `<chart>` and `<table>` elements — use them for data; when a relationship does not fit chart syntax, build it from shapes, lines, and text instead of describing it in a paragraph.
-4. **Master-level output**: every deck is a crafted work — pay close attention to alignment, spacing, hierarchy, and color; details decide the result.
+4. **Make quality observable**: establish one reading path, clear contrast between the main exhibit and supporting text, stable alignment anchors, readable type, and meaningful chart/image treatment. Inspect these in rendered pages rather than relying on aesthetic adjectives.
 5. **Use imagery purposefully** (see the SlideX skill's image guidance): no irrelevant images to hit a quota; every image serves the page's conclusion.
 6. **Defer to the user and the subject**: user-supplied templates, brand colors, fonts, and style references override this guide.
 7. **Source attribution**: pages with external facts and data state source, date or period, and measurement basis; use rich-text `<a href="url">` links to the original source.
-8. **Fill what you plan**: a region planned for content must actually hold that content. Do not leave a 100px-tall region with 70px of text, and do not mask overflow by shrinking the font — shorten, split the page, or resize the box.
+8. **Use space intentionally**: whitespace groups content and controls pace. Remove unexplained empty containers; do not add material simply to fill a box. Resolve overflow by shortening, recomposing, splitting where page count allows, or resizing the box; keep typography within the readable scale.
+9. **Plan the usage mode**: live projection needs larger type and fewer evidence modules; reading decks can carry more detail. Information density follows the reader task, not the scenario label alone.
+10. **Prototype the difficult pages**: for substantial autonomous design, render a cover, a normal evidence page and the hardest table/diagram before expanding the deck. Extract their successful grid, type and motif choices into the theme/master.
 
 ## Strictly forbidden
 
 - **Fabricated evidence**: never invent data, citations, customer cases, experimental results, or sources. Mark placeholders, assumptions, and illustrative figures explicitly as such.
-- **Card-based hierarchy**: unless the user asks for it, do not build hierarchy or alignment out of rounded-rectangle cards (including cards with a colored side strip). Lines, whitespace, and font-size/weight contrast do the job better. (Shapes remain the right tool for diagrams — the ban is on card grids as a layout crutch.)
-- **AI-typical color**: no red+purple+yellow+green on one page, no default blue-white business scheme, no blue-purple gradients, cyan-purple neon, glassmorphism, or glowing borders — unless the user explicitly requests them.
-- **Evenly divided compositions**: avoid defaulting to one-third splits, four-way splits, or 2×2 matrices ("three columns + title + conclusion") when a better layout exists.
+- **Decorative containers as a default**: avoid automatic card grids for ordinary prose. Containers are appropriate for real boundaries, assumptions, states, quotations or deliberate preset components; otherwise use whitespace, rules and typography.
+- **Ungrounded color/effects**: avoid rainbow series, decorative neon, gradients, glow or glass effects unrelated to the subject. Blue-white and other familiar palettes remain valid for a real brand or fitting system; semantic clarity and contrast matter more than novelty.
+- **Unjustified equal splits**: do not force three unrelated paragraphs into thirds. Equal columns are useful for comparable alternatives; a 2×2 belongs to a genuine two-axis framework. Unequal evidence and explanation deserve unequal area.
 
 ## Scenario determination
 
@@ -44,13 +46,13 @@ Read this guide when designing a deck with self-directed design. When the user p
 - Single-hue skeleton: pure white (or near-white) pages, one primary color carrying the structural skeleton (title emphasis, table headers, chart series, numbered markers), plus a light-tint ladder of the same hue and neutral grays.
 - Position discipline: conclusion → top title; evidence → charts/tables mid-page; interpretation → side notes; sources → fixed bottom line; recommendations → the closing page. Coordinates stay stable page to page.
 - De-default charts: reassign series colors to the primary ladder + grays, remove heavy gridlines, label only key points, distinguish actual vs. forecast with solid vs. dashed. Tables: dark header, thin horizontal separators only, numbers right-aligned. No shadows, no gradients, square corners.
-- Do not give a single basic chart half the page width or more; lay out several exhibits per page where possible.
+- A decisive chart may dominate the page. Use multiple exhibits only when comparing them improves the argument; never crowd the page to satisfy a chart count.
 
 ## Business proposal
 
 - A clear storyline that builds step by step, with an emotion curve: unease (pain point) → hope (solution) → belief (evidence) → urge (action). The page's core claim gets the visual privilege of being marked.
 - Use structural diagrams to tell the story: sequence, comparison, cycle, causality become visible diagrams (shapes, lines, arrows), not paragraphs.
-- Rotate page types — manifesto pages, section dividers, big-number hero pages — so no two consecutive pages share the same skeleton; section and accent pages give the reader breathing room.
+- Vary page types when the narrative changes — manifesto, section, big-number and evidence pages. Consecutive comparable evidence pages can share a skeleton; section and accent pages provide breathing room without arbitrary variation.
 - Type is attitude: display type (titles, big numbers) and body type divide labor clearly, with daring size/weight contrast; fonts and palette are designed to match each other.
 - Establish 2–5 recurring visual motifs (decorations, icons, illustrations sharing one language) for recognizability.
 - When the user names a company/product/brand, anchor the palette on its brand primary and design around it; reject each industry's most clichéd palette.
@@ -69,9 +71,9 @@ Read this guide when designing a deck with self-directed design. When the user p
 - Follow the research narrative: background → evidence gap → research question → method/hypotheses → core evidence → conclusion → contribution, letting the committee grasp the value in the first minute; keep progress visible with section pages or navigation.
 - Simple but not cheap: decoration only on cover, section, and closing pages; the premium feel comes from a unified skeleton, figure/table captions, footnote markers for sources, page numbers, and a meticulous type hierarchy.
 - Fit the field's focus: theory pages foreground formulas and derivations (SlideX `<formula>` and inline `\(...\)` render real LaTeX); CS/engineering pages foreground system diagrams, code (`<code>`), and performance curves; experimental pages foreground charts and images, kept compact with their conclusions.
-- Body text stays large and readable (≥15px at 960×540) with suitable line spacing; density stays high — every region is full.
+- Body text stays readable (start at 16–19px at 960×540, larger for projection) with suitable line spacing. Density follows the defense/research-reading mode; keep room around figures and equations.
 - When the user names an institution, extract its primary color from the official logo — never hard-code a color from memory — and keep it to a small area on body pages (section pages may go full-bleed).
-- No card grids, no centered-everything, no blue-white business style, no crude black/white/light-blue default backgrounds; tables preferably use three-line (booktabs) structure.
+- Avoid automatic card grids and centered-everything. Institutional blue-white is appropriate when it follows verified identity; tables preferably use three-line (booktabs) structure.
 
 ## Education & training
 
@@ -102,9 +104,9 @@ Read this guide when designing a deck with self-directed design. When the user p
 ## SlideX craft notes
 
 - **Theme first**: define `<palette>`, `<text-styles>`, and `<table-styles>` before writing pages; reference `$name` tokens everywhere so a restyle is one edit. Put logos, page numbers, footer rules, and section navigation into a `<master>`.
-- **Type scale starting points** (960×540): cover title 40–64, page title 25–32, section title 32–44, body 15–18, captions/labels 11–13. Build hierarchy through size and weight ratios and keep the ratios stable even when absolute sizes flex.
+- **Type scale starting points** (960×540): cover title 44–64, page title 28–34, section title 36–48, body 16–19, chart/table labels 13–16, captions 11–13; live projection usually needs larger type. See [fonts](fonts.md). Keep hierarchy stable when absolute sizes flex.
 - **Color**: a neutral background + one structural color + one necessary accent beats many lively colors. Every color carries a stable meaning across the deck; encode states with text, shape, or position as well as color. Body text keeps ≥4.5:1 contrast — fix contrast by changing colors, not by adding shadows or strokes.
 - **Charts**: assign series colors from the theme (never accept the default rainbow), keep axes/units/legends only when they earn their place, and use `data-labels` sparingly on key points. For horizontal bars use `<y-axis type="category"/>`.
 - **Diagrams**: SlideX shapes are geometry primitives — compose flowcharts, matrices, and structural diagrams from `rect`/`roundRect`/`ellipse`/`line`/arrows with consistent corner radius, stroke width, and arrow style throughout the deck. Keep node text in overlaid `<text>` elements, aligned to the shape.
 - **Overflow discipline**: `W_OVERFLOW` and the visual review are the gates; when text does not fit, shorten the text, split the page, or enlarge the box — do not shrink the font below the type scale or delete content silently.
-- **Animations**: only for decks that are clearly meant for live presentation or on explicit request; 1–3 simple groups per page (`fade-in`, `fly-in`, `zoom-in`), each click advancing one idea. Reading, print, and send-and-browse decks get none.
+- **Transitions and animations**: new live decks start with per-slide `transition="fade"`; reading/print decks use `none`; user/template settings win. Element animations are separate and should advance one idea per click. For editable PPTX prefer supported `onClick` visibility/fade effects on top-level objects; browser fly/zoom effects may not map. See [PPTX delivery](pptx-delivery.md).

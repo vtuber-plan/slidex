@@ -1,0 +1,51 @@
+# Electric Violet Business · electric-violet-business
+
+SlideX adaptation of open-kimi-ppt's `work/electric-violet-business`. See [catalog and precedence](../../index.md), [fonts](../../../fonts.md), and [attribution/license](../../NOTICE.md). Reference descriptions below are upstream observations, not source decks measured or fonts bundled by SlideX.
+
+## SlideX production specification
+
+- **Canvas**: 960×540, 16:9 by default. Recompose for an explicit 4:3/portrait request. Upstream source inches/EMU/dimensions are historical references, never target SLX coordinates.
+- **Grid**: left/right margins 56; preferred body ratio 45:55; gutter 24 logical pixels. story x=56 w=356; photo x=436 w=468; data pages use full width=848. Unless overridden above, title y=40 h=76; body y=144..470; sources/footer y=496..520. Reflow a two-line title rather than overlap the body.
+- **Density**: one documentary scene and two or three facts; dedicated pages for dense data. This readable SLX budget overrides reference word counts. For projection enlarge type and reduce modules; deliberate whitespace is allowed. Never invent evidence to fill a region.
+- **Palette starter**: `paper=#FFFFFF`, `ink=#171717`, `primary=#7139E6`, `accent=#D4C5ED`. These curated starter roles support the signature below. If the reference palette assigns a more specific semantic role, retain it while ensuring contrast. Accent is not automatically a body-text color. Use neutrals for baseline data and saturation for the main judgment.
+- **Title fonts**: Chinese MiSans or Microsoft YaHei; Latin Inter or Arial. **Body fonts**: Chinese MiSans or Microsoft YaHei; Latin Inter or Arial. Choose actual installed families, not literal strings containing "or". Fonts are candidates, not assets. Use SLX string `font-family` and explicit Latin runs, never PPTD font objects.
+- **Type at 960×540**: cover 48–64; section 36–44; page title 28–34; body 16–19; labels 13–16; footnotes 11–13. Title line-height 1.2; body 1.4–1.5. Live body 20–24. Display titles may be larger if fitting is verified; never copy tiny source-report sizes.
+- **Components**: compose ordinary `<shape>`, `<line>`, `<text>` and `<image>` elements. Put stable rules/navigation in a `<master>`; current labels, actual numbers and sources stay page-local. Encode role colors/styles in `<theme>`. There is no arbitrary component tag or automatic page-number token.
+- **Charts**: retain the signature's evidence emphasis and direct annotations; use real data. A style never requires a chart without evidence. [PPTX delivery](../../../pptx-delivery.md) explains native chart limits; advanced charts may rasterize. Separate native annotations can aid editing but do not automatically follow data edits.
+- **Images**: obtain relevant assets before committing image proportions. Keep crops undistorted. If documentary photos required by the reference are unavailable, disclose/adapt the layout rather than fabricate evidence or reserve an empty image well.
+- **Playback**: new live decks start with `transition="fade"`; reading/print decks use `none`; preserve user/template choices. Element animations are separate. Current SlideX does not embed fonts in PPTX.
+- **QA**: render representative pages, then all pages. Inspect every contact sheet and full-resolution details using [visual review](../../../visual-review.md). Read final export reports and check actual Office output when available.
+
+## Reference-derived visual signature
+
+These palette, chart, layout and motif descriptions are adapted from the named upstream system. User material, the production specification above, contrast/readability and runtime capability take priority over reference demands for exact measurements, minimum density, mandatory assets or analytical framework types.
+
+One-line style signature: editorial corporate documentary, using a single Electric Violet focal accent on white/near-black backgrounds, alternating large authentic photographs with medium-to-high-density data slides.
+
+【Color Palette】
+Background: #FFFFFF for body slides; #121212 only for the cover/image-led openers, and #000000 only for the closing slide. Primary text and headings on white: #121212; headings on dark backgrounds: #FFFFFF. Primary accent: #5114F6, used for section backgrounds, key figures, bars/strips/bubbles, and fine outlines—not as decorative blocks in body content. Supporting colors: #9E9E9E only for secondary annotations; #CCCCCC only for gridlines. Charts: #5114F6 for the primary series, #9E9E9E for the baseline, and #000000 occasionally for a priority star marker. Positive/negative colors inherit the shared SlideX design guide; the source deck provides no stable hex values. Apart from neutrals, allow only one hue per slide. Full-bleed Electric Violet is reserved for section slides; it may occupy approximately 44%–56% of a body slide only when the content has a genuine binary relationship.
+
+【Layout Skeleton】
+Source canvas: 10×5.625 inches, 16:9. Standard slides have no full-width header; primary content begins at approximately 12% from the left, ends at 94.5% on the right, starts 10%–20% from the top, and leaves an approximately 10% footer band at the bottom. The footer has no divider: place one short category/period label at bottom left and one page number at bottom right. The stable grid uses a 44/56 image-text split, a 38/62 information split, or a three-column narrative; the default reading path is judgment on the left → evidence on the right. Cover only: near-black upper 49% and photograph lower 51%, with the title left-aligned on the black field. Section slide only: full-bleed #5114F6, with “two-digit index—section title” positioned around 12% from the left and 34% from the top.
+
+【Chart Language】
+The source deck uses single-series vertical bars, horizontal progress/comparison bars, dot-matrix ratings, number bubbles, bubble matrices, and tables; maps and radial charts appear only occasionally. ⭐Dot-matrix rating: in a row of outlined Electric Violet circles, fill only one circle and place the value at the end of the row; use for a 10-point scale or stage position. ⭐Progress bar: fine Electric Violet outline, solid fill from the left, with the percentage right-aligned inside the frame. ⭐Number bubble: equal-size solid circles as numeric containers; never use area to imply quantity; no more than 4 within one group. ⭐Vertical bar chart: use #5114F6 for every bar with fine light-gray gridlines; do not recolor individual bars; use a #000000 star only occasionally for a small number of focus items. ⭐Bubble matrix, occasional use only: a 44/56 split between an Electric Violet index area on the left and a white coordinate area on the right.
+
+【Signature Components】
+1. Section index title: use “NN—” to establish rhythm; appears only on full-bleed Electric Violet section slides, once per slide.
+2. Near-black statement field + photograph: the left approximately 44% contains one large statement only; the right approximately 56% is a full-height photograph with no additional body copy overlaid.
+3. Photography is a hard requirement: approximately half of the slides use documentary photographs of people/work environments, cropped large with square corners and separated from text; never substitute abstract illustrations, colorful icons, or blurred imagery. If no suitable photograph is available, use a pure-white data slide instead.
+4. Fine footer: information label at bottom left, page number at bottom right, with no color block or horizontal rule; one footer set on every body slide.
+
+【Prohibited】
+Do not use a second decorative accent color or multicolored series; charts may introduce the shared SlideX design guide status colors only when genuine status semantics exist. Do not place text over photographic texture; do not replace large documentary images with circular headshots, color-tinted photographs, or abstract illustrations. Do not use heavy black, all caps, or decorative type to establish title hierarchy. Do not fill half a slide with Electric Violet unless the content has a clear binary structure; standard data slides retain only lines, bars, figures, and circular accents.
+
+【Slide Types and Layouts】
+Image-text narrative slide｜Best for one conclusion plus context/testimony｜Photograph 44%–56% or 28% sidebar, with 1–3 text blocks in the remaining area｜2–4 blocks｜Large documentary image + fine footer｜Not suitable for comparing many metrics.
+Data overview slide｜Best for parallel outcomes/composition｜Title area approximately 20% on the left, two data columns approximately 65% across the center and right｜4–8 blocks｜Large figures, dot matrices, progress bars, bubbles｜Not suitable for long causal chains.
+Chart evidence slide｜Best for grouped comparisons addressing one question｜Conclusion and annotations in the upper/left 20%–35%, one primary chart in the lower right 55%–65%｜2–3 blocks｜Single-violet series + priority star marker｜Not suitable for a multi-topic collage.
+Multi-case gallery slide｜Best for 2–3 parallel cases｜Image above text in each column, with photographs occupying the upper half of the slide｜2 blocks per case｜Square-corner photographs + left-aligned titles｜Not suitable when the three items have unequal importance.
+Black-field image opener｜Best for a section transition or single-sentence viewpoint｜Black field 44% + photograph 56%｜1 sentence + 1 image｜Large reversed title｜Not suitable for evidence or action lists.
+
+【Density Baseline】
+Long-form pages in the source deck typically contain 2–5 text blocks totaling approximately 900–1800 Latin characters. To preserve the shared SlideX design guide scanability in a new business report, retain columns but compress the content to 2–3 blocks, each with an 80–160 words/characters equivalent. Image-text slides should use 1 large image + 1–3 explanatory blocks; data overview slides should contain 4–8 evidence modules; chart slides should contain 1 primary chart or 2–4 microcharts. Label progress bars, bubbles, and horizontal bars in place; vertical bars rely on the y-axis and should not label every bar, highlighting only 1–2 priorities. Keep whitespace at the left entry margin, between columns, and in the bottom footer band. Image-led openers and data slides should differ clearly in density; do not impose a hard deck-wide floor.

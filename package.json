@@ -19,6 +19,8 @@
     "!app/types",
     "docs",
     "skills",
+    "!skills/**/__pycache__",
+    "!skills/**/*.pyc",
     "LICENSE"
   ],
   "scripts": {

@@ -24,4 +24,6 @@ try{
   assert.equal((await fetch(url)).status,200);assert.equal((await(await fetch(url+'/api/deck')).json()).errors.length,0);
 }finally{child.kill();}
 const skill=await unzipIndependent(fs.readFileSync(path.resolve('release',version,`slidex-skill-${version}.zip`)));assert.ok(skill.has('slidex/SKILL.md'));assert.ok(skill.has('slidex/references/authoring.md'));
+assert.equal([...skill.keys()].filter(name=>/^slidex\/references\/design-systems\/[^/]+\/[^/]+\/design\.md$/.test(name)).length,30);
+assert.ok(![...skill.keys()].some(name=>name.includes('__pycache__')||name.endsWith('.pyc')));
 console.log('PASS installed CLI: init/validate/format/language/serve'+(process.argv.includes('--render')?'/PNG':'')+'; skill ZIP:',temp);

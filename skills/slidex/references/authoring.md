@@ -26,7 +26,7 @@ Syntax rules: unique `<deck>` root; tags lowercase and closed; attributes quoted
 
 Optional deck metadata uses `<metadata author="..." created-at="2026-09-28T08:30:00.000Z" modified-by="..." modified-at="..." last-machine="..."/>`. The editor fills it on new/save-as and updates the modification fields on save. Manual XML edits do not update it automatically.
 
-Common element attributes: `id` (unique per page; auto-generated `e1, e2, …` when omitted), `x y w h` (required, except `line`), `rotation` (degrees), `opacity` [0,1], `flip-h`/`flip-v`, `href` (external `https://` / `mailto:`, or internal `slide:<slide-id>`), `alt` (accessibility), `locked`, `label`, `hidden`, `lock-aspect`.
+Common element attributes: `id` (unique per page; auto-generated `e1, e2, …` when omitted), `x y w h` (required, including `line`; horizontal/vertical lines may validate with zero height/width), `rotation` (degrees), `opacity` [0,1], `flip-h`/`flip-v`, `href` (external `https://` / `mailto:`, or internal `slide:<slide-id>`), `alt` (accessibility), `locked`, `label`, `hidden`, `lock-aspect`. Line `points` are local coordinates relative to the element's `x y`, not absolute page positions. For reliable visible strokes, give a horizontal line a small positive height at least as large as its stroke and center the points within it (for example `h="2" points="0,1 848,1"`); use the analogous positive width for a vertical line.
 
 `<slide>` attributes: `type` (`cover | toc | section | content | final | custom string`), `background` (solid color, or a `<fill>` child for gradients/images), `notes` (plain-text speaker notes; newline as `&#10;`), `master`, `transition` (`none | fade | slide-left | slide-up | zoom`, default `none`), `guides-x`/`guides-y` (editor guides only).
 
@@ -58,7 +58,7 @@ Define the design once in `<theme>` (a direct child of `<deck>`) and reference i
 - `$name` in any color attribute resolves to a palette color; `$name` on `<text>`/`<td>` resolves to a text style; `$name` on `<table>` resolves to a table style. Missing names are validation errors (`E_THEME_REF`).
 - Style values may reference palette colors (one level); palette values must be literals (`E_THEME_CYCLE` otherwise). Colors are `#RRGGBB` or `#RRGGBBAA`.
 - `<master id="brand" background="$paper">` holds elements shared across pages (logo, page numbers, footer rules); a `<slide master="brand">` renders master elements beneath its own content. Master elements are not selectable on the editor canvas.
-- `<fonts><font family="JetBrains Mono" src="https://fonts.googleapis.com/css2?family=JetBrains+Mono"/></fonts>` injects Google Fonts at render time; offline rendering silently falls back to system fonts.
+- `<fonts><font family="JetBrains Mono" src="https://fonts.googleapis.com/css2?family=JetBrains+Mono"/></fonts>` injects Google Fonts at render time; offline rendering can fall back to system fonts. Fonts are not embedded in PPTX. See [fonts.md](fonts.md) for role/language selection and actual installation checks. `font-family` is a string, not a PPTD `{latin, ea}` object.
 
 ## Style inheritance
 
@@ -94,7 +94,7 @@ Gradient and image fills use a `<fill>` child (`type="gradient" angle="90"` with
 
 ## Multi-file projects
 
-An entry `deck.slx` may pull pages in with `<include src="pages/intro.slx"/>` (direct child of `<deck>` or of a `<slides>` root). Fragment roots are `<slide>` or `<slides>`; include paths resolve relative to the declaring file; files and local media must stay inside the entry deck's directory (no `..`, no symlink escapes). Includes must not be missing, circular, duplicated, or deeper than 32 levels. Page IDs stay unique across the whole project; object IDs are unique within their page; animations and `href="slide:…"` targets resolve within the project. The visual editor saves multi-file projects as new `.slidex-pages/` snapshots plus an atomic entry-manifest update; original fragments are not overwritten.
+An entry `deck.slx` may pull pages in with `<include src="pages/intro.slx"/>` (direct child of `<deck>` or of a `<slides>` root). Fragment roots are `<slide>` or `<slides>`; include and media paths resolve relative to the declaring file. A fragment in `pages/` references shared media as `../media/photo.jpg`. Resolved paths must stay inside the entry deck directory; parent segments are allowed only within that boundary, and symlink escapes are rejected. Includes must not be missing, circular, duplicated, or deeper than 32 levels. Page IDs stay unique across the whole project; object IDs are unique within their page; animations and `href="slide:…"` targets resolve within the project. The visual editor saves multi-file projects as new `.slidex-pages/` snapshots plus an atomic entry-manifest update; original fragments are not overwritten. See [project organization](project-organization.md).
 
 ## CLI commands
 
@@ -128,6 +128,6 @@ Machine-readable contracts:
 | `pdf` | Sharing or printing | Whole deck; vector selectable text; fonts affect layout |
 | `html` | A standalone browser player | Inlines CSS/JS/local media/KaTeX/Font Awesome; explicitly remote assets still need network |
 | `pptx` | A visually oriented handoff | Full-slide images at deck resolution (1×); `notes` become real speaker notes; not object-editable |
-| `pptx --editable` | Editing supported objects in PowerPoint | Text, basic shapes, images, lines/arrows map to native objects; non-stacked bar/line/area/pie/scatter charts embed natively with XLSX data; complex content (radar/bubble/waterfall, code, formulas, icons, custom shapes, masked images, nested groups beyond the supported set) rasterizes; Office fonts and wrapping may differ; element animations mostly unsupported |
+| `pptx --editable` | Editing supported objects in PowerPoint | Supported text/shapes/lines, tables, recursive groups, convertible formulas and basic bar/line/area/pie/scatter charts with XLSX data can be native. Chart properties, image fitting/masks, complex styles, formula syntax and animation settings can trigger fallbacks; Office fonts/wrapping may differ. See [PPTX delivery](pptx-delivery.md) and the actual capability report. |
 
 Visual fidelity and editability are separate choices. Installed fonts affect wrapping; font availability checks do not guarantee glyph coverage on the recipient's machine. Read the capability report and describe material fallbacks rather than promising pixel-identical editable output.
