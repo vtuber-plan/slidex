@@ -194,6 +194,8 @@ sec('7. 差距补齐（W_OVERFLOW/W_KATEX_OFFLINE · PPTX 链接/字距/阴影 �
     ['test/react-menus.mjs', hasChrome],
     ['test/dsl-tools.mjs', hasChrome],
     ['test/pptx-integrity.mjs', true],
+    ['test/pptx-import.mjs', true],
+    ['test/pptx-import-browser.mjs', hasChrome],
     ['test/pptx-native-recovery.mjs', hasChrome],
     ['test/release-manifest.mjs', true],
     ['test/export-reliability.mjs', true],

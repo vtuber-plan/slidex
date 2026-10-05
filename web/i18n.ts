@@ -291,6 +291,14 @@ DSL 源码与检查…|DSL source and diagnostics…
 放映|Present
 文件|File
 输入 .slx 文件的完整路径|Enter the full path to a .slx file
+输入 .slx 或 .pptx 文件的完整路径；PPTX 将有损导入到新项目，原文件保持不变。|Enter a .slx or .pptx file path. PPTX imports create a new project with conversion losses; the original is preserved.
+PPTX 有损导入完成|PPTX imported with conversion losses
+正在导入 PPTX…|Importing PPTX…
+正在转换为新的可编辑项目，完成后会显示损失报告。|Converting to a new editable project. A conversion report will appear when complete.
+原 PPTX 已保留在新项目中。请检查字体、换行、图表和占位对象。|The original PPTX is preserved in the new project. Review fonts, wrapping, charts and placeholder objects.
+可编辑元素|Editable elements
+占位对象|Placeholder objects
+完整导入报告|Full import report
 打开本地文件|Open local file
 下载 XML 文档|Download XML
 撤销|Undo

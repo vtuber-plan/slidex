@@ -30,6 +30,17 @@ const hasFlag = (name: string): boolean => args.includes(name);
 
 async function main() {
   switch (cmd) {
+    case 'import': {
+      const file = args[1];
+      if (!file || file.startsWith('-')) throw Error('用法: slidex import <deck.pptx> [--out <新项目目录>] [--json]');
+      const output = flag('--out');
+      if (hasFlag('--out') && (!output || output.startsWith('-'))) throw Error('--out 需要新的项目目录。');
+      const { importPptx } = await import('./import/pptx.js');
+      const result = await importPptx(file, output);
+      if (hasFlag('--json')) console.log(JSON.stringify(result));
+      else console.log(`已导入 ${result.report.pages} 页（有损）\n  → ${result.path}\n  → ${result.reportPath}\n原 PPTX 已保留；请检查占位、字体和排版。\n  slidex serve "${result.path}" 开始编辑`);
+      break;
+    }
     case 'language':{
       const file=args[1];if(!file)die('用法: slidex language <deck.slx> [--offset N]');
       const {languageInfo}=await import('./language.js');
@@ -168,6 +179,7 @@ async function main() {
 
 用法:
   slidex init [目录名]                 新建项目脚手架
+  slidex import <deck.pptx> [--out <新目录>] [--json]  有损导入为可编辑 SLX 项目
   slidex serve  <deck.slx> [--port N]  打开编辑器（默认 4870）
   slidex present <deck.slx>            打开放映模式
   slidex validate <deck.slx>           校验（错误/警告，带行号）
@@ -191,4 +203,4 @@ async function main() {
 function die(msg: string): never { console.error(msg); process.exit(1); }
 
 
-main().catch(e => { if(cmd==='export'&&hasFlag('--json'))console.log(JSON.stringify({status:'failed',error:String(e && (e as Error).message||e)}));else console.error(e && (e as Error).stack || e); process.exit(1); });
+main().catch(e => { if(['export','import'].includes(cmd)&&hasFlag('--json'))console.log(JSON.stringify({status:'failed',error:String(e && (e as Error).message||e)}));else console.error(e && (e as Error).stack || e); process.exit(1); });

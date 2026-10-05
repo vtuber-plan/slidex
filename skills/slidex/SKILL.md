@@ -1,6 +1,6 @@
 ---
 name: slidex
-description: Create, edit, beautify and export SlideX presentations with the local CLI. Use for .slx projects, decks authored with SlideX, visual-reference recreation, and SlideX validation/export to PPTX, PNG, PDF or HTML. Includes 30 design systems, typography guidance and visual QA helpers.
+description: Create, edit, beautify and export SlideX presentations with the local CLI. Use for .slx projects, lossy PPTX-to-SLX import and editing, visual-reference recreation, and SlideX validation/export to PPTX, PNG, PDF or HTML. Includes 30 design systems, typography guidance and visual QA helpers.
 ---
 
 # SlideX presentations
@@ -9,7 +9,7 @@ SlideX authors readable XML `.slx` projects with themes, masters, geometry and r
 
 Default delivery is a **self-contained project directory** plus the user's requested exports. For a generic presentation request with no specified format, deliver the project and editable PPTX (`-f pptx --editable`). Explicit formats win. Validation must have zero errors, warnings must be reviewed, source images must be visually reviewed when possible, and every export capability report must be inspected. Report unavailable QA or blocked exports as partial/unverified; never claim checks that did not run.
 
-SlideX has no PPTX-to-SLX importer. For existing PPTX-only input, explain this boundary and recreate from inspectable rendered pages, or obtain source SLX when source editing is necessary. Never invent an import command or describe recreation as conversion.
+Existing PPTX can be imported into a **new editable SLX project with losses** using a runtime that exposes `slidex import`. Read the import guide first. Preserve the original file, inspect the import report and compare rendered pages against the source when possible. Unsupported objects use visible placeholders, not rendered snapshots. Import/re-export does not guarantee identical Office layout or lossless round trips. Older installed runtimes may lack this command: check `help` first.
 
 ## Read only what the task needs
 
@@ -18,6 +18,7 @@ Resolve the absolute directory containing this loaded `SKILL.md`; references and
 | Task | Read |
 | --- | --- |
 | Write/edit XML | [Authoring](references/authoring.md) — document model, actual attributes, CLI outputs |
+| Import/edit an existing PPTX | [PPTX import](references/importing-pptx.md) — command, losses, original preservation, review |
 | New design or beautification | [Design](references/design.md) and [fonts](references/fonts.md) |
 | Choose/use a preset | [30-system catalog](references/design-systems/index.md), then only the selected `design.md` |
 | Multi-page source organization or project handoff | [Project organization](references/project-organization.md) |
@@ -47,6 +48,7 @@ For substantial new decks, author and render a cover, one typical evidence page 
 
 - **New deck**: follow the chosen design, fonts and source-organization references. Keep XML within the actual authoring schema; never invent attributes, component tags, page-number tokens or CLI flags. Use theme references rather than duplicating role colors/styles.
 - **Existing SLX/template**: inspect structure and relevant pages first. Reuse tokens, masters, identity and visual language. Keep changes scoped; preserve slide/object IDs and link/animation targets unless restructuring is required. Prefer the version-checked patch protocol described below for incremental edits.
+- **Existing PPTX**: import to a new project, inspect every issue/placeholder and render all imported pages, then edit the SLX. Compare original and imported pages before substantial redesign. Reconstruct unsupported content from source evidence; never silently delete it or deliver placeholders as finished slides. Keep the original and both import/export reports in the project.
 - **Visual recreation**: estimate geometry and styles from inspected source pages; use full-resolution detail and crops for unclear regions. Recreate supported elements; use real cropped assets for photos/screenshots and suitable icons/shapes for simpler content. Call it an SLX recreation.
 - **Style transfer**: inspect the reference's appearance, not only text; extract palette, typography, density, layouts and reusable motifs into the new theme/master. Keep transferable identity while correcting poor readability.
 

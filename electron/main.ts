@@ -34,15 +34,15 @@ async function openDeckDialog(): Promise<void> {
   if (!win) return;
   const r = await dialog.showOpenDialog(win, {
     title: M('打开 SlideX 演示', 'Open SlideX deck'),
-    filters: [{ name: 'SlideX', extensions: ['slx'] }],
+    filters: [{ name: 'SlideX / PowerPoint', extensions: ['slx', 'pptx'] }],
     properties: ['openFile'],
   });
   if (r.canceled || !r.filePaths[0]) return;
   const opened = await win.webContents.executeJavaScript(`window.__slxOpenDocument?.(${JSON.stringify(r.filePaths[0])})`).catch(() => false);
   if (opened) {
-    deckFile = r.filePaths[0];
-    app.addRecentDocument(deckFile);
-    win.setTitle(`SlideX — ${deckFile}`);
+    // onOpen receives the actual SLX path, including newly imported PPTX projects.
+    if (deckFile) app.addRecentDocument(deckFile);
+    win.setTitle(`SlideX — ${deckFile || ''}`);
   }
 }
 
@@ -256,7 +256,7 @@ app.whenReady().then(async () => {
     return {outputFile:picked.filePath};
   }, pickDeck: async () => {
     if (!win) return undefined;
-    const result = await dialog.showOpenDialog(win, { title: M('打开 SlideX 演示', 'Open SlideX deck'), filters: [{ name: 'SlideX', extensions: ['slx'] }], properties: ['openFile'] });
+    const result = await dialog.showOpenDialog(win, { title: M('打开 SlideX 演示', 'Open SlideX deck'), filters: [{ name: 'SlideX / PowerPoint', extensions: ['slx', 'pptx'] }], properties: ['openFile'] });
     return result.canceled ? undefined : result.filePaths[0];
   } });
   baseUrl = `http://127.0.0.1:${server.port}`;

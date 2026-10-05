@@ -82,6 +82,17 @@ PNG 和图片式 PPTX 固定按文稿原始尺寸（1×）渲染，减少 PowerP
 
 静态导出只保留最终画面，不包含放映器的全部动画效果。详见[导出效果与已知限制](docs/export-reliability.md)。
 
+## PPTX 导入
+
+当前源码已提供实验性的 **PPTX 有损导入**；旧版 CLI 和已发布桌面包可能尚未包含。构建源码后运行：
+
+```sh
+node dist/cli.js import presentation.pptx --out imported-project --json
+node dist/cli.js serve imported-project/deck.slx
+```
+
+编辑器「打开本地文件」也支持 PPTX。导入生成新的 SLX 项目，包含提取的媒体、`original.pptx` 和 `import.report.json`。支持范围内的文字、形状、组合、图片、表格及基础图表缓存保持可编辑；不支持的对象使用可见占位。Office 换行、母版继承和复杂效果可能变化。原文件保持不变，已有输出目录不会被覆盖。编辑或再导出前需检查报告和渲染页面。详见 [转换范围与限制](docs/pptx-import.md) 和 [AI 导入指南](skills/slidex/references/importing-pptx.md)。
+
 ## 安装 AI Skill
 
 [SlideX Skill](skills/slidex/SKILL.md) 包含 [30 套设计系统](skills/slidex/references/design-systems/index.md)、字体与项目组织指南，以及自动拼接缩略图、检查 PPTX 包结构的 Python 工具，指导 AI 编写、校验、视觉检查和导出文稿。Skill **不包含 SlideX 命令行运行时**。请先安装 `@xiahan/slidex@next`，再从 [GitHub Releases](https://github.com/vtuber-plan/slidex/releases) 下载 `slidex-skill-<版本>.zip`，安装完整的 `slidex/` 文件夹。缩略图工具另需 Python 3.10+ 和 Pillow 10+；PPTX 检查工具只用 Python 标准库。当前 PPTX 导出不嵌入字体。

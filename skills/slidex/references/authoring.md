@@ -98,6 +98,8 @@ An entry `deck.slx` may pull pages in with `<include src="pages/intro.slx"/>` (d
 
 ## CLI commands
 
+PPTX sources: use `slidex import source.pptx --out new-project --json` after checking runtime help. Read [PPTX import](importing-pptx.md) for the lossy subset and required review; subsequent commands operate on the generated `deck.slx`.
+
 ```sh
 slidex version                                # also: slidex help
 slidex init my-deck                           # refuses an existing deck

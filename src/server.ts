@@ -245,15 +245,32 @@ export function startServer(deckPath: string, opts: { port?: number; host?: stri
     }
     if (req.method === 'POST' && p === '/api/open') {
       const { path: newPath } = await readBody(req);
+      if (typeof newPath !== 'string' || !newPath.trim()) { send(res, 400, { ok: false, error: '请选择演示文稿文件。' }); return; }
       const abs2 = path.resolve(newPath || '');
-      if (!fs.existsSync(abs2) || !fs.statSync(abs2).isFile() || !abs2.toLowerCase().endsWith('.slx')) { send(res, 200, { ok: false, error: '不是有效的 .slx 文件' }); return; }
-      const parsed = loadProject(abs2);
+      if (!fs.existsSync(abs2) || !fs.statSync(abs2).isFile() || !/\.(slx|pptx)$/i.test(abs2)) { send(res, 200, { ok: false, error: '不是有效的 .slx 或 .pptx 文件' }); return; }
+      let opened = abs2;
+      let imported: import('./import/pptx.js').ImportResult | undefined;
+      if (abs2.toLowerCase().endsWith('.pptx')) {
+        const previousFile = deckFile;
+        const previousVersion = currentProject().version;
+        const { importPptx } = await import('./import/pptx.js');
+        const base = path.join(path.dirname(abs2), path.basename(abs2, path.extname(abs2)) + '-imported');
+        let destination = base;
+        for (let suffix = 2; fs.existsSync(destination); suffix++) {
+          if (suffix > 1000) throw Error('导入目录重名过多，请通过 CLI 指定新目录。');
+          destination = base + '-' + suffix;
+        }
+        imported = await importPptx(abs2, destination);
+        opened = imported.path;
+        if (deckFile !== previousFile || currentProject().version !== previousVersion) { send(res, 409, { ok: false, error: '当前文档已切换或变化；导入项目已生成：' + opened }); return; }
+      }
+      const parsed = loadProject(opened);
       if (parsed.errors.length) { send(res, 200, { ok: false, error: parsed.errors.map(e => e.message).join('\n') }); return; }
-      deckFile = abs2;
-      deckDir = path.dirname(abs2);
+      deckFile = opened;
+      deckDir = path.dirname(opened);
       virtualXml=null;cached=undefined;
       opts.onOpen?.(deckFile);
-      send(res, 200, { ok: true, path: deckFile, dir: deckDir });
+      send(res, 200, { ok: true, path: deckFile, dir: deckDir, ...(imported ? { imported: true, report: imported.report, reportPath: imported.reportPath } : {}) });
       return;
     }
     if (req.method === 'POST' && p === '/api/save') {

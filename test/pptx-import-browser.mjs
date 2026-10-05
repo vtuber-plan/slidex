@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {parseSlideX} from '../dist/ir.js';
+import {loadProject} from '../dist/project.js';
+import {buildPptxEditable,planSlide} from '../dist/export/pptx-native.js';
+import {exportDeck} from '../dist/export/export.js';
+import {withBrowser} from '../dist/export/capture.js';
+import {startServer} from '../dist/server.js';
+import {unzipIndependent} from './pptx-integrity.mjs';
+
+const directory=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-import-browser-'));
+const flatten=elements=>elements.flatMap(el=>el.type==='group'?[el,...flatten(el.elements||[])]:[el]);
+let server;
+try {
+  const active=path.join(directory,'active.slx'),source=path.join(directory,'source.pptx');
+  fs.writeFileSync(active,'<deck><slide id="old"><text id="old-title" x="20" y="20" w="600" h="100">Existing project</text></slide></deck>');
+  const rows=Array.from({length:12},(_,index)=>`<tr><td font-size="10.5">Row ${index+1}</td></tr>`).join('');
+  const deck=parseSlideX(`<deck width="960" height="540"><slide id="one"><text id="title" x="60" y="60" w="800" h="160" font-size="32"><p>Imported first line</p><p>Imported second line</p></text><table id="dense" x="60" y="200" w="800" h="336"><cols>1</cols>${rows}</table></slide></deck>`).deck;
+  const bytes=await buildPptxEditable({deck,deckDir:directory,plans:deck.slides.map(s=>planSlide(deck,s)),cropBuffers:new Map(),width:960,height:540});
+  fs.writeFileSync(source,bytes);
+  server=await startServer(active,{port:0,preferencesFile:path.join(directory,'preferences.json')});
+  await withBrowser(async browser=>{
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.setViewport({width:1440,height:1000});
+    await page.goto(`http://127.0.0.1:${server.port}`);
+    await page.waitForSelector('#canvasHost [data-id="old-title"]');
+    assert.equal(await page.evaluate(file=>window.__slxOpenDocument(file),source),true);
+    await page.waitForFunction(()=>document.querySelector('[role="dialog"]')?.textContent.includes('PPTX 有损导入完成'));
+    assert.match(await page.$eval('[role="dialog"]',el=>el.textContent),/PPTX.*导入|PPTX imported/);
+    assert.match(await page.$eval('[role="dialog"]',el=>el.textContent),/import\.report\.json/);
+    const imported=path.join(directory,'source-imported','deck.slx');
+    assert.equal(loadProject(imported).errors.length,0);
+    await page.click('[role="dialog"] button');
+    await page.waitForSelector('[role="dialog"]',{hidden:true});
+    const id=loadProject(imported).deck.slides[0].elements.find(el=>el.type==='text').id;
+    await page.waitForSelector(`#canvasHost [data-id="${id}"]`);
+    // A renderer-level regression: paragraph formatting must not create an extra blank line.
+    const gaps=await page.$eval(`#canvasHost [data-id="${id}"]`,el=>{
+      const paragraphs=Array.from(el.querySelectorAll('p')).map(p=>p.getBoundingClientRect());
+      return {first:paragraphs[0].height,gap:paragraphs[1].top-paragraphs[0].bottom};
+    });
+    assert.ok(gaps.first>0&&Math.abs(gaps.gap)<1,JSON.stringify(gaps));
+    const tableSize=await page.$eval('#canvasHost table',table=>({height:table.getBoundingClientRect().height,box:table.closest('.slx-el').getBoundingClientRect().height,rows:table.rows.length}));
+    assert.equal(tableSize.rows,12);assert.ok(tableSize.height<=tableSize.box+1,JSON.stringify(tableSize));
+    const table=flatten(loadProject(imported).deck.slides[0].elements).find(el=>el.type==='table');
+    assert.equal(table.rowsData[0][0]['font-size'],'10.5');
+    await page.click(`#canvasHost [data-id="${id}"]`,{clickCount:2});
+    await page.waitForSelector('.ProseMirror');
+    await page.keyboard.down('Control');await page.keyboard.press('a');await page.keyboard.up('Control');
+    await page.keyboard.type('Edited imported title');
+    await page.locator('.rich-editor button::-p-text(完成)').click();
+    await page.keyboard.down('Control');await page.keyboard.press('s');await page.keyboard.up('Control');
+    await page.waitForFunction(async()=>{const state=await(await fetch('/api/deck')).json();return state.xml.includes('Edited imported title');});
+    assert.ok(loadProject(imported).deck.slides[0].elements.some(el=>el.content?.includes('Edited imported title')));
+    assert.deepEqual(fs.readFileSync(source),bytes);
+    assert.match(fs.readFileSync(active,'utf8'),/Existing project/);
+    const bad=path.join(directory,'bad.pptx');fs.writeFileSync(bad,'Invalid ZIP');
+    assert.equal(await page.evaluate(file=>window.__slxOpenDocument(file),bad),false);
+    assert.equal((await(await fetch(`http://127.0.0.1:${server.port}/api/deck`)).json()).path,imported);
+    assert.deepEqual(errors,[]);
+    await page.close();
+  });
+  const exported=await exportDeck(path.join(directory,'source-imported','deck.slx'),{format:'pptx',editable:true});
+  const parts=await unzipIndependent(fs.readFileSync(exported.files.find(file=>file.endsWith('.pptx'))));
+  assert.match(parts.get('ppt/slides/slide1.xml').toString(),/Edited imported title/);
+  assert.match(parts.get('ppt/slides/slide1.xml').toString(),/Row 12/);
+  console.log('PASS PPTX browser import: loss notice, paragraphs/dense table fit, edit/save, original preservation, failed-open recovery and real editable re-export');
+} finally {server?.close();fs.rmSync(directory,{recursive:true,force:true});}

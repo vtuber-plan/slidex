@@ -80,6 +80,17 @@ PNG and image-based PPTX use page images at the deck's native resolution (1×). 
 
 Static exports show the final visual state, not the viewer's full animation behavior. See [export fidelity and limitations](docs/export-reliability.md).
 
+## Import an existing PPTX
+
+The current source includes experimental **lossy PPTX import**; older published runtimes may not expose it. After building this checkout:
+
+```sh
+node dist/cli.js import presentation.pptx --out imported-project --json
+node dist/cli.js serve imported-project/deck.slx
+```
+
+The editor's Open local file also accepts PPTX. Import creates a new SLX project with extracted media, `original.pptx` and `import.report.json`. Supported text, shapes, groups, pictures, tables and basic cached chart data remain editable. Unsupported objects use visible placeholders; Office text layout, master inheritance and advanced effects may change. The original stays untouched, and existing output directories are rejected. Review the report and rendered pages before editing or re-exporting. See [supported content and limitations](docs/pptx-import.md) and the [AI import workflow](skills/slidex/references/importing-pptx.md).
+
 ## Install the AI skill
 
 The [SlideX skill](skills/slidex/SKILL.md) includes [30 design systems](skills/slidex/references/design-systems/index.md), font and project-organization guides, and Python helpers for contact sheets and PPTX package inspection. It guides an agent through authoring, validation, page-image review and export reports; it does **not** bundle the CLI runtime. Install `@xiahan/slidex@next` separately, then download `slidex-skill-<version>.zip` from [GitHub Releases](https://github.com/vtuber-plan/slidex/releases). The ZIP contains the complete `slidex/` skill folder. Contact sheets additionally need Python 3.10+ and Pillow 10+; PPTX inspection uses the Python standard library. Current PPTX exports do not embed fonts.

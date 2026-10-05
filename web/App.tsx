@@ -114,6 +114,8 @@ export default function App() {
   const {settings:layoutSettings}=useLayoutPreferences();
   const [rightWidth, setRightWidth] = usePanelSize("right", 300);
   const [openFile, setOpenFile] = useState(false), [filePath, setFilePath] = useState("");
+  const [importNotice, setImportNotice] = useState<{reportPath: string; report: import('../src/import/pptx').ImportReport} | null>(null);
+  const [importingPptx, setImportingPptx] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [replacingFile, setReplacingFile] = useState(false);
@@ -181,16 +183,18 @@ export default function App() {
     try {
       setOpenFile(false);
       if (!(await confirmBeforeReplace())) return false;
+      setImportingPptx(/\.pptx$/i.test(path.trim()));
       const response = await fetch("/api/open", {method:"POST", headers:{"Content-Type":"application/json"},body:JSON.stringify({path:path.trim()})});
       const data = await response.json();
       if (!data.ok) throw Error(data.error);
       await useEditor.getState().load();
+      if (data.imported) setImportNotice({reportPath:data.reportPath,report:data.report});
       setInspectorTab("design");
       if(source){history.replaceState({},'', '/');sourceRef.current=false;setSource(false);}
       setOpenFile(false);
       return true;
     } catch (error) { useEditor.setState({error:String(error)}); return false; }
-    finally { replaceInProgress.current = false; setReplacingFile(false); }
+    finally { replaceInProgress.current = false; setReplacingFile(false); setImportingPptx(false); }
   }
   async function pickOpenDocument(){
     try{const data=await(await fetch('/api/pick-file',{method:'POST'})).json();if(!data.native)setOpenFile(true);else if(data.path)await openDocument(data.path);}catch(error){useEditor.setState({error:String(error)});}
@@ -990,6 +994,18 @@ export default function App() {
                 </Button>
               </div>
             )}
+            <Dialog.Root open={importNotice!==null} onOpenChange={open=>{if(!open)setImportNotice(null);}}>
+              <Dialog.Content maxWidth="640px">
+                <Dialog.Title>{t('PPTX 有损导入完成')}</Dialog.Title>
+                <Dialog.Description mb="3">{t('原 PPTX 已保留在新项目中。请检查字体、换行、图表和占位对象。')}</Dialog.Description>
+                {importNotice&&<>
+                  <p>{importNotice.report.pages} {t('页')} · {importNotice.report.summary.editable} {t('可编辑元素')} · {importNotice.report.summary.images} {t('图片')} · {importNotice.report.summary.placeholders} {t('占位对象')}</p>
+                  <ul style={{maxHeight:260,overflow:'auto',paddingLeft:24}}>{importNotice.report.issues.slice(0,20).map((issue,index)=><li key={index}>{t('页')} {issue.page}: {issue.message}</li>)}</ul>
+                  <p>{t('完整导入报告')}:</p><code style={{display:'block',overflowWrap:'anywhere'}}>{importNotice.reportPath}</code>
+                </>}
+                <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}><Button onClick={()=>setImportNotice(null)}>{t('关闭')}</Button></div>
+              </Dialog.Content>
+            </Dialog.Root>
             <Dialog.Root open={preferences} onOpenChange={setPreferences}>
               <Dialog.Content maxWidth="460px">
                 <Dialog.Title>{t("偏好设置")}</Dialog.Title>
@@ -1198,12 +1214,18 @@ export default function App() {
             </div>
           </Dialog.Content>
         </Dialog.Root>
+        <Dialog.Root open={importingPptx}>
+          <Dialog.Content maxWidth="440px" onEscapeKeyDown={e=>e.preventDefault()} onPointerDownOutside={e=>e.preventDefault()}>
+            <Dialog.Title>{t('正在导入 PPTX…')}</Dialog.Title>
+            <Dialog.Description>{t('正在转换为新的可编辑项目，完成后会显示损失报告。')}</Dialog.Description>
+          </Dialog.Content>
+        </Dialog.Root>
         <Dialog.Root open={openFile} onOpenChange={setOpenFile}>
           <Dialog.Content maxWidth="540px">
             <Dialog.Title>{t("打开本地文件")}</Dialog.Title>
-            <Dialog.Description>{t("输入 .slx 文件的完整路径")}</Dialog.Description>
+            <Dialog.Description>{t("输入 .slx 或 .pptx 文件的完整路径；PPTX 将有损导入到新项目，原文件保持不变。")}</Dialog.Description>
             <form onSubmit={e => { e.preventDefault(); void openDocument(filePath); }}>
-              <TextField.Root aria-label={t("文件路径")} value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="G:\\slides\\deck.slx" />
+              <TextField.Root aria-label={t("文件路径")} value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="G:\\slides\\deck.pptx" />
               <div className="dialog-actions"><Dialog.Close><Button type="button" variant="soft">{t("取消")}</Button></Dialog.Close><Button type="submit" disabled={!filePath.trim()}>{t("打开")}</Button></div>
             </form>
           </Dialog.Content>
