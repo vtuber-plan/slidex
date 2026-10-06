@@ -350,6 +350,8 @@ PPTX 有损导入完成|PPTX imported with conversion losses
 图标|Icon
 上传图片|Upload image
 更多|More
+更多工具|More tools
+关闭临时侧栏|Close temporary sidebar
 代码|Code
 公式|Formula
 文档检查通过|Document validated

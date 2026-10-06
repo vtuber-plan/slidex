@@ -16,7 +16,7 @@ function colorValue(value: string | undefined, fallback: string): string {
   return rgb ? `#${rgb.slice(1).map((part) => Number(part).toString(16).padStart(2, "0")).join("")}` : fallback;
 }
 
-export function TextRibbon() {
+export function TextRibbon({section='all'}:{section?:'font'|'paragraph'|'all';priority?:number}) {
   useLocale();
   const editor = useEditor();
   const selected = editor.selection.length === 1
@@ -145,7 +145,7 @@ export function TextRibbon() {
   });
   const activeAlignment = paragraphAlignments.some((value) => value !== paragraphAlignments[0]) ? "" : paragraphAlignments[0] || horizontal;
   return <div className="text-ribbon" data-rich-editor-ui>
-    <RibbonGroup label="字体">
+    {section!=='paragraph'&&<RibbonGroup label="字体">
       <fieldset className="text-ribbon-font" disabled={!canEdit}>
         <div className="text-ribbon-row">
           <input aria-label={t("字体")} list="text-ribbon-fonts" value={fontDraft} placeholder={t(view ? "混合字体" : "默认字体")}
@@ -188,8 +188,8 @@ export function TextRibbon() {
           <label title={t("文字背景")}><span>▧</span><input aria-label={t("文字背景")} type="color" value={colorValue(view ? common("backgroundColor", style.backgroundColor || "#ffffff") : style.backgroundColor, "#ffffff")} onChange={(event) => view ? format({ backgroundColor: event.target.value }) : patch({ backgroundColor: event.target.value })} /></label>
         </div>
       </fieldset>
-    </RibbonGroup>
-    <RibbonGroup label="段落">
+    </RibbonGroup>}
+    {section!=='font'&&<RibbonGroup label="段落">
       <fieldset className="text-ribbon-paragraph" disabled={!canEdit}>
         <div className="text-ribbon-row" role="group" aria-label={t("项目符号与缩进")}>
           <button aria-label={t("项目符号")} disabled={!view} onMouseDown={(event) => event.preventDefault()} onClick={() => toggleList("bullet_list")}><List size={16}/></button>
@@ -218,6 +218,6 @@ export function TextRibbon() {
           <label className="text-ribbon-wrap"><input aria-label={t("自动换行")} type="checkbox" checked={element.wrap !== false} onChange={(event) => patch({ wrap: event.target.checked })} />{t("换行")}</label>
         </div>
       </fieldset>
-    </RibbonGroup>
+    </RibbonGroup>}
   </div>;
 }

@@ -20,7 +20,7 @@ try {
     const text = async () => parseSlideX(await page.evaluate(() => window.__slxGetXml())).deck.slides[0].elements[0];
 
     assert.equal(await page.$eval('.ribbon-tab[aria-selected=true]', (node) => node.textContent), '编辑');
-    assert.deepEqual(await page.$$eval('.ribbon-panel > .ribbon-group, .ribbon-panel > .text-ribbon > .ribbon-group', (nodes) => nodes.map((node) => node.querySelector('.ribbon-group-label')?.textContent)), ['剪贴板', '幻灯片', '字体', '段落', '绘图', '编辑']);
+    assert.deepEqual(await page.$$eval('.ribbon-inline .ribbon-group', (nodes) => nodes.map((node) => node.querySelector('.ribbon-group-label')?.textContent)), ['剪贴板', '幻灯片', '字体', '段落', '绘图', '编辑']);
     assert.equal(await page.$eval('.text-ribbon-font', (node) => node.matches(':disabled')), true);
     await page.click('#canvasHost [data-id="title"]');
     await page.waitForSelector('.text-ribbon-font [aria-label="字号"]');

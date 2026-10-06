@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { t, useLocale } from "./i18n";
 
-export function RibbonGroup({ label, children }: { label: string; children: ReactNode }) {
+export function RibbonGroup({ label, children }: { label: string; children: ReactNode;priority?:number }) {
   return (
     <section className="ribbon-group">
       <div className="ribbon-group-tools">{children}</div>

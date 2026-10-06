@@ -97,6 +97,7 @@ try{
   assert.equal((await post(patch)).status,409);
   if(findBrowserPath()) await withBrowser(async browser=>{
     const page=await browser.newPage();
+    await page.setViewport({width:1440,height:900});
     await page.goto(base+'/render/0',{waitUntil:'networkidle0'});
     assert.match(await page.$eval('[data-id="photo"] > div',e=>getComputedStyle(e).clipPath),/polygon\(50% 0px, 100% 50%/);
     assert.equal(await page.$eval('.slx-slide',e=>getComputedStyle(e).backgroundImage.includes('radial-gradient')),true);

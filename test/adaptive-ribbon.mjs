@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+import {startServer} from '../dist/server.js';
+import {parseSlideX} from '../dist/ir.js';
+
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-adaptive-ribbon-'));
+const file=path.join(dir,'deck.slx');
+fs.writeFileSync(file,'<deck version="1" width="960" height="540"><slide id="one"><text id="title" x="80" y="80" w="700" h="100" font-size="28"><p>Adaptive ribbon title</p></text><shape id="shape" x="80" y="260" w="180" h="100"/></slide><slide id="two"/></deck>');
+const server=await startServer(file,{port:0,preferencesFile:path.join(dir,'preferences.json')});
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage(),errors=[];
+page.on('pageerror',error=>errors.push(error.message));
+const tick=()=>page.evaluate(()=>new Promise(resolve=>{
+  let frames=6;const step=()=>--frames?requestAnimationFrame(step):resolve();requestAnimationFrame(step);
+}));
+const resize=async width=>{await page.setViewport({width,height:900});await tick();};
+const tab=async name=>{await page.locator(`.ribbon-tab::-p-text(${name})`).click();await tick();};
+const geometry=()=>page.$eval('#canvasHost',element=>{const r=element.getBoundingClientRect();return [r.x,r.y,r.width,r.height];});
+const preferences=()=>page.evaluate(()=>[localStorage.getItem('slidex-left-collapsed'),localStorage.getItem('slidex-right-collapsed')]);
+const collapsed=side=>page.$eval('.editor-layout',(element,side)=>element.classList.contains(`${side}-collapsed`),side);
+const checkFit=async()=>{
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'window has no horizontal overflow');
+  assert.ok(await page.$eval('.ribbon-panel',element=>element.scrollWidth<=element.clientWidth&&element.scrollHeight<=element.clientHeight),'ribbon never wraps or clips a second tool row');
+  assert.ok(await page.$eval('.ribbon-inline',element=>element.scrollWidth<=element.clientWidth),'all visible groups fit in the ribbon');
+};
+try{
+  await resize(1440);
+  await page.goto(`http://127.0.0.1:${server.port}`,{waitUntil:'networkidle0'});await tick();
+  const homeTop=await page.$eval('.editor-layout',element=>element.getBoundingClientRect().top);
+  assert.ok(homeTop<190,`home top is compact: ${homeTop}px`);
+  await tab('设计');
+  const designTop=await page.$eval('.editor-layout',element=>element.getBoundingClientRect().top);
+  assert.ok(designTop<130&&homeTop-designTop>40,'simple tabs release unused toolbar space');
+  await tab('编辑');
+  const savedPreferences=await preferences();
+
+  await resize(1000);await checkFit();
+  assert.equal(await collapsed('right'),true);
+  assert.equal(await collapsed('left'),false);
+  const beforeDrawer=await geometry();
+  await page.click('[aria-label="展开属性栏"]');await tick();
+  assert.equal(await collapsed('right'),false);
+  assert.deepEqual(await geometry(),beforeDrawer,'temporary drawer does not resize the slide');
+  assert.ok(await page.$('.panel-scrim'));
+  assert.ok(await page.$eval('.properties-dock',element=>{const r=element.getBoundingClientRect();return r.right<=innerWidth&&r.left>=0;}),'properties drawer stays inside the viewport');
+  await page.screenshot({path:path.join(dir,'drawer-1000.png')});
+  await page.click('.panel-scrim');await tick();assert.equal(await collapsed('right'),true);
+  await page.click('[aria-label="展开属性栏"]');await page.keyboard.press('Escape');await tick();assert.equal(await collapsed('right'),true);
+  assert.deepEqual(await preferences(),savedPreferences,'temporary toggles do not overwrite wide-window preferences');
+
+  await page.click('#canvasHost [data-id="title"]');await tick();
+  assert.ok(await page.$('.ribbon-inline .text-ribbon-font'));
+  assert.ok(await page.$('.ribbon-inline .text-ribbon-paragraph'),'selected text prioritizes font and paragraph controls');
+  assert.ok(await page.$eval('.ribbon-overflow-bank',element=>element.inert&&getComputedStyle(element).visibility==='hidden'),'closed overflow tools are inaccessible');
+  await page.click('[aria-label="更多工具"]');await tick();
+  assert.equal(await page.$eval('.ribbon-more',element=>element.getAttribute('aria-expanded')),'true');
+  assert.ok(await page.$eval('.ribbon-overflow-bank',element=>{const r=element.getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;}));
+  await page.click('.ribbon-overflow-bank [aria-label="格式刷"]');
+  await page.waitForSelector('[role="menuitem"]');
+  assert.ok(await page.$eval('[role="menuitem"]',element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'nested menus appear above the overflow panel');
+  await page.locator('[role="menuitem"]::-p-text(复制格式)').click();
+  await page.click('.ribbon-overflow-bank [aria-label="查找替换"]');
+  await page.waitForSelector('[role="dialog"]');
+  await page.locator('[role="dialog"] input').fill('Adaptive');
+  await resize(1440);
+  assert.equal(await page.$eval('[role="dialog"] input',element=>element.value),'Adaptive','overflow relocation preserves tool state and its open dialog');
+  await page.keyboard.press('Escape');await page.waitForSelector('[role="dialog"]',{hidden:true});
+  await page.click('.ribbon-inline [aria-label="格式刷"]');
+  assert.notEqual(await page.$eval('[role="menuitem"]::-p-text(应用格式)',element=>element.getAttribute('aria-disabled')),'true','format brush retains copied formatting after moving into the ribbon');
+  await page.keyboard.press('Escape');
+  assert.equal(await collapsed('right'),false,'wide layout restores its original sidebar preference');
+
+  await resize(1000);
+  const beforeEdit=await geometry();
+  await page.click('#canvasHost [data-id="title"]',{clickCount:2});await page.waitForSelector('.ProseMirror');await tick();
+  assert.deepEqual(await geometry(),beforeEdit,'editing text keeps the canvas position and size');
+  assert.ok(await page.$('.ribbon-inline .text-ribbon-font'));
+  assert.ok(await page.$('.ribbon-inline .text-ribbon-paragraph'));
+  await page.focus('.ProseMirror');await page.keyboard.down('Control');await page.keyboard.press('a');await page.keyboard.up('Control');
+  await page.click('.text-ribbon-font [aria-label="加粗"]');
+  assert.ok(await page.$('.ProseMirror strong'),'inline formatting keeps the text selection');
+  await page.click('.text-ribbon-font [aria-label="字体"]',{clickCount:3});await page.keyboard.type('Consolas');
+  await resize(760);await checkFit();
+  assert.equal(await page.$eval('.text-ribbon-font [aria-label="字体"]',element=>element.value),'Consolas','resizing preserves an unfinished font draft');
+  assert.equal(await page.$eval('.text-ribbon-font [aria-label="字体"]',element=>document.activeElement===element),true,'a retained font input keeps focus');
+  await page.keyboard.press('Enter');
+  assert.match(await page.$eval('.ProseMirror',element=>element.innerHTML),/font-family:\s*Consolas/);
+  await page.click('[aria-label="更多工具"]');await tick();
+  assert.ok(await page.$('.ProseMirror'),'opening More retains inline text editing');
+  await page.click('.ribbon-overflow-bank .text-ribbon-paragraph [aria-label="编号"]');
+  assert.ok(await page.$('.ProseMirror ol'),'paragraph tools in More operate on the live text editor');
+  await page.keyboard.press('Escape');await page.focus('.ProseMirror');
+  await page.keyboard.press('Escape');await page.waitForSelector('.ProseMirror',{hidden:true});await tick();
+  assert.equal(await collapsed('left'),true);assert.equal(await collapsed('right'),true);
+  const beforeFilmstrip=await geometry();
+  await page.click('[aria-label="展开幻灯片栏"]');await tick();
+  assert.equal(await collapsed('left'),false);assert.deepEqual(await geometry(),beforeFilmstrip);
+  await page.click('.panel-scrim');await tick();assert.equal(await collapsed('left'),true);
+  assert.deepEqual(await preferences(),savedPreferences);
+  await page.click('[aria-label="更多工具"]');await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.ribbon-more',element=>element.getAttribute('aria-expanded')),'false');
+  assert.equal(await page.$eval('.ribbon-more',element=>document.activeElement===element),true,'Escape returns focus to More');
+  await page.focus('.ribbon-more');await page.keyboard.press('ArrowDown');await tick();
+  assert.ok(await page.evaluate(()=>!!document.activeElement?.closest('.ribbon-overflow-bank')),'More supports keyboard access');
+  await page.screenshot({path:path.join(dir,'overflow-760.png')});await page.keyboard.press('Escape');
+
+  await resize(400);await checkFit();
+  assert.ok(await page.$('.ribbon-overflow-bank .text-ribbon-font'));
+  await page.click('[aria-label="更多工具"]');
+  await page.click('.text-ribbon-font [aria-label="字体"]',{clickCount:3});await page.keyboard.type('Georgia');
+  await resize(760);
+  assert.ok(await page.$('.ribbon-inline .text-ribbon-font'));
+  assert.equal(await page.$eval('.text-ribbon-font [aria-label="字体"]',element=>document.activeElement===element),true,'moving a font input out of More keeps focus');
+  assert.equal(await page.$eval('.text-ribbon-font [aria-label="字体"]',element=>element.value),'Georgia');
+  assert.equal(parseSlideX(await page.evaluate(()=>window.__slxGetXml())).deck.slides[0].elements[0].fontFamily,undefined,'a DOM move does not commit an unfinished font draft');
+  await page.keyboard.press('Enter');await page.keyboard.press('Escape');
+
+  for(const name of ['插入','排列','视图','工具']){await tab(name);await checkFit();}
+  await resize(1000);
+  assert.equal(await page.evaluate(()=>window.__slxSave()),true);
+  await page.evaluate(async()=>{
+    const {values}=await(await fetch('/api/preferences')).json();
+    const response=await fetch('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...values,language:'en'})});
+    if(!response.ok)throw Error('Language preference update failed');
+  });await page.reload({waitUntil:'networkidle0'});await tick();await checkFit();
+  assert.equal(await page.$eval('html',element=>element.lang),'en');
+  await page.click('#canvasHost [data-id="title"]');await tick();await checkFit();
+  await page.screenshot({path:path.join(dir,'english-1000.png')});
+  await resize(1440);assert.equal(await collapsed('left'),false);assert.equal(await collapsed('right'),false);
+  assert.deepEqual(await preferences(),savedPreferences);
+  assert.equal(parseSlideX(await page.evaluate(()=>window.__slxGetXml())).deck.slides.length,2);
+  assert.deepEqual(errors,[]);
+  console.log(`PASS adaptive ribbon: task heights, overflow state/keyboard, text editing and temporary sidebars. Home ${homeTop}px, design ${designTop}px. Artifacts: ${dir}`);
+}finally{await browser.close();server.close();}

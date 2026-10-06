@@ -70,6 +70,7 @@ import { shapeSvg as shapePath } from "../src/render/shapes";
 import {shapePreset,SHAPE_PRESETS} from '../src/shape-library';
 import type { ElementType } from "../src/types";
 import {useSourceFiles} from './useSourceFiles';
+import {AdaptiveRibbon} from './AdaptiveRibbon';
 
 const SourceWorkspace = lazy(() => import("./SourceWorkspace").then(module => ({ default: module.SourceWorkspace })));
 
@@ -110,9 +111,10 @@ export default function App() {
     setRibbonTab(tab);
     if (tab !== "view" && inspectorTab === "masters") setInspectorTab("design");
   };
-  const [leftCollapsed,setLeftCollapsed]=useState(localStorage.getItem('slidex-left-collapsed')==='true');
-  const [rightCollapsed,setRightCollapsed]=useState(localStorage.getItem('slidex-right-collapsed')==='true');
-  useEffect(()=>{localStorage.setItem('slidex-left-collapsed',String(leftCollapsed));localStorage.setItem('slidex-right-collapsed',String(rightCollapsed));},[leftCollapsed,rightCollapsed]);
+  const [leftPreference,setLeftPreference]=useState(localStorage.getItem('slidex-left-collapsed')==='true');
+  const [rightPreference,setRightPreference]=useState(localStorage.getItem('slidex-right-collapsed')==='true');
+  const [temporaryPanels,setTemporaryPanels]=useState<{left?:boolean;right?:boolean}>({});
+  useEffect(()=>{localStorage.setItem('slidex-left-collapsed',String(leftPreference));localStorage.setItem('slidex-right-collapsed',String(rightPreference));},[leftPreference,rightPreference]);
   const [leftWidth, setLeftWidth] = usePanelSize("left", 168);
   const {settings:layoutSettings}=useLayoutPreferences();
   const [rightWidth, setRightWidth] = usePanelSize("right", 300);
@@ -177,8 +179,19 @@ export default function App() {
     localStorage.setItem("slidex-panel-left", String(leftWidth));
     localStorage.setItem("slidex-panel-right", String(rightWidth));
   }, [leftWidth, rightWidth]);
-  const rightSize = Math.min(rightWidth, Math.max(240, viewport - (leftCollapsed?340:480)));
-  const leftSize = Math.min(leftWidth, Math.max(120, viewport - (rightCollapsed?0:rightSize) - 340));
+  const narrow=viewport<=1100,compact=viewport<=760;
+  const leftCollapsed=narrow?(temporaryPanels.left??(compact||leftPreference)):leftPreference;
+  const rightCollapsed=narrow?(temporaryPanels.right??true):rightPreference;
+  const setLeftCollapsed=(hidden:boolean)=>narrow?setTemporaryPanels(current=>({...current,left:hidden})):setLeftPreference(hidden);
+  const setRightCollapsed=(hidden:boolean)=>narrow?setTemporaryPanels(current=>({...current,right:hidden})):setRightPreference(hidden);
+  useEffect(()=>{if(!narrow)setTemporaryPanels({});},[narrow]);
+  useEffect(()=>{
+    if(!narrow||rightCollapsed&&(!compact||leftCollapsed))return;
+    const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!event.defaultPrevented&&!useEditor.getState().editing&&!document.querySelector('[role=dialog]')&&!(event.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]')){setTemporaryPanels(current=>({...current,right:true,...(compact?{left:true}:{})}));}};
+    window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);
+  },[narrow,compact,leftCollapsed,rightCollapsed]);
+  const rightSize = narrow?Math.min(rightWidth,Math.max(240,viewport-32)):Math.min(rightWidth, Math.max(240, viewport - (leftCollapsed?340:480)));
+  const leftSize = Math.min(leftWidth, Math.max(120, viewport - (rightCollapsed||narrow?0:rightSize) - 340));
   async function openDocument(path: string) {
     if (replaceInProgress.current) return false;
     replaceInProgress.current = true;
@@ -268,6 +281,7 @@ export default function App() {
   const selectedDrawing = s.selection.length === 1
     ? container(s).elements.find((element) => element.id === s.selection[0] && element.type === "shape" && !element.locked)
     : undefined;
+  const textToolsActive=editingText||s.selection.length===1&&container(s).elements.some(element=>element.id===s.selection[0]&&element.type==='text'&&!element.locked);
   const [autosave, setAutosave] = useState(
     localStorage.getItem("slidex-autosave") !== "false",
   );
@@ -731,24 +745,26 @@ export default function App() {
               <Tool label={t(leftCollapsed?"展开幻灯片栏":"收起幻灯片栏")} onClick={()=>setLeftCollapsed(!leftCollapsed)}><PanelLeft size={16}/></Tool>
               <Tool label={t(rightCollapsed?"展开属性栏":"收起属性栏")} onClick={()=>{if(!rightCollapsed&&inspectorTab==="masters")setInspectorTab("design");setRightCollapsed(!rightCollapsed);}}><PanelRight size={16}/></Tool>
               </div>
-              <div className="ribbon-panel" id="ribbon-panel" role="tabpanel" aria-labelledby={`ribbon-tab-${ribbonTab}`}>
+              <div className="ribbon-panel" id="ribbon-panel" role="tabpanel" aria-labelledby={`ribbon-tab-${ribbonTab}`} data-tab={ribbonTab}>
+              <AdaptiveRibbon key={ribbonTab} density={ribbonTab==='home'?'full':'compact'}>
               {ribbonTab === "home" && <>
-              <RibbonGroup label={t("剪贴板")}>
+              <RibbonGroup label={t("剪贴板")} priority={20}>
                 <RibbonButton label="粘贴" onClick={s.paste} disabled={editingText}><FilePlus size={24} /></RibbonButton>
                 <div className="ribbon-command-stack">
                   <button aria-label={t("剪切")} disabled={editingText || !s.selection.length} onClick={() => { s.copy(); s.remove(); }}><span>✂</span>{t("剪切")}</button>
                   <button aria-label={t("复制")} disabled={editingText || !s.selection.length} onClick={s.copy}><Copy size={14} />{t("复制")}</button>
                 </div>
               </RibbonGroup>
-              <RibbonGroup label={t("幻灯片")}>
+              <RibbonGroup label={t("幻灯片")} priority={editingText?10:70}>
                 <RibbonButton label="新增页面" onClick={s.addPage} disabled={editingText}><Plus size={24}/></RibbonButton>
                 <div className="ribbon-command-stack">
                   <button aria-label={t("复制页面")} disabled={editingText} onClick={s.duplicatePage}><Copy size={14}/>{t("复制页面")}</button>
                   <button aria-label={t("删除页面")} disabled={editingText} onClick={s.deletePage}><Trash2 size={14}/>{t("删除页面")}</button>
                 </div>
               </RibbonGroup>
-              <TextRibbon />
-              <RibbonGroup label={t("绘图")}>
+              <TextRibbon section="font" priority={textToolsActive?100:0}/>
+              <TextRibbon section="paragraph" priority={textToolsActive?90:-5}/>
+              <RibbonGroup label={t("绘图")} priority={selectedDrawing?100:60}>
                 <div className="ribbon-shape-gallery" role="group" aria-label={t("形状")}>
                   <button aria-label={t("插入文本")} onClick={() => s.insert("text")}><Type size={17}/></button>
                   <button aria-label={t("插入线条")} onClick={() => s.insert("line")}><Minus size={17}/></button>
@@ -761,12 +777,11 @@ export default function App() {
                 </div>
                 <RibbonButton label="排列" onClick={() => selectRibbonTab("arrange")}><Group size={21}/></RibbonButton>
               </RibbonGroup>
-              <RibbonGroup label={t("编辑")}>
+              <RibbonGroup label={t("编辑")} priority={10}>
                 <EditingTools />
                 <Tool label={t("全选")} disabled={editingText} onClick={() => s.select(container(s).elements.filter((element) => !element.locked).map((element) => element.id))}><Grid2X2 size={16}/></Tool>
               </RibbonGroup>
               </>}
-              <div id="text-format-dock" data-rich-editor-ui hidden={ribbonTab !== "home" || !editingText} />
               {ribbonTab === "design" && <>
                 <RibbonGroup label={t("页面")}>
                   <Tool label={t("页面设计")} onClick={() => {
@@ -952,9 +967,11 @@ export default function App() {
                 </div>
               </RibbonGroup>
               </>}
+              </AdaptiveRibbon>
+              <div id="text-format-dock" data-rich-editor-ui hidden={ribbonTab !== "home" || !editingText} />
               </div>
             </div>
-            <div className={`editor-layout ${leftCollapsed?'left-collapsed':''} ${rightCollapsed?'right-collapsed':''}`} style={{gridTemplateColumns: `${leftCollapsed?0:leftSize}px ${leftCollapsed?0:6}px minmax(230px, 1fr) ${rightCollapsed?0:6}px ${rightCollapsed?0:rightSize}px`}}>
+            <div className={`editor-layout ${leftCollapsed?'left-collapsed':''} ${rightCollapsed?'right-collapsed':''} ${narrow?'narrow-layout':''} ${compact?'compact-layout':''}`} style={{gridTemplateColumns: `${leftCollapsed||compact?0:leftSize}px ${leftCollapsed||compact?0:6}px minmax(230px, 1fr) ${rightCollapsed||narrow?0:6}px ${rightCollapsed||narrow?0:rightSize}px`,'--right-panel-width':rightSize+'px','--left-panel-width':leftSize+'px'} as import('react').CSSProperties}>
               <aside className="filmstrip">
                 <div className="filmstrip-title">
                   <strong>{t("幻灯片")}</strong>
@@ -965,7 +982,7 @@ export default function App() {
                 </div>
                 <PageList deck={committedDeck}/>
               </aside>
-              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-(rightCollapsed?0:rightSize)-340)} />
+              <PanelResize name="调整幻灯片面板宽度" value={leftSize} onChange={setLeftWidth} min={120} max={Math.min(400, viewport-(rightCollapsed||narrow?0:rightSize)-340)} />
               <div className="canvas-and-tools">
                 <Canvas />
               </div>
@@ -973,6 +990,7 @@ export default function App() {
               <div className={`properties-dock ${s.editing ? "is-text-editing" : ""}`}>
                 <div className="object-inspector"><Inspector preview={() => setPresent(true)} tab={inspectorTab} setTab={setInspectorTab} /></div>
               </div>
+              {narrow&&(!rightCollapsed||compact&&!leftCollapsed)&&<button className="panel-scrim" aria-label={t('关闭临时侧栏')} onClick={()=>setTemporaryPanels(current=>({...current,right:true,...(compact?{left:true}:{})}))}/>}
             </div>
             <footer className="statusbar">
               <span>

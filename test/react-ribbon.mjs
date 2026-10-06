@@ -102,7 +102,7 @@ try {
   await page.screenshot({ path: path.join(dir, 'ribbon-arrange-940.png') });
   await page.setViewport({ width: 760, height: 700 });
   assert.ok(await page.$eval('.ribbon-panel', (el) => el.getBoundingClientRect().width <= innerWidth));
-  assert.ok(await page.$eval('.ribbon-panel', (el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight), 'narrow ribbon wraps without scrollbars');
+  assert.ok(await page.$eval('.ribbon-panel', (el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight), 'narrow ribbon uses overflow without scrollbars');
   await page.screenshot({ path: path.join(dir, 'ribbon-compact.png') });
   assert.deepEqual(errors, []);
   console.log('PASS ribbon tabs, insertion, undo, responsive layout:', dir);
