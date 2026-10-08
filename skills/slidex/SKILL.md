@@ -20,7 +20,7 @@ Resolve the absolute directory containing this loaded `SKILL.md`; references and
 | Write/edit XML | [Authoring](references/authoring.md) — document model, actual attributes, CLI outputs |
 | Import/edit an existing PPTX | [PPTX import](references/importing-pptx.md) — command, losses, original preservation, review |
 | New design or beautification | [Design](references/design.md) and [fonts](references/fonts.md) |
-| Choose/use a preset | [30-system catalog](references/design-systems/index.md), then only the selected `design.md` |
+| Use a preset the user named (opt-in) | [30-system catalog](references/design-systems/index.md), then only the selected `design.md` |
 | Multi-page source organization or project handoff | [Project organization](references/project-organization.md) |
 | Rendered QA, overview stitching, final PPTX checks | [Visual review](references/visual-review.md) |
 | PowerPoint editing, fonts, transitions or animations | [PPTX delivery](references/pptx-delivery.md) |
@@ -36,7 +36,7 @@ Run `slidex version`/`help`, or `node /absolute/checkout/dist/cli.js version`, a
 
 ## 2. Design before composing the whole deck
 
-For new autonomous design, choose one fitting system from the catalog or create a subject-specific theme. State the direction briefly. Named presets must be used; user references and existing themes override automatic selection. Match evidence structure and use mode, not just favorite colors. Preserve one palette, font hierarchy, navigation language and motif family throughout the deck.
+For self-directed design, follow the design guide's scenario sections and derive the palette, typography and motif family from the subject, brand or evidence — do not auto-pick a catalog preset. Design-system presets are opt-in: use one only when the user names it or supplies brand/template rules that clearly match it, then follow it without mixing systems. Example palettes in the authoring/spec documentation and the `slidex init` scaffold are syntax demos, not design recommendations; never ship them as a deck theme. State the direction briefly. User references and existing themes override automatic selection. Match evidence structure and use mode, not just favorite colors. Preserve one palette, font hierarchy, navigation language and motif family throughout the deck.
 
 For each page determine: its main conclusion/task, supporting evidence, the relationship to visualize, the first object the reader should notice, and an appropriate information budget. Select charts, tables, timelines, diagrams or concrete images according to the content. Avoid automatically turning prose into equal cards.
 

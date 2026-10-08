@@ -1,11 +1,11 @@
 # SlideX design systems · 30 presets
 
-Read this catalog when selecting a visual direction, then read **only the chosen** `design.md`. These are design instructions, not bundled PPTX templates, source decks, fonts or images. Names and visual signatures derive from open-kimi-ppt; production geometry, font candidates and delivery rules are adapted to SlideX. See [NOTICE](NOTICE.md).
+Presets are **opt-in**: read this catalog when the user names a preset or supplies brand/template rules that clearly match one; self-directed design follows the [shared design guide](../design.md) instead of auto-picking from here. When a preset applies, read **only the chosen** `design.md`. These are design instructions, not bundled PPTX templates, source decks, fonts or images. Names and visual signatures derive from open-kimi-ppt; production geometry, font candidates and delivery rules are adapted to SlideX. See [NOTICE](NOTICE.md).
 
 ## Selection and precedence
 
 1. User brand, explicit rules and existing templates win. A preset must not erase them.
-2. Use a named preset when specified. When design is delegated to the AI, choose one fitting preset or create a subject-specific system; state the direction briefly without routine approval. Match evidence, reading/projection mode, imagery and density, not color alone.
+2. Use a preset only when the user names it (name or path) or supplies brand/template rules that clearly match one; a chosen preset must be followed without mixing other systems. When design is delegated without a named preset, do not auto-pick from this catalog — create a subject-specific system via the [shared design guide](../design.md), stating the direction briefly without routine approval. Match evidence, reading/projection mode, imagery and density, not color alone.
 3. Apply [shared design guidance](../design.md) and the preset. The preset's SlideX production specification and runtime capabilities override inherited measurements, asset quotas and density demands. Its visual signature can override generic aesthetic defaults.
 4. Keep one signature per deck. Do not mix fonts, navigation and decorations from different systems. Vary page types within the chosen system.
 5. Default page aspect is 16:9 at 960×540. Ratios below are **body column ratios**, not page aspect ratios. Recompose portrait source references instead of stretching them.

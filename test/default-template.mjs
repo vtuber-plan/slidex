@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+import {startServer} from '../dist/server.js';
+import {parseSlideX} from '../dist/ir.js';
+import {templateDeck} from '../dist/template.js';
+
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'slidex-default-template-'));
+const other=path.join(dir,'other.slx');
+fs.writeFileSync(other,'<deck version="1" title="Other"><slide id="other"/></deck>');
+const parsed=parseSlideX(templateDeck('未命名演示'));
+assert.deepEqual(parsed.errors,[]);
+assert.equal(parsed.deck.slides[0].background?.color,'$paper');
+assert.match(parsed.deck.slides[0].elements[0].content,/主标题/);
+assert.match(parsed.deck.slides[0].elements[1].content,/副标题/);
+const server=await startServer('',{port:0,preferencesFile:path.join(dir,'preferences.json')});
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage();
+const errors=[];page.on('pageerror',error=>errors.push(error.message));
+try{
+  await page.setViewport({width:1440,height:900});
+  await page.goto(`http://127.0.0.1:${server.port}`,{waitUntil:'networkidle0'});
+  await page.waitForSelector('#canvasHost .slx-slide');
+  assert.equal(await page.$eval('[aria-label="演示文稿标题"]',element=>element.value),'未命名演示');
+  assert.equal(await page.$eval('#canvasHost .slx-slide',element=>getComputedStyle(element).backgroundColor),'rgb(255, 255, 255)');
+  const slideText=await page.$eval('#canvasHost .slx-slide',element=>element.textContent||'');
+  assert.match(slideText,/主标题/);
+  assert.match(slideText,/副标题/);
+  assert.equal(await page.evaluate(()=>window.__slxHasUnsavedChanges?.()),false,'untouched default template is clean');
+  assert.equal(await page.evaluate(()=>window.__slxDirty),false,'untouched default template has no dirty indicator');
+  let dialogs=0;page.on('dialog',()=>{dialogs++;});
+  assert.equal(await page.evaluate(path=>window.__slxOpenDocument?.(path),other),true,'opening another file succeeds without a save prompt');
+  assert.equal(dialogs,0);
+  assert.equal(await page.$('[role="dialog"]'),null,'clean untitled deck opens another file without a confirmation dialog');
+  await page.waitForFunction(()=>document.querySelector('[aria-label="演示文稿标题"]')?.value==='Other');
+  assert.deepEqual(errors,[]);
+  console.log('PASS white default title slide and clean untitled replacement');
+}finally{await browser.close();server.close();}

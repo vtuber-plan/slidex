@@ -4,22 +4,23 @@ export function templateDeck(name: string): string {
 <deck version="1" title="${name}" width="960" height="540">
   <theme>
     <palette>
-      <color name="paper" value="#FAF8F4"/>
-      <color name="ink" value="#232A31"/>
-      <color name="primary" value="#14606C"/>
-      <color name="accent" value="#B4632C"/>
+      <color name="paper" value="#FFFFFF"/>
+      <color name="ink" value="#1F2937"/>
+      <color name="muted" value="#64748B"/>
+      <color name="primary" value="#2563EB"/>
+      <color name="accent" value="#F59E0B"/>
     </palette>
     <text-styles>
-      <style name="title" font-size="36" bold="true" color="$ink"/>
-      <style name="body" font-size="16" color="$ink" line-height="1.55"/>
+      <style name="title" font-size="40" bold="true" color="$ink"/>
+      <style name="subtitle" font-size="20" color="$muted"/>
     </text-styles>
   </theme>
-  <slide type="cover" background="$primary">
-    <text id="title" x="80" y="220" w="800" h="80" style="$title" color="#FAF8F4" align="center middle">
-      <p>${name}</p>
+  <slide type="cover" background="$paper">
+    <text id="title" x="80" y="175" w="800" h="90" style="$title" align="center middle">
+      <p>主标题</p>
     </text>
-    <text id="sub" x="80" y="310" w="800" h="40" style="$body" color="#FAF8F4C8" align="center top">
-      <p>双击文本直接编辑 · 源码视图可粘贴 AI 生成的 .slx</p>
+    <text id="sub" x="120" y="295" w="720" h="45" style="$subtitle" align="center middle">
+      <p>副标题</p>
     </text>
   </slide>
 </deck>

@@ -37,9 +37,9 @@ Define the design once in `<theme>` (a direct child of `<deck>`) and reference i
 ```xml
 <theme>
   <palette>
-    <color name="paper"   value="#FAF8F4"/>
-    <color name="ink"     value="#232A31"/>
-    <color name="primary" value="#14606C"/>
+    <color name="paper"   value="#F7F7F5"/>
+    <color name="ink"     value="#262A33"/>
+    <color name="primary" value="#44508F"/>
   </palette>
   <text-styles>
     <style name="pageTitle" font-size="25" bold="true" color="$ink" font-family="思源宋体" line-height="1.3"/>
@@ -47,13 +47,15 @@ Define the design once in `<theme>` (a direct child of `<deck>`) and reference i
   </text-styles>
   <table-styles>
     <table-style name="default">
-      <header fill="$primary" color="#FAF8F4" bold="true" font-size="13"/>
+      <header fill="$primary" color="$paper" bold="true" font-size="13"/>
       <body fill="#FFFFFF"/>
       <cell font-size="13.5" border-bottom="1 solid $line" align="left middle"/>
     </table-style>
   </table-styles>
 </theme>
 ```
+
+Palette values above are syntax examples only — derive real palettes from the subject, brand or scenario guidance in the [design guide](design.md). Documentation example palettes and the `slidex init` scaffold palette must never ship in a delivered deck.
 
 - `$name` in any color attribute resolves to a palette color; `$name` on `<text>`/`<td>` resolves to a text style; `$name` on `<table>` resolves to a table style. Missing names are validation errors (`E_THEME_REF`).
 - Style values may reference palette colors (one level); palette values must be literals (`E_THEME_CYCLE` otherwise). Colors are `#RRGGBB` or `#RRGGBBAA`.

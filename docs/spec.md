@@ -94,9 +94,9 @@ mydeck/
 ```xml
 <theme>
   <palette>
-    <color name="paper"    value="#FAF8F4"/>
-    <color name="ink"      value="#232A31"/>
-    <color name="primary"  value="#14606C"/>
+    <color name="paper"    value="#F6F3EE"/>
+    <color name="ink"      value="#2B2723"/>
+    <color name="primary"  value="#8A4A3B"/>
   </palette>
   <text-styles>
     <style name="pageTitle" font-size="25" bold="true" color="$ink"
@@ -106,7 +106,7 @@ mydeck/
   </text-styles>
   <table-styles>
     <table-style name="default">
-      <header fill="$primary" color="#FAF8F4" bold="true" font-size="13"/>
+      <header fill="$primary" color="$paper" bold="true" font-size="13"/>
       <body fill="#FFFFFF"/>
       <body fill="$tint"/>
       <cell font-size="13.5" line-height="1.35"
@@ -130,7 +130,7 @@ mydeck/
 
 ```
 #RRGGBB        不透明
-#RRGGBBAA      带 8 位 alpha（如 #FAF8F4A8）
+#RRGGBBAA      带 8 位 alpha（如 #F6F3EEA8）
 $name          主题引用（解析发生在校验阶段，渲染器拿到的是最终值）
 ```
 

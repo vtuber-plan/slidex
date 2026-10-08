@@ -136,7 +136,9 @@ export default function App() {
   async function confirmBeforeReplace(): Promise<boolean> {
     window.__slxCommitText?.();
     const state = useEditor.getState();
-    if (state.file && !state.sourceFiles && serializeDeck(state.deck) === state.saved && (!sourceRef.current || (state.multiFile?!sourceProjectRef.current.dirty:xmlRef.current===serializeDeck(state.deck)))) return true;
+    const currentXml = serializeDeck(state.deck);
+    const sourceDirty = sourceRef.current && (state.multiFile ? sourceProjectRef.current.dirty : xmlRef.current !== currentXml);
+    if (!state.sourceFiles && !sourceDirty && currentXml === state.saved) return true;
     return new Promise<boolean>((resolve) => {
       replaceDecision.current = resolve;
       setConfirmReplace(true);
@@ -293,7 +295,7 @@ export default function App() {
   const session = useMemo(() => uid("present"), []),
     committedDeck = s.gesture || s.deck,
     serialized = useMemo(() => serializeDeck(committedDeck), [committedDeck]),
-    dirty = !s.file || serialized !== s.saved || !!s.sourceFiles || !!s.editing || !!s.gesture;
+    dirty = serialized !== s.saved || !!s.sourceFiles || !!s.editing || !!s.gesture;
   const diagnostics = useMemo(() => {
     const r = parseSlideX(serialized);
     return [...r.errors, ...r.warnings];
@@ -405,7 +407,9 @@ export default function App() {
     window.__slxHasUnsavedChanges = () => {
       window.__slxCommitText?.();
       const state = useEditor.getState();
-      return !state.file || !!state.sourceFiles || serializeDeck(state.deck) !== state.saved || (sourceRef.current && (state.multiFile?sourceProjectRef.current.dirty:xmlRef.current !== serializeDeck(state.deck)));
+      if (!state.ready) return false;
+      const currentXml = serializeDeck(state.deck);
+      return !!state.sourceFiles || currentXml !== state.saved || (sourceRef.current && (state.multiFile ? sourceProjectRef.current.dirty : xmlRef.current !== currentXml));
     };
     window.__slxDirty = dirty || !!s.sourceFiles || (sourceRef.current && (s.multiFile?sourceProject.dirty:xmlRef.current !== serialized));
     const before = (e: BeforeUnloadEvent) => {
